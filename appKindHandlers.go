@@ -4,17 +4,23 @@ import (
 	"net/http"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
-	"github.com/ales6164/go-cms/kind"
+	"github.com/ales6164/apis/kind"
 )
 
 func (a *Apis) GetHandler(e *kind.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := NewContext(r)
+		ctx := a.NewContext(r)
 
 		vars := mux.Vars(r)
 		id := vars["id"]
 
 		key, err := datastore.DecodeKey(id)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		ctx, err = ctx.HasPermission(e, Read)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -32,12 +38,22 @@ func (a *Apis) GetHandler(e *kind.Kind) http.HandlerFunc {
 
 func (a *Apis) AddHandler(e *kind.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := NewContext(r)
+		ctx := a.NewContext(r)
 
 		h := e.NewHolder(ctx, ctx.UserKey)
-		h.ParseInput(ctx.Body())
+		err := h.ParseInput(ctx.Body())
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
 
-		err := h.Add()
+		ctx, err = ctx.HasPermission(e, Create)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		err = h.Add()
 		if err != nil {
 			ctx.PrintError(w, err)
 			return

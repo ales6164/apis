@@ -5,31 +5,33 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/ales6164/go-cms/middleware"
-	"github.com/ales6164/go-cms/kind"
-	"github.com/ales6164/go-cms/instance"
 	"io/ioutil"
-	"go/token"
+	"github.com/ales6164/apis/middleware"
+	"github.com/ales6164/apis/kind"
 )
 
 type Apis struct {
-	*Options
+	options    *Options
 	router     *mux.Router
 	Handler    http.Handler
 	middleware *middleware.JWTMiddleware
 	privateKey []byte
 	kinds      map[string]*kind.Kind
+	permissions
 }
 
 type Options struct {
-	HandlerPathPrefix string
-	PrivateKeyPath    string // for password hashing
-	Kinds             []*kind.Kind
+	HandlerPathPrefix      string
+	PrivateKeyPath         string // for password hashing
+	Kinds                  []*kind.Kind
+	AuthorizedOrigins      []string
+	AuthorizedCallbackURIs []string
+	Permissions
 }
 
 func New(opt *Options) (*Apis, error) {
 	a := &Apis{
-		Options: opt,
+		options: opt,
 		kinds:   map[string]*kind.Kind{},
 		router:  mux.NewRouter().PathPrefix(opt.HandlerPathPrefix).Subrouter(),
 	}
@@ -41,11 +43,17 @@ func New(opt *Options) (*Apis, error) {
 		return a, err
 	}
 
+	// parse permissions
+	a.permissions, err = a.options.Permissions.parse()
+	if err != nil {
+		return a, err
+	}
+
 	// set auth middleware
 	a.middleware = middleware.AuthMiddleware(a.privateKey)
 
 	// add kind endpoints
-	for _, k := range a.Kinds {
+	for _, k := range a.options.Kinds {
 		a.withKind(k)
 	}
 
@@ -75,11 +83,11 @@ func (a *Apis) HandleFunc(path string, f func(http.ResponseWriter, *http.Request
 	return a.router.HandleFunc(path, f)
 }
 
-func (a *Apis) SignToken(token *jwt.Token) (*instance.Token, error) {
+func (a *Apis) SignToken(token *jwt.Token) (*Token, error) {
 	signedToken, err := token.SignedString(a.privateKey)
 	if err != nil {
 		return nil, err
 	}
 
-	return &instance.Token{Id: signedToken, ExpiresAt: token.Claims.(jwt.MapClaims)["exp"].(int64)}, nil
+	return &Token{Id: signedToken, ExpiresAt: token.Claims.(jwt.MapClaims)["exp"].(int64)}, nil
 }

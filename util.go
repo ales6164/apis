@@ -4,7 +4,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const COST = 14
+const COST = 13
 
 func decrypt(hash []byte, password []byte) error {
 	defer clear(password)

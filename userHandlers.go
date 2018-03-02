@@ -2,13 +2,13 @@ package apis
 
 import (
 	"net/http"
-	"encoding/json"
 	"github.com/asaskevich/govalidator"
 	"google.golang.org/appengine/datastore"
 	"strings"
 	"golang.org/x/net/context"
 	"errors"
-	"os/user"
+	"net/url"
+	"strconv"
 )
 
 var (
@@ -21,21 +21,29 @@ var (
 	ErrPasswordTooShort  = errors.New("password must be at least 6 characters long")
 )
 
+type UserGroup string
+
 type User struct {
-	Hash  []byte `datastore:"hash,noindex" json:"-"`
-	Email string `datastore:"email,noindex" json:"email"`
+	Email string `json:"email"`
+	Group string `json:"group"`
 }
 
-func checkCallback(v string) error {
+type user struct {
+	Hash  []byte `datastore:"hash,noindex" json:"-"`
+	Email string `datastore:"email" json:"-"`
+	Group string `datastore:"group" json:"-"`
+}
+
+func checkCallback(v string) (*url.URL, error) {
 	if len(v) == 0 {
-		return ErrCallbackUndefined
+		return nil, ErrCallbackUndefined
 	}
 
 	if !govalidator.IsURL(v) {
-		return ErrInvalidCallback
+		return nil, ErrInvalidCallback
 	}
 
-	return nil
+	return url.ParseRequestURI(v)
 }
 
 func checkEmail(v string) error {
@@ -66,13 +74,23 @@ func checkPassword(v string) error {
 	return nil
 }
 
-func (a *Apis) AuthLoginHandler() http.HandlerFunc {
+// TODO: check auth origins and callback
+// Allows user login for provided user group
+func (a *Apis) AuthLoginHandler(userGroup ...UserGroup) http.HandlerFunc {
+	var allowedGroups = map[string]bool{}
+	for _, group := range userGroup {
+		allowedGroups[string(group)] = true
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := NewContext(r)
+		ctx := a.NewContext(r)
+		if r.Method != http.MethodPost {
+			ctx.PrintError(w, ErrPageNotFound)
+			return
+		}
 
 		email, password, callback := r.FormValue("email"), r.FormValue("password"), r.FormValue("callback")
 
-		err := checkCallback(callback)
+		callbackURL, err := checkCallback(callback)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -91,8 +109,8 @@ func (a *Apis) AuthLoginHandler() http.HandlerFunc {
 		email = strings.ToLower(email)
 
 		// get user
-		userKey := datastore.NewKey(ctx, "User", email, 0, nil)
-		user := new(User)
+		userKey := datastore.NewKey(ctx, "_user", email, 0, nil)
+		user := new(user)
 		err = datastore.Get(ctx, userKey, user)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
@@ -111,8 +129,14 @@ func (a *Apis) AuthLoginHandler() http.HandlerFunc {
 			return
 		}
 
+		// check if user has allowed user group
+		if _, hasAllowedUserGroup := allowedGroups[user.Group]; !hasAllowedUserGroup {
+			ctx.PrintError(w, ErrForbidden)
+			return
+		}
+
 		// create a token
-		token := NewToken(user.Email)
+		token := NewToken(user)
 
 		// sign the new token
 		signedToken, err := a.SignToken(token)
@@ -121,63 +145,64 @@ func (a *Apis) AuthLoginHandler() http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintAuth(w, user, signedToken)
+		query := url.Values{}
+		query.Set("key", signedToken.Id)
+		query.Set("expiresAt", strconv.Itoa(int(signedToken.ExpiresAt)))
+
+		callbackURL.Fragment = ""
+		callbackURL.RawQuery = query.Encode()
+
+		http.Redirect(w, r, callbackURL.String(), http.StatusTemporaryRedirect)
+
+		//ctx.PrintAuth(w, user, signedToken)
 	}
 }
 
-func (a *Apis) AuthRegistrationHandler() http.HandlerFunc {
-	type Input struct {
-		Email     string `json:"email"`
-		Password  string `json:"password"`
-		FirstName string `json:"firstName"`
-		LastName  string `json:"lastName"`
-		Photo     string `json:"photo"`
-	}
-
+// Allows user registration and assigns provided user groups
+func (a *Apis) AuthRegistrationHandler(userGroup UserGroup) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := instance.NewContext(r)
+		ctx := a.NewContext(r)
+		if r.Method != http.MethodPost {
+			ctx.PrintError(w, ErrPageNotFound)
+			return
+		}
 
-		var input Input
-		err := json.Unmarshal(ctx.Body(), &input)
+		email, password, callback := r.FormValue("email"), r.FormValue("password"), r.FormValue("callback")
+
+		_, err := checkCallback(callback)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+		err = checkEmail(email)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+		err = checkPassword(password)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
 
-		input.Email = strings.ToLower(input.Email)
-
-		// verify input
-		if !govalidator.IsEmail(input.Email) || len(input.Email) < 6 || len(input.Email) > 64 {
-			ctx.PrintError(w, instance.ErrInvalidEmail)
-			return
-		}
-		if len(input.Password) < 6 || len(input.Password) > 128 {
-			ctx.PrintError(w, instance.ErrPasswordLength)
-			return
-		}
-		if len(input.Photo) > 0 && !govalidator.IsURL(input.Photo) {
-			ctx.PrintError(w, instance.ErrPhotoInvalidFormat)
-			return
-		}
+		email = strings.ToLower(email)
 
 		// create password hash
-		hash, err := crypt([]byte(input.Password))
+		hash, err := crypt([]byte(password))
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
 
 		// create User
-		user := &user.User{
-			Email:     input.Email,
-			Hash:      hash,
-			Photo:     input.Photo,
-			FirstName: input.FirstName,
-			LastName:  input.LastName,
+		user := &user{
+			Email: email,
+			Hash:  hash,
+			Group: string(userGroup),
 		}
 
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			userKey := datastore.NewKey(tc, "User", user.Email, 0, nil)
+			userKey := datastore.NewKey(tc, "_user", user.Email, 0, nil)
 			err := datastore.Get(tc, userKey, &datastore.PropertyList{})
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
@@ -187,7 +212,7 @@ func (a *Apis) AuthRegistrationHandler() http.HandlerFunc {
 				}
 				return err
 			}
-			return instance.ErrUserAlreadyExists
+			return ErrUserAlreadyExists
 		}, nil)
 		if err != nil {
 			ctx.PrintError(w, err)
@@ -195,7 +220,7 @@ func (a *Apis) AuthRegistrationHandler() http.HandlerFunc {
 		}
 
 		// create a token
-		token := instance.NewToken(user.Email, "")
+		token := NewToken(user)
 
 		// sign the new token
 		signedToken, err := a.SignToken(token)

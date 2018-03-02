@@ -12,12 +12,10 @@ import (
 type Kind struct {
 	*Options
 	fields map[string]*Field
-	permissions
 }
 
 type Options struct {
 	Name string
-	Permissions
 	Fields []*Field
 }
 
@@ -28,7 +26,6 @@ type Field struct {
 	NoIndex    bool
 
 	isNested bool
-	Worker
 }
 
 var (
@@ -45,7 +42,6 @@ func New(opt *Options) (*Kind, error) {
 	if !govalidator.IsAlpha(k.Name) {
 		return k, ErrInvalidKindName
 	}
-	k.permissions, err = k.parse()
 	if err != nil {
 		return k, err
 	}

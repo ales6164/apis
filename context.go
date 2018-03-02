@@ -10,15 +10,18 @@ import (
 	"time"
 	"encoding/json"
 	"github.com/gorilla/mux"
-	"github.com/ales6164/go-cms/user"
 	"google.golang.org/appengine/datastore"
+	"github.com/ales6164/apis/kind"
 )
 
 type Context struct {
-	r                *http.Request
-	IsAuthenticated  bool
+	a               *Apis
+	r               *http.Request
+	IsAuthenticated bool
 	context.Context
-	UserKey          *datastore.Key
+	UserEmail       string
+	UserKey         *datastore.Key
+	UserGroup       string
 	*body
 }
 
@@ -27,8 +30,9 @@ type body struct {
 	body        []byte
 }
 
-func NewContext(r *http.Request) Context {
+func (a *Apis) NewContext(r *http.Request) Context {
 	return Context{
+		a:       a,
 		r:       r,
 		Context: appengine.NewContext(r),
 		body:    &body{hasReadBody: false},
@@ -48,8 +52,8 @@ func (ctx Context) Id() string {
 	return mux.Vars(ctx.r)["id"]
 }
 
-func (ctx Context) HasPermission(e *Entity, scope Scope) (Context, error) {
-	if val1, ok := ctx.api.options.permissions[ctx.UserGroup()]; ok {
+func (ctx Context) HasPermission(e *kind.Kind, scope Scope) (Context, error) {
+	if val1, ok := ctx.a.permissions[ctx.UserGroup]; ok {
 		if val2, ok := val1[e.Name]; ok {
 			if val3, ok := val2[scope]; ok && val3 {
 				return ctx, nil
@@ -70,16 +74,15 @@ func (ctx Context) HasPermission(e *Entity, scope Scope) (Context, error) {
 
 // Authenticates user
 func (ctx Context) Authenticate() (bool, Context) {
-	var isAuthenticated, isExpired, hasProjectNamespace bool
-	var userEmail, projectNamespace string
+	var isAuthenticated, isExpired bool
+	var userEmail, userGroup string
 
 	tkn := gcontext.Get(ctx.r, "auth")
 	if tkn != nil {
 		token := tkn.(*jwt.Token)
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 			if err := claims.Valid(); err == nil {
-				if projectNamespace, ok = claims["pro"].(string); ok && len(projectNamespace) > 0 {
-					hasProjectNamespace = true
+				if userGroup, ok = claims["gro"].(string); ok && len(userGroup) > 0 {
 				}
 				if userEmail, ok = claims["sub"].(string); ok && len(userEmail) > 0 {
 					isAuthenticated = true
@@ -101,21 +104,20 @@ func (ctx Context) Authenticate() (bool, Context) {
 
 	ctx.IsAuthenticated = isAuthenticated && !isExpired
 	if ctx.IsAuthenticated {
-		ctx.HasProjectAccess = hasProjectNamespace
-		ctx.User = userEmail
-		ctx.Project = projectNamespace
+		ctx.UserEmail = userEmail
+		ctx.UserGroup = userGroup
 		ctx.UserKey = datastore.NewKey(ctx, "User", userEmail, 0, nil)
 	} else {
-		ctx.HasProjectAccess = false
-		ctx.User = ""
-		ctx.Project = ""
+		ctx.UserEmail = ""
+		ctx.UserGroup = ""
+		ctx.UserKey = nil
 	}
 
 	return ctx.IsAuthenticated, ctx
 }
 
 // Authenticates user; if token is expired, returns a renewed unsigned *jwt.Token
-func (ctx Context) Renew() (Context, *jwt.Token) {
+/*func (ctx Context) Renew() (Context, *jwt.Token) {
 	var isAuthenticated, hasProjectNamespace bool
 	var userEmail, projectNamespace string
 	var unsignedToken *jwt.Token
@@ -166,9 +168,9 @@ func (ctx Context) Renew() (Context, *jwt.Token) {
 	}
 
 	return ctx, unsignedToken
-}
+}*/
 
-func NewToken(userEmail string) *jwt.Token {
+func NewToken(user *user) *jwt.Token {
 	var exp = time.Now().Add(time.Hour * 72).Unix()
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"aud": "api",
@@ -176,7 +178,8 @@ func NewToken(userEmail string) *jwt.Token {
 		"exp": exp,
 		"iat": time.Now().Unix(),
 		"iss": "sdk",
-		"sub": userEmail,
+		"sub": user.Email,
+		"gro": user.Group,
 	})
 }
 
@@ -190,8 +193,8 @@ type Token struct {
 }
 
 type AuthResult struct {
-	Token *Token     `json:"token"`
-	User  *user.User `json:"user"`
+	Token *Token `json:"token"`
+	User  *User  `json:"user"`
 }
 
 func (ctx *Context) PrintResult(w http.ResponseWriter, result interface{}) {
@@ -200,11 +203,11 @@ func (ctx *Context) PrintResult(w http.ResponseWriter, result interface{}) {
 	json.NewEncoder(w).Encode(result)
 }
 
-func (ctx *Context) PrintAuth(w http.ResponseWriter, user *user.User, token *Token) {
+func (ctx *Context) PrintAuth(w http.ResponseWriter, user *user, token *Token) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var out = AuthResult{
-		User:  user,
+		User:  &User{user.Email, user.Group},
 		Token: token,
 	}
 

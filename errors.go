@@ -30,4 +30,5 @@ var (
 	ErrProjectAlreadyExists  = NewError("project already exists", 109)
 	ErrUnathorized           = errors.New("unathorized")
 	ErrForbidden             = errors.New("action forbidden")
+	ErrPageNotFound          = errors.New("404 page not found")
 )
