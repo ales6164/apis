@@ -6,7 +6,7 @@ import (
 )
 
 // userGroup: entityName: scope
-type Permissions map[string][]string // {"public":["post:read"], "editor":["post:*"], "admin":["*:*"]}
+type Permissions map[UserGroup][]string // {"public":["post:read"], "editor":["post:*"], "admin":["*:*"]}
 
 var (
 	ErrInvalidNumOfSegments = errors.New("invalid number of segments: allowed 2 separated with ':'")
@@ -52,7 +52,7 @@ func (p Permissions) parse() (permissions, error) {
 }
 
 // userGroup: entityName: scope: true|false
-type permissions map[string]map[string]map[Scope]bool // {"public":{"post":{"read":true}}}
+type permissions map[UserGroup]map[string]map[Scope]bool // {"public":{"post":{"read":true}}}
 
 type Scope string
 

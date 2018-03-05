@@ -5,6 +5,38 @@ import (
 	"google.golang.org/appengine/datastore"
 )
 
+func (k *Kind) Query(ctx context.Context, order string, limit int, offset int) ([]*Holder, error) {
+	var hs []*Holder
+	var err error
+
+	q := datastore.NewQuery(k.Name)
+
+	if len(order) != 0 {
+		q = q.Order(order)
+	}
+
+	if limit != 0 {
+		q = q.Limit(limit)
+	}
+
+	q = q.Offset(offset)
+
+	t := q.Run(ctx)
+	for {
+		var h = k.NewHolder(ctx, nil)
+		h.key, err = t.Next(h)
+		if err == datastore.Done {
+			break
+		}
+		if err != nil {
+			return hs, err
+		}
+		hs = append(hs, h)
+	}
+
+	return hs, err
+}
+
 func (k *Kind) Get(ctx context.Context, key *datastore.Key) (*Holder, error) {
 	var h = k.NewHolder(ctx, nil)
 	h.key = key

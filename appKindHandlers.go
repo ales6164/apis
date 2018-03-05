@@ -7,6 +7,31 @@ import (
 	"github.com/ales6164/apis/kind"
 )
 
+func (a *Apis) QueryHandler(e *kind.Kind) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := a.NewContext(r)
+
+		ctx, err := ctx.HasPermission(e, Read)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		hs, err := e.Query(ctx, "", 100, 0)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		var out []map[string]interface{}
+		for _, h := range hs {
+			out = append(out, h.Output())
+		}
+
+		ctx.PrintResult(w, out)
+	}
+}
+
 func (a *Apis) GetHandler(e *kind.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := a.NewContext(r)

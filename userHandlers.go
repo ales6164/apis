@@ -23,6 +23,11 @@ var (
 
 type UserGroup string
 
+const (
+	public UserGroup = "public"
+	admin  UserGroup = "admin"
+)
+
 type User struct {
 	Email string `json:"email"`
 	Group string `json:"group"`

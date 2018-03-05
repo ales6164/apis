@@ -21,7 +21,7 @@ type Context struct {
 	context.Context
 	UserEmail       string
 	UserKey         *datastore.Key
-	UserGroup       string
+	UserGroup       UserGroup
 	*body
 }
 
@@ -32,10 +32,11 @@ type body struct {
 
 func (a *Apis) NewContext(r *http.Request) Context {
 	return Context{
-		a:       a,
-		r:       r,
-		Context: appengine.NewContext(r),
-		body:    &body{hasReadBody: false},
+		a:         a,
+		r:         r,
+		UserGroup: public,
+		Context:   appengine.NewContext(r),
+		body:      &body{hasReadBody: false},
 	}
 }
 
@@ -105,7 +106,7 @@ func (ctx Context) Authenticate() (bool, Context) {
 	ctx.IsAuthenticated = isAuthenticated && !isExpired
 	if ctx.IsAuthenticated {
 		ctx.UserEmail = userEmail
-		ctx.UserGroup = userGroup
+		ctx.UserGroup = UserGroup(userGroup)
 		ctx.UserKey = datastore.NewKey(ctx, "User", userEmail, 0, nil)
 	} else {
 		ctx.UserEmail = ""

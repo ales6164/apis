@@ -66,7 +66,8 @@ func New(opt *Options) (*Apis, error) {
 func (a *Apis) withKind(kind *kind.Kind) {
 	a.kinds[kind.Name] = kind
 
-	a.router.Handle("/"+kind.Name, a.middleware.Handler(a.GetHandler(kind))).Methods(http.MethodGet)
+	a.router.Handle("/"+kind.Name, a.middleware.Handler(a.QueryHandler(kind))).Methods(http.MethodGet)
+	a.router.Handle("/"+kind.Name+"/{id}", a.middleware.Handler(a.GetHandler(kind))).Methods(http.MethodGet)
 
 	//a.router.Handle("/"+name+"/draft", authMiddleware.Handler(a.AddDraftHandler(ent))).Methods(http.MethodPost) // ADD
 	a.router.Handle("/"+kind.Name, a.middleware.Handler(a.AddHandler(kind))).Methods(http.MethodPost) // ADD
