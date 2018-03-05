@@ -7,8 +7,6 @@ import (
 	"strings"
 	"golang.org/x/net/context"
 	"errors"
-	"net/url"
-	"strconv"
 )
 
 var (
@@ -39,7 +37,7 @@ type user struct {
 	Group string `datastore:"group" json:"-"`
 }
 
-func checkCallback(v string) (*url.URL, error) {
+/*func checkCallback(v string) (*url.URL, error) {
 	if len(v) == 0 {
 		return nil, ErrCallbackUndefined
 	}
@@ -49,7 +47,7 @@ func checkCallback(v string) (*url.URL, error) {
 	}
 
 	return url.ParseRequestURI(v)
-}
+}*/
 
 func checkEmail(v string) error {
 	if len(v) == 0 {
@@ -93,14 +91,14 @@ func (a *Apis) AuthLoginHandler(userGroup ...UserGroup) http.HandlerFunc {
 			return
 		}
 
-		email, password, callback := r.FormValue("email"), r.FormValue("password"), r.FormValue("callback")
+		email, password, _ := r.FormValue("email"), r.FormValue("password"), r.FormValue("callback")
 
-		callbackURL, err := checkCallback(callback)
+		/*callbackURL, err := checkCallback(callback)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
-		}
-		err = checkEmail(email)
+		}*/
+		err := checkEmail(email)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -150,16 +148,16 @@ func (a *Apis) AuthLoginHandler(userGroup ...UserGroup) http.HandlerFunc {
 			return
 		}
 
-		query := url.Values{}
+		/*query := url.Values{}
 		query.Set("key", signedToken.Id)
 		query.Set("expiresAt", strconv.Itoa(int(signedToken.ExpiresAt)))
 
 		callbackURL.Fragment = ""
 		callbackURL.RawQuery = query.Encode()
 
-		http.Redirect(w, r, callbackURL.String(), http.StatusTemporaryRedirect)
+		http.Redirect(w, r, callbackURL.String(), http.StatusTemporaryRedirect)*/
 
-		//ctx.PrintAuth(w, user, signedToken)
+		ctx.PrintAuth(w, user, signedToken)
 	}
 }
 
@@ -172,14 +170,14 @@ func (a *Apis) AuthRegistrationHandler(userGroup UserGroup) http.HandlerFunc {
 			return
 		}
 
-		email, password, callback := r.FormValue("email"), r.FormValue("password"), r.FormValue("callback")
+		email, password, _ := r.FormValue("email"), r.FormValue("password"), r.FormValue("callback")
 
-		_, err := checkCallback(callback)
+		/*_, err := checkCallback(callback)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
-		}
-		err = checkEmail(email)
+		}*/
+		err := checkEmail(email)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
