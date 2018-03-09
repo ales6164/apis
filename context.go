@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
 	"github.com/ales6164/apis/kind"
+	"google.golang.org/appengine/log"
 )
 
 type Context struct {
@@ -216,6 +217,7 @@ func (ctx *Context) PrintAuth(w http.ResponseWriter, user *user, token *Token) {
 }
 
 func (ctx *Context) PrintError(w http.ResponseWriter, err error) {
+	log.Errorf(ctx, "context error: %v", err)
 	if err == ErrUnathorized {
 		w.WriteHeader(http.StatusUnauthorized)
 	} else if _, ok := err.(*Error); ok {

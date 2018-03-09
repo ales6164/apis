@@ -91,13 +91,8 @@ func (a *Apis) AuthLoginHandler(userGroup ...UserGroup) http.HandlerFunc {
 			return
 		}
 
-		email, password, _ := r.FormValue("email"), r.FormValue("password"), r.FormValue("callback")
+		email, password := r.FormValue("email"), r.FormValue("password")
 
-		/*callbackURL, err := checkCallback(callback)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}*/
 		err := checkEmail(email)
 		if err != nil {
 			ctx.PrintError(w, err)
@@ -148,15 +143,6 @@ func (a *Apis) AuthLoginHandler(userGroup ...UserGroup) http.HandlerFunc {
 			return
 		}
 
-		/*query := url.Values{}
-		query.Set("key", signedToken.Id)
-		query.Set("expiresAt", strconv.Itoa(int(signedToken.ExpiresAt)))
-
-		callbackURL.Fragment = ""
-		callbackURL.RawQuery = query.Encode()
-
-		http.Redirect(w, r, callbackURL.String(), http.StatusTemporaryRedirect)*/
-
 		ctx.PrintAuth(w, user, signedToken)
 	}
 }
@@ -170,13 +156,8 @@ func (a *Apis) AuthRegistrationHandler(userGroup UserGroup) http.HandlerFunc {
 			return
 		}
 
-		email, password, _ := r.FormValue("email"), r.FormValue("password"), r.FormValue("callback")
+		email, password := r.FormValue("email"), r.FormValue("password")
 
-		/*_, err := checkCallback(callback)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}*/
 		err := checkEmail(email)
 		if err != nil {
 			ctx.PrintError(w, err)
