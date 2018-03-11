@@ -21,11 +21,14 @@ type Apis struct {
 }
 
 type Options struct {
-	HandlerPathPrefix      string
-	PrivateKeyPath         string // for password hashing
-	Kinds                  []*kind.Kind
-	AuthorizedOrigins      []string
-	AuthorizedCallbackURIs []string
+	HandlerPathPrefix     string
+	PrivateKeyPath        string // for password hashing
+	Kinds                 []*kind.Kind
+	AuthorizedOrigins     []string
+	AllowUserRegistration bool
+	DefaultRole           Role
+	UserProfileKind       *kind.Kind
+	RequireTrackingID     bool // todo:generated from pages - track users - stored as session cookie
 	Permissions
 }
 
@@ -52,9 +55,32 @@ func New(opt *Options) (*Apis, error) {
 	// set auth middleware
 	a.middleware = middleware.AuthMiddleware(a.privateKey)
 
-	// add kind endpoints
+	// init and add kind endpoints
 	for _, k := range a.options.Kinds {
+		err = k.Init()
+		if err != nil {
+			return a, err
+		}
 		a.withKind(k)
+	}
+
+	// add kind endpoints for groups
+	for _, k := range a.kinds {
+		a.withGroupKind(k)
+	}
+
+	// add login handler
+	a.router.Handle("/auth/login", a.AuthLoginHandler()).Methods(http.MethodPost)
+
+	// add register handler
+	if a.options.AllowUserRegistration {
+		a.router.Handle("/auth/register", a.AuthRegistrationHandler(a.options.DefaultRole)).Methods(http.MethodPost)
+	}
+
+	// add profile handlers
+	if a.options.UserProfileKind != nil {
+		a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthGetProfile(a.options.UserProfileKind))).Methods(http.MethodGet)
+		a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthUpdateProfile(a.options.UserProfileKind))).Methods(http.MethodPost)
 	}
 
 	// create handler
@@ -71,6 +97,17 @@ func (a *Apis) withKind(kind *kind.Kind) {
 
 	//a.router.Handle("/"+name+"/draft", authMiddleware.Handler(a.AddDraftHandler(ent))).Methods(http.MethodPost) // ADD
 	a.router.Handle("/"+kind.Name, a.middleware.Handler(a.AddHandler(kind))).Methods(http.MethodPost) // ADD
+	//a.router.Handle("/"+name+"/{id}", authMiddleware.Handler(a.KindGetHandler(e))).Methods(http.MethodGet)       // GET
+	//a.router.Handle("/{project}/api/"+name+"/{id}", authMiddleware.Handler(a.KindUpdateHandler(e))).Methods(http.MethodPut)    // UPDATE
+	//a.router.Handle("/{project}/api/"+name+"/{id}", authMiddleware.Handler(a.KindDeleteHandler(e))).Methods(http.MethodDelete) // DELETE
+}
+
+func (a *Apis) withGroupKind(kind *kind.Kind) {
+	a.router.Handle("/{group}/"+kind.Name, a.middleware.Handler(a.QueryHandler(kind))).Methods(http.MethodGet)
+	a.router.Handle("/{group}/"+kind.Name+"/{id}", a.middleware.Handler(a.GetHandler(kind))).Methods(http.MethodGet)
+
+	//a.router.Handle("/"+name+"/draft", authMiddleware.Handler(a.AddDraftHandler(ent))).Methods(http.MethodPost) // ADD
+	a.router.Handle("/{group}/"+kind.Name, a.middleware.Handler(a.AddHandler(kind))).Methods(http.MethodPost) // ADD
 	//a.router.Handle("/"+name+"/{id}", authMiddleware.Handler(a.KindGetHandler(e))).Methods(http.MethodGet)       // GET
 	//a.router.Handle("/{project}/api/"+name+"/{id}", authMiddleware.Handler(a.KindUpdateHandler(e))).Methods(http.MethodPut)    // UPDATE
 	//a.router.Handle("/{project}/api/"+name+"/{id}", authMiddleware.Handler(a.KindDeleteHandler(e))).Methods(http.MethodDelete) // DELETE

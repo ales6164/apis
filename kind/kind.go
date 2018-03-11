@@ -15,8 +15,8 @@ type Kind struct {
 }
 
 type Options struct {
-	Name string
-	Fields []*Field
+	Name    string
+	Fields  []*Field
 }
 
 type Field struct {
@@ -29,32 +29,36 @@ type Field struct {
 }
 
 var (
-	ErrInvalidKindName = errors.New("kind name must contain a-zA-Z characters only")
-	ErrEmptyFieldName = errors.New("field name can't be empty")
+	ErrInvalidKindName     = errors.New("kind name must contain a-zA-Z characters only")
+	ErrEmptyFieldName      = errors.New("field name can't be empty")
 	ErrFieldNameNotAllowed = errors.New("field name can't begin with an underscore, 'meta' or 'id'")
 )
 
-func New(opt *Options) (*Kind, error) {
-	var err error
+func New(opt *Options) *Kind {
 	k := &Kind{
 		Options: opt,
 	}
+	return k
+}
+
+func (k *Kind) Init() error {
+	var err error
 	if !govalidator.IsAlpha(k.Name) {
-		return k, ErrInvalidKindName
+		return ErrInvalidKindName
 	}
 	if err != nil {
-		return k, err
+		return err
 	}
 	for _, f := range k.Fields {
 		if len(f.Name) == 0 {
-			return k, ErrEmptyFieldName
+			return ErrEmptyFieldName
 		}
 		if f.Name == "meta" || f.Name == "id" || f.Name[:1] == "_" {
-			return k, ErrFieldNameNotAllowed
+			return ErrFieldNameNotAllowed
 		}
 		if split := strings.Split(f.Name, "."); len(split) > 1 {
 			if split[0] == "meta" || split[0] == "id" || split[0][:1] == "_" {
-				return k, ErrFieldNameNotAllowed
+				return ErrFieldNameNotAllowed
 			}
 			f.isNested = true
 		}
@@ -63,7 +67,7 @@ func New(opt *Options) (*Kind, error) {
 		}
 		k.fields[f.Name] = f
 	}
-	return k, nil
+	return nil
 }
 
 func (k *Kind) NewHolder(ctx context.Context, user *datastore.Key) *Holder {

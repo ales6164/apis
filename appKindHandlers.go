@@ -10,7 +10,6 @@ import (
 func (a *Apis) QueryHandler(e *kind.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := a.NewContext(r)
-
 		ctx, err := ctx.HasPermission(e, Read)
 		if err != nil {
 			ctx.PrintError(w, err)
@@ -60,6 +59,20 @@ func (a *Apis) GetHandler(e *kind.Kind) http.HandlerFunc {
 		ctx.PrintResult(w, h.Output())
 	}
 }
+
+/*
+func getGroup(ctx Context, group string, ) (error) {
+	groupKey, err := datastore.DecodeKey(group)
+	if err != nil {
+		return err
+	}
+
+	ctx, err = ctx.SetGroup(group)
+	if err != nil {
+		ctx.PrintError(w, err)
+		return
+	}
+}*/
 
 func (a *Apis) AddHandler(e *kind.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -45,6 +45,11 @@ func (k *Kind) Get(ctx context.Context, key *datastore.Key) (*Holder, error) {
 	return h, err
 }
 
+func (h *Holder) Get(key *datastore.Key) error {
+	h.key = key
+	return datastore.Get(h.context, key, h)
+}
+
 func (h *Holder) Add() error {
 	var err error
 

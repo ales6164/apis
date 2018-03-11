@@ -20,7 +20,14 @@ type Holder struct {
 	loadedStoredData    map[string][]datastore.Property // data already stored in datastore - if exists
 	datastoreData       []datastore.Property            // list of properties stored in datastore - refreshed on Load or Save
 
+	// populated on Load ... with HasAccess can check if current user is the same as createdBy
+	createdBy *datastore.Key
+
 	isOldVersion bool // when updating entity we want to also update old entry meta.
+}
+
+func (h *Holder) SetContext(ctx context.Context) {
+	h.context = ctx
 }
 
 func (h *Holder) ParseInput(body []byte) error {
@@ -114,6 +121,9 @@ func (h *Holder) Load(ps []datastore.Property) error {
 	h.datastoreData = ps
 	for _, prop := range ps {
 		h.loadedStoredData[prop.Name] = append(h.loadedStoredData[prop.Name], prop)
+		if prop.Name == "meta.createdBy" {
+			h.createdBy = prop.Value.(*datastore.Key)
+		}
 	}
 	return nil
 }

@@ -1,62 +1,47 @@
 package apis
 
 import (
-	"errors"
-	"strings"
+	"github.com/ales6164/apis/kind"
 )
 
-// userGroup: entityName: scope
-type Permissions map[UserGroup][]string // {"public":["post:read"], "editor":["post:*"], "admin":["*:*"]}
+type Role string
 
-var (
-	ErrInvalidNumOfSegments = errors.New("invalid number of segments: allowed 2 separated with ':'")
-	ErrInvalidScope         = errors.New("invalid scope")
+const (
+	PublicRole Role = "public"
+	AdminRole  Role = "admin"
 )
+
+// userGroup: kind: scope
+type Permissions map[Role]map[*kind.Kind][]Scope
 
 func (p Permissions) parse() (permissions, error) {
 	var perms = permissions{}
-	for userGroupName, entityScopeArray := range p {
+	for userGroupName, entityScopeMap := range p {
 		if _, ok := perms[userGroupName]; !ok {
-			perms[userGroupName] = map[string]map[Scope]bool{}
+			perms[userGroupName] = map[*kind.Kind]map[Scope]bool{}
 		}
 
-		for _, entityScope := range entityScopeArray {
+		for theKind, entityScope := range entityScopeMap {
 
-			// split
-			var splitEntityScope = strings.Split(entityScope, ":")
-			if len(splitEntityScope) != 2 {
-				return perms, ErrInvalidNumOfSegments
+			if _, ok := perms[userGroupName][theKind]; !ok {
+				perms[userGroupName][theKind] = map[Scope]bool{}
 			}
 
-			// is scope valid
-			switch splitEntityScope[1] {
-			case "read":
-			case "create":
-			case "update":
-			case "delete":
-			case "*":
-				break
-			default:
-				return perms, ErrInvalidScope
+			for _, scope := range entityScope {
+				perms[userGroupName][theKind][Scope(scope)] = true
 			}
-
-			if _, ok := perms[userGroupName][splitEntityScope[0]]; !ok {
-				perms[userGroupName][splitEntityScope[0]] = map[Scope]bool{}
-			}
-
-			perms[userGroupName][splitEntityScope[0]][Scope(splitEntityScope[1])] = true
 		}
 	}
 
 	return perms, nil
 }
 
-// userGroup: entityName: scope: true|false
-type permissions map[UserGroup]map[string]map[Scope]bool // {"public":{"post":{"read":true}}}
+type permissions map[Role]map[*kind.Kind]map[Scope]bool
 
 type Scope string
 
 const (
+	// work under default user group
 	Read   Scope = "read"
 	Create Scope = "create"
 	Update Scope = "update"

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"golang.org/x/net/context"
 	"errors"
+	"github.com/ales6164/apis/kind"
 )
 
 var (
@@ -19,35 +20,21 @@ var (
 	ErrPasswordTooShort  = errors.New("password must be at least 6 characters long")
 )
 
-type UserGroup string
-
-const (
-	public UserGroup = "public"
-	admin  UserGroup = "admin"
-)
-
 type User struct {
 	Email string `json:"email"`
 	Group string `json:"group"`
 }
 
 type user struct {
-	Hash  []byte `datastore:"hash,noindex" json:"-"`
-	Email string `datastore:"email" json:"-"`
-	Group string `datastore:"group" json:"-"`
+	Hash    []byte         `datastore:"hash,noindex" json:"-"`
+	Email   string         `datastore:"email" json:"email"`
+	Role    string         `datastore:"role" json:"role"`
+	Profile *datastore.Key `datastore:"profile" json:"profile"`
 }
 
-/*func checkCallback(v string) (*url.URL, error) {
-	if len(v) == 0 {
-		return nil, ErrCallbackUndefined
-	}
-
-	if !govalidator.IsURL(v) {
-		return nil, ErrInvalidCallback
-	}
-
-	return url.ParseRequestURI(v)
-}*/
+type group struct {
+	Name string `datastore:"name" json:"name"`
+}
 
 func checkEmail(v string) error {
 	if len(v) == 0 {
@@ -78,18 +65,9 @@ func checkPassword(v string) error {
 }
 
 // TODO: check auth origins and callback
-// Allows user login for provided user group
-func (a *Apis) AuthLoginHandler(userGroup ...UserGroup) http.HandlerFunc {
-	var allowedGroups = map[string]bool{}
-	for _, group := range userGroup {
-		allowedGroups[string(group)] = true
-	}
+func (a *Apis) AuthLoginHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := a.NewContext(r)
-		if r.Method != http.MethodPost {
-			ctx.PrintError(w, ErrPageNotFound)
-			return
-		}
 
 		email, password := r.FormValue("email"), r.FormValue("password")
 
@@ -127,12 +105,6 @@ func (a *Apis) AuthLoginHandler(userGroup ...UserGroup) http.HandlerFunc {
 			return
 		}
 
-		// check if user has allowed user group
-		if _, hasAllowedUserGroup := allowedGroups[user.Group]; !hasAllowedUserGroup {
-			ctx.PrintError(w, ErrForbidden)
-			return
-		}
-
 		// create a token
 		token := NewToken(user)
 
@@ -148,13 +120,9 @@ func (a *Apis) AuthLoginHandler(userGroup ...UserGroup) http.HandlerFunc {
 }
 
 // Allows user registration and assigns provided user groups
-func (a *Apis) AuthRegistrationHandler(userGroup UserGroup) http.HandlerFunc {
+func (a *Apis) AuthRegistrationHandler(role Role) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := a.NewContext(r)
-		if r.Method != http.MethodPost {
-			ctx.PrintError(w, ErrPageNotFound)
-			return
-		}
 
 		email, password := r.FormValue("email"), r.FormValue("password")
 
@@ -182,7 +150,7 @@ func (a *Apis) AuthRegistrationHandler(userGroup UserGroup) http.HandlerFunc {
 		user := &user{
 			Email: email,
 			Hash:  hash,
-			Group: string(userGroup),
+			Role:  string(role),
 		}
 
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
@@ -214,5 +182,94 @@ func (a *Apis) AuthRegistrationHandler(userGroup UserGroup) http.HandlerFunc {
 		}
 
 		ctx.PrintAuth(w, user, signedToken)
+	}
+}
+
+/**
+Profile handlers
+ */
+
+func (a *Apis) AuthGetProfile(k *kind.Kind) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, ctx := a.NewContext(r).Authenticate()
+
+		if !ok {
+			ctx.PrintError(w, ErrUnathorized)
+			return
+		}
+
+		// get user
+		user := new(user)
+		err := datastore.Get(ctx, ctx.UserKey, user)
+		if err != nil {
+			ctx.PrintError(w, ErrForbidden)
+			return
+		}
+
+		if user.Profile == nil {
+			ctx.PrintResult(w, ErrUserProfileDoesNotExist)
+			return
+		}
+
+		h, err := k.Get(ctx, user.Profile)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		ctx.PrintResult(w, h.Output())
+	}
+}
+
+func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := a.NewContext(r)
+
+		if !ctx.IsAuthenticated || ctx.UserKey == nil {
+			ctx.PrintError(w, ErrForbidden)
+			return
+		}
+
+		// do everything in a transaction
+
+		profile := k.NewHolder(ctx, ctx.UserKey)
+		err := profile.ParseInput(ctx.Body())
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			// get user
+			user := new(user)
+			err := datastore.Get(ctx, ctx.UserKey, user)
+			if err != nil {
+				return ErrForbidden
+			}
+
+			if user.Profile != nil {
+				err = profile.Get(user.Profile)
+				if err != nil {
+					return err
+				}
+				err = profile.Update(user.Profile)
+				if err != nil {
+					return err
+				}
+			} else {
+				err = profile.Add()
+				if err != nil {
+					return err
+				}
+			}
+
+			return nil
+		}, &datastore.TransactionOptions{XG: true})
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		ctx.PrintResult(w, profile.Output())
 	}
 }
