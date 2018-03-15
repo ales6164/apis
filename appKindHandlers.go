@@ -9,14 +9,18 @@ import (
 
 func (a *Apis) QueryHandler(e *kind.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := a.NewContext(r)
+		ok, ctx := a.NewContext(r).Authenticate()
+		if !ok {
+			ctx.PrintError(w, ErrForbidden)
+			return
+		}
 		ctx, err := ctx.HasPermission(e, Read)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
 
-		hs, err := e.Query(ctx, "", 100, 0)
+		hs, err := e.Query(ctx, "", 0, 0, ctx.UserKey)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -33,7 +37,11 @@ func (a *Apis) QueryHandler(e *kind.Kind) http.HandlerFunc {
 
 func (a *Apis) GetHandler(e *kind.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := a.NewContext(r)
+		ok, ctx := a.NewContext(r).Authenticate()
+		if !ok {
+			ctx.PrintError(w, ErrForbidden)
+			return
+		}
 
 		vars := mux.Vars(r)
 		id := vars["id"]
@@ -47,6 +55,11 @@ func (a *Apis) GetHandler(e *kind.Kind) http.HandlerFunc {
 		ctx, err = ctx.HasPermission(e, Read)
 		if err != nil {
 			ctx.PrintError(w, err)
+			return
+		}
+
+		if !key.Parent().Equal(ctx.UserKey) {
+			ctx.PrintError(w, ErrForbidden)
 			return
 		}
 
@@ -76,7 +89,11 @@ func getGroup(ctx Context, group string, ) (error) {
 
 func (a *Apis) AddHandler(e *kind.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := a.NewContext(r)
+		ok, ctx := a.NewContext(r).Authenticate()
+		if !ok {
+			ctx.PrintError(w, ErrForbidden)
+			return
+		}
 
 		h := e.NewHolder(ctx, ctx.UserKey)
 		err := h.ParseInput(ctx.Body())
@@ -91,7 +108,7 @@ func (a *Apis) AddHandler(e *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		err = h.Add()
+		err = h.Add(ctx.UserKey)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return

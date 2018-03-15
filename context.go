@@ -16,13 +16,14 @@ import (
 )
 
 type Context struct {
-	a               *Apis
-	r               *http.Request
-	IsAuthenticated bool
+	a                 *Apis
+	r                 *http.Request
+	hasReadAuthHeader bool
+	IsAuthenticated   bool
 	context.Context
-	UserEmail       string
-	UserKey         *datastore.Key
-	Role            Role
+	UserEmail         string
+	UserKey           *datastore.Key
+	Role              Role
 	*body
 }
 
@@ -75,6 +76,7 @@ func (ctx Context) HasPermission(k *kind.Kind, scope ...Scope) (Context, error) 
 
 // Authenticates user
 func (ctx Context) Authenticate() (bool, Context) {
+	ctx.hasReadAuthHeader = true
 	var isAuthenticated, isExpired bool
 	var userEmail, role string
 

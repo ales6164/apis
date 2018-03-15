@@ -15,8 +15,8 @@ type Kind struct {
 }
 
 type Options struct {
-	Name    string
-	Fields  []*Field
+	Name   string
+	Fields []*Field
 }
 
 type Field struct {
@@ -24,7 +24,9 @@ type Field struct {
 	IsRequired bool
 	Multiple   bool
 	NoIndex    bool
+	Kind       *Kind
 
+	isKind bool
 	isNested bool
 }
 
@@ -62,6 +64,9 @@ func (k *Kind) Init() error {
 			}
 			f.isNested = true
 		}
+		if f.Kind != nil {
+			f.isKind = true
+		}
 		if k.fields == nil {
 			k.fields = map[string]*Field{}
 		}
@@ -75,6 +80,14 @@ func (k *Kind) NewHolder(ctx context.Context, user *datastore.Key) *Holder {
 		Kind:              k,
 		context:           ctx,
 		user:              user,
+		preparedInputData: map[*Field][]datastore.Property{},
+		loadedStoredData:  map[string][]datastore.Property{},
+	}
+}
+
+func (k *Kind) NewEmptyHolder() *Holder {
+	return &Holder{
+		Kind:              k,
 		preparedInputData: map[*Field][]datastore.Property{},
 		loadedStoredData:  map[string][]datastore.Property{},
 	}

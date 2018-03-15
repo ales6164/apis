@@ -71,6 +71,42 @@ func (h *Holder) ParseInput(body []byte) error {
 	return nil
 }
 
+// used in parsing function with field that has Kind specified
+func (h *Holder) Parse(m map[string]interface{}) error {
+	for _, f := range h.Kind.Fields {
+
+		// check for input
+		if value, ok := m[f.Name]; ok {
+
+			props, err := f.Parse(value)
+			if err != nil {
+				return err
+			}
+
+			h.preparedInputData[f] = props
+		} else {
+			names := strings.Split(f.Name, ".")
+			if _, ok := m[names[0]]; ok {
+
+				var endValue = m[names[0]]
+				for i := 1; i < len(names); i++ {
+					if nestedMap, ok := endValue.(map[string]interface{}); ok {
+						endValue = nestedMap[names[i]]
+					} else {
+						continue
+					}
+				}
+				props, err := f.Parse(value)
+				if err != nil {
+					return err
+				}
+				h.preparedInputData[f] = props
+			}
+		}
+	}
+	return nil
+}
+
 // appends value
 func (h *Holder) appendValue(dst interface{}, field *Field, value interface{}, multiple bool) interface{} {
 	value = field.Output(h.context, value)
@@ -111,7 +147,9 @@ func (h *Holder) Output() map[string]interface{} {
 		output = h.appendPropertyValue(output, prop, h.Kind.fields[prop.Name])
 	}
 
-	output["id"] = h.key.Encode()
+	if h.key != nil {
+		output["id"] = h.key.Encode()
+	}
 
 	return output
 }
@@ -121,7 +159,7 @@ func (h *Holder) Load(ps []datastore.Property) error {
 	h.datastoreData = ps
 	for _, prop := range ps {
 		h.loadedStoredData[prop.Name] = append(h.loadedStoredData[prop.Name], prop)
-		if prop.Name == "meta.createdBy" {
+		if prop.Name == "meta.createdBy" && prop.Value != nil {
 			h.createdBy = prop.Value.(*datastore.Key)
 		}
 	}

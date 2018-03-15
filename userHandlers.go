@@ -257,7 +257,7 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 					return err
 				}
 			} else {
-				err = profile.Add()
+				err = profile.Add(ctx.UserKey)
 				if err != nil {
 					return err
 				}

@@ -5,25 +5,31 @@ import (
 	"google.golang.org/appengine/datastore"
 )
 
-func (k *Kind) Query(ctx context.Context, order string, limit int, offset int) ([]*Holder, error) {
+func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, ancestor *datastore.Key) ([]*Holder, error) {
 	var hs []*Holder
 	var err error
 
 	q := datastore.NewQuery(k.Name)
 
-	if len(order) != 0 {
+	if len(order) > 0 {
 		q = q.Order(order)
 	}
 
-	if limit != 0 {
+	if limit > 0 {
 		q = q.Limit(limit)
 	}
 
-	q = q.Offset(offset)
+	if offset > 0 {
+		q = q.Offset(offset)
+	}
+
+	if ancestor != nil {
+		q = q.Ancestor(ancestor)
+	}
 
 	t := q.Run(ctx)
 	for {
-		var h = k.NewHolder(ctx, nil)
+		var h = k.NewEmptyHolder()
 		h.key, err = t.Next(h)
 		if err == datastore.Done {
 			break
@@ -34,7 +40,7 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int) (
 		hs = append(hs, h)
 	}
 
-	return hs, err
+	return hs, nil
 }
 
 func (k *Kind) Get(ctx context.Context, key *datastore.Key) (*Holder, error) {
@@ -50,10 +56,10 @@ func (h *Holder) Get(key *datastore.Key) error {
 	return datastore.Get(h.context, key, h)
 }
 
-func (h *Holder) Add() error {
+func (h *Holder) Add(userKey *datastore.Key) error {
 	var err error
 
-	h.key = h.Kind.NewIncompleteKey(h.context, nil)
+	h.key = h.Kind.NewIncompleteKey(h.context, userKey)
 	h.key, err = datastore.Put(h.context, h.key, h)
 	if err != nil {
 		return err

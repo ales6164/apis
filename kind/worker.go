@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"google.golang.org/appengine/datastore"
 	"golang.org/x/net/context"
+	"errors"
+	"strings"
 )
 
 type Worker interface {
@@ -12,7 +14,6 @@ type Worker interface {
 	Parse(value interface{}) ([]datastore.Property, error)
 	Output(ctx context.Context, value interface{}) interface{}
 }
-
 
 func (x *Field) Parse(value interface{}) ([]datastore.Property, error) {
 	var list []datastore.Property
@@ -23,14 +24,22 @@ func (x *Field) Parse(value interface{}) ([]datastore.Property, error) {
 				if err != nil {
 					return list, err
 				}
-				list = append(list, x.Property(value))
+				props, err := x.Property(value)
+				if err != nil {
+					return list, err
+				}
+				list = append(list, props...)
 			}
 		} else if value == nil {
 			value, err := x.Check(value)
 			if err != nil {
 				return list, err
 			}
-			list = append(list, x.Property(value))
+			props, err := x.Property(value)
+			if err != nil {
+				return list, err
+			}
+			list = append(list, props...)
 		} else {
 			return list, fmt.Errorf("field '%s' value type '%s' is not valid", x.Name, reflect.TypeOf(value).String())
 		}
@@ -39,18 +48,45 @@ func (x *Field) Parse(value interface{}) ([]datastore.Property, error) {
 		if err != nil {
 			return list, err
 		}
-		list = append(list, x.Property(value))
+		props, err := x.Property(value)
+		if err != nil {
+			return list, err
+		}
+		list = append(list, props...)
 	}
 	return list, nil
 }
 
-func (x *Field) Property(value interface{}) datastore.Property {
-	return datastore.Property{
-		Name:     x.Name,
-		Multiple: x.Multiple,
-		NoIndex:  x.NoIndex,
-		Value:    value,
+func (x *Field) Property(value interface{}) ([]datastore.Property, error) {
+	var props []datastore.Property
+
+	if x.isKind {
+		if v, ok := value.(map[string]interface{}); ok {
+			h := x.Kind.NewEmptyHolder()
+			err := h.Parse(v)
+			if err != nil {
+				return props, err
+			}
+			for _, ps := range h.preparedInputData {
+				for _, p := range ps {
+					p.Name = strings.Join([]string{x.Name, p.Name}, ".")
+					p.Multiple = x.Multiple
+					props = append(props, p)
+				}
+			}
+		} else {
+			return props, errors.New("property not of type map")
+		}
+	} else {
+		props = append(props, datastore.Property{
+			Name:     x.Name,
+			Multiple: x.Multiple,
+			NoIndex:  x.NoIndex,
+			Value:    value,
+		})
 	}
+
+	return props, nil
 }
 
 func (x *Field) Check(value interface{}) (interface{}, error) {
