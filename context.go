@@ -61,13 +61,11 @@ func (ctx Context) SetGroup(group string) (Context, error) {
 	return ctx, err
 }
 
-func (ctx Context) HasPermission(k *kind.Kind, scope ...Scope) (Context, error) {
+func (ctx Context) HasPermission(k *kind.Kind, scope Scope) (Context, error) {
 	if val1, ok := ctx.a.permissions[ctx.Role]; ok {
-		if val2, ok := val1[k]; ok {
-			for _, s := range scope {
-				if val3, ok := val2[s]; ok && val3 {
-					return ctx, nil
-				}
+		if val2, ok := val1[scope]; ok {
+			if val3, ok := val2[k]; ok && val3 {
+				return ctx, nil
 			}
 		}
 	}

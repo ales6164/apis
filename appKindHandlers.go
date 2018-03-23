@@ -14,7 +14,7 @@ func (a *Apis) QueryHandler(e *kind.Kind) http.HandlerFunc {
 			ctx.PrintError(w, ErrForbidden)
 			return
 		}
-		ctx, err := ctx.HasPermission(e, Read)
+		ctx, err := ctx.HasPermission(e, READ)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -52,7 +52,7 @@ func (a *Apis) GetHandler(e *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		ctx, err = ctx.HasPermission(e, Read)
+		ctx, err = ctx.HasPermission(e, READ)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -102,7 +102,7 @@ func (a *Apis) AddHandler(e *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		ctx, err = ctx.HasPermission(e, Create)
+		ctx, err = ctx.HasPermission(e, CREATE)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return

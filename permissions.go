@@ -12,23 +12,23 @@ const (
 )
 
 // userGroup: kind: scope
-type Permissions map[Role]map[*kind.Kind][]Scope
+type Permissions map[Role]map[Scope][]*kind.Kind
 
 func (p Permissions) parse() (permissions, error) {
 	var perms = permissions{}
 	for userGroupName, entityScopeMap := range p {
 		if _, ok := perms[userGroupName]; !ok {
-			perms[userGroupName] = map[*kind.Kind]map[Scope]bool{}
+			perms[userGroupName] = map[Scope]map[*kind.Kind]bool{}
 		}
 
-		for theKind, entityScope := range entityScopeMap {
+		for theScope, theKinds := range entityScopeMap {
 
-			if _, ok := perms[userGroupName][theKind]; !ok {
-				perms[userGroupName][theKind] = map[Scope]bool{}
+			if _, ok := perms[userGroupName][theScope]; !ok {
+				perms[userGroupName][theScope] = map[*kind.Kind]bool{}
 			}
 
-			for _, scope := range entityScope {
-				perms[userGroupName][theKind][Scope(scope)] = true
+			for _, theKind := range theKinds {
+				perms[userGroupName][theScope][theKind] = true
 			}
 		}
 	}
@@ -36,14 +36,14 @@ func (p Permissions) parse() (permissions, error) {
 	return perms, nil
 }
 
-type permissions map[Role]map[*kind.Kind]map[Scope]bool
+type permissions map[Role]map[Scope]map[*kind.Kind]bool
 
 type Scope string
 
 const (
 	// work under default user group
-	Read   Scope = "read"
-	Create Scope = "create"
-	Update Scope = "update"
-	Delete Scope = "delete"
+	READ   Scope = "r"
+	CREATE Scope = "c"
+	UPDATE Scope = "u"
+	DELETE Scope = "d"
 )
