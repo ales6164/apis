@@ -21,8 +21,8 @@ var (
 )
 
 type User struct {
-	Email string `json:"email"`
-	Group string `json:"group"`
+	Email   string                 `json:"email"`
+	Group   string                 `json:"group"`
 }
 
 type user struct {
