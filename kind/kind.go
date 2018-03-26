@@ -17,6 +17,9 @@ type Kind struct {
 type Options struct {
 	Name   string
 	Fields []*Field
+
+	OnBeforeWrite func(h *Holder) error `json:"-"`
+	OnAfterWrite func(h *Holder) error `json:"-"`
 }
 
 type Field struct {

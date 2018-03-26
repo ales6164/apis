@@ -72,6 +72,19 @@ func (h *Holder) ParseInput(body []byte) error {
 }
 
 // used in parsing function with field that has Kind specified
+func (h *Holder) Value(name string, value interface{}) error {
+	if f, ok := h.Kind.fields[name]; ok {
+		props, err := f.Parse(value)
+		if err != nil {
+			return err
+		}
+		h.preparedInputData[f] = props
+		return nil
+	}
+	return errors.New("field " + name + " doesn't exist")
+}
+
+// used in parsing function with field that has Kind specified
 func (h *Holder) Parse(m map[string]interface{}) error {
 	for _, f := range h.Kind.Fields {
 

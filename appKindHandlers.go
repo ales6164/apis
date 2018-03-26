@@ -108,7 +108,7 @@ func (a *Apis) AddHandler(e *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		err = h.Add(ctx.UserKey)
+		_, err = h.Add(ctx.UserKey)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return

@@ -21,8 +21,8 @@ var (
 )
 
 type User struct {
-	Email   string                 `json:"email"`
-	Group   string                 `json:"group"`
+	Email string `json:"email"`
+	Group string `json:"group"`
 }
 
 type user struct {
@@ -235,7 +235,7 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		datastore.RunInTransaction(ctx, func(tc context.Context) error {
+		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
 			// get user
 			user := new(user)
 			err := datastore.Get(ctx, ctx.UserKey, user)
@@ -244,10 +244,6 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 			}
 
 			if user.Profile != nil {
-				err = profile.Get(user.Profile)
-				if err != nil {
-					return err
-				}
 				err = profile.Update(user.Profile)
 				if err != nil {
 					return err

@@ -60,9 +60,22 @@ func (h *Holder) Add(userKey *datastore.Key) (*datastore.Key, error) {
 	var err error
 
 	h.key = h.Kind.NewIncompleteKey(h.context, userKey)
+
+	if h.Kind.OnBeforeWrite != nil {
+		if err = h.Kind.OnBeforeWrite(h); err != nil {
+			return h.key, err
+		}
+	}
+
 	h.key, err = datastore.Put(h.context, h.key, h)
 	if err != nil {
 		return h.key, err
+	}
+
+	if h.Kind.OnAfterWrite != nil {
+		if err = h.Kind.OnBeforeWrite(h); err != nil {
+			return h.key, err
+		}
 	}
 
 	//dataHolder.updateSearchIndex()
@@ -78,17 +91,31 @@ func (h *Holder) Update(key *datastore.Key) error {
 			return err
 		}
 
-		var replacementKey = h.Kind.NewIncompleteKey(tc, h.key)
+		if h.Kind.OnBeforeWrite != nil {
+			if err = h.Kind.OnBeforeWrite(h); err != nil {
+				return err
+			}
+		}
+
+		h.key, err = datastore.Put(h.context, h.key, h)
+
+		/*var replacementKey = h.Kind.NewIncompleteKey(tc, h.key)
 		var oldHolder = h.OldHolder(replacementKey)
 
 		var keys = []*datastore.Key{replacementKey, h.key}
 		var holders = []interface{}{oldHolder, h}
 
-		keys, err = datastore.PutMulti(tc, keys, holders)
+		keys, err = datastore.PutMulti(tc, keys, holders)*/
 		return err
 	}, &datastore.TransactionOptions{XG: true})
 
 	//dataHolder.updateSearchIndex()
+
+	if h.Kind.OnAfterWrite != nil {
+		if err = h.Kind.OnBeforeWrite(h); err != nil {
+			return err
+		}
+	}
 
 	return err
 }
