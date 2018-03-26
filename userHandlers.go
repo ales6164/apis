@@ -32,10 +32,6 @@ type user struct {
 	Profile *datastore.Key `datastore:"profile" json:"profile"`
 }
 
-type group struct {
-	Name string `datastore:"name" json:"name"`
-}
-
 func checkEmail(v string) error {
 	if len(v) == 0 {
 		return ErrEmailUndefined
@@ -223,10 +219,10 @@ func (a *Apis) AuthGetProfile(k *kind.Kind) http.HandlerFunc {
 
 func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := a.NewContext(r)
+		ok, ctx := a.NewContext(r).Authenticate()
 
-		if !ctx.IsAuthenticated || ctx.UserKey == nil {
-			ctx.PrintError(w, ErrForbidden)
+		if !ok {
+			ctx.PrintError(w, ErrUnathorized)
 			return
 		}
 
@@ -244,7 +240,7 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 			user := new(user)
 			err := datastore.Get(ctx, ctx.UserKey, user)
 			if err != nil {
-				return ErrForbidden
+				return err
 			}
 
 			if user.Profile != nil {
@@ -257,12 +253,18 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 					return err
 				}
 			} else {
-				err = profile.Add(ctx.UserKey)
+				key, err := profile.Add(ctx.UserKey)
+				if err != nil {
+					return err
+				}
+
+				user.Profile = key
+
+				_, err = datastore.Put(ctx, ctx.UserKey, user)
 				if err != nil {
 					return err
 				}
 			}
-
 			return nil
 		}, &datastore.TransactionOptions{XG: true})
 		if err != nil {

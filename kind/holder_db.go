@@ -56,18 +56,18 @@ func (h *Holder) Get(key *datastore.Key) error {
 	return datastore.Get(h.context, key, h)
 }
 
-func (h *Holder) Add(userKey *datastore.Key) error {
+func (h *Holder) Add(userKey *datastore.Key) (*datastore.Key, error) {
 	var err error
 
 	h.key = h.Kind.NewIncompleteKey(h.context, userKey)
 	h.key, err = datastore.Put(h.context, h.key, h)
 	if err != nil {
-		return err
+		return h.key, err
 	}
 
 	//dataHolder.updateSearchIndex()
 
-	return nil
+	return h.key, nil
 }
 
 func (h *Holder) Update(key *datastore.Key) error {
