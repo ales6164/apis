@@ -152,12 +152,42 @@ func (h *Holder) appendPropertyValue(dst map[string]interface{}, prop datastore.
 	return dst
 }
 
-func (h *Holder) Output() map[string]interface{} {
+type Account struct {
+	Hash    []byte         `datastore:"hash,noindex" json:"-"`
+	Email   string         `datastore:"email" json:"email"`
+	Role    string         `datastore:"role" json:"role"`
+	Profile *datastore.Key `datastore:"profile" json:"-"`
+	Meta    []byte         `datastore:"meta,noindex" json:"meta"` // additional meta information that is public
+}
+
+func (h *Holder) Output(expand bool) map[string]interface{} {
 	var output = map[string]interface{}{}
 
 	// range over data. Value can be single value or if the field it Multiple then it's an array
 	for _, prop := range h.datastoreData {
 		output = h.appendPropertyValue(output, prop, h.Kind.fields[prop.Name])
+	}
+
+	// fetch user
+	if expand {
+		var m map[string]interface{}
+		if h.createdBy != nil {
+			user := new(Account)
+			if err := datastore.Get(h.context, h.createdBy, user); err == nil {
+				if len(user.Meta) > 0 {
+					json.Unmarshal(user.Meta, &m)
+				}
+			}
+		}
+
+		if meta, ok := output["meta"].(map[string]interface{}); ok {
+			meta["createdBy"] = map[string]interface{}{
+				"meta": m,
+				"id": meta["createdBy"],
+			}
+		}
+	} else {
+		delete(output, "meta")
 	}
 
 	if h.key != nil {

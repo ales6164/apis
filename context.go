@@ -130,22 +130,39 @@ type Token struct {
 }
 
 type AuthResult struct {
-	Token *Token `json:"token"`
-	User  *User  `json:"user"`
+	Token   *Token                 `json:"token"`
+	User    *User                  `json:"user"`
+	Profile map[string]interface{} `json:"profile"`
 }
 
-func (ctx *Context) PrintResult(w http.ResponseWriter, result interface{}) {
+func (ctx *Context) Print(w http.ResponseWriter, result interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 
 	json.NewEncoder(w).Encode(result)
 }
 
-func (ctx *Context) PrintAuth(w http.ResponseWriter, user *user, token *Token) {
+func (ctx *Context) PrintResult(w http.ResponseWriter, result map[string]interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 
+	json.NewEncoder(w).Encode(result)
+}
+
+func (ctx *Context) PrintAuth(w http.ResponseWriter, token *Token, user *user, profile map[string]interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var m map[string]interface{}
+	if len(user.Meta) > 0 {
+		json.Unmarshal(user.Meta, &m)
+	}
+
 	var out = AuthResult{
-		User:  &User{user.Email, user.Role},
-		Token: token,
+		User: &User{
+			Email: user.Email,
+			Role:  user.Role,
+			Meta:  m,
+		},
+		Token:   token,
+		Profile: profile,
 	}
 
 	json.NewEncoder(w).Encode(out)

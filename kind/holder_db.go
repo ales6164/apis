@@ -37,6 +37,7 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, a
 		if err != nil {
 			return hs, err
 		}
+		h.context = ctx
 		hs = append(hs, h)
 	}
 

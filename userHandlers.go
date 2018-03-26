@@ -21,15 +21,17 @@ var (
 )
 
 type User struct {
-	Email string `json:"email"`
-	Group string `json:"group"`
+	Email string                 `json:"email"`
+	Role  string                 `json:"role"`
+	Meta  map[string]interface{} `json:"meta"`
 }
 
 type user struct {
 	Hash    []byte         `datastore:"hash,noindex" json:"-"`
 	Email   string         `datastore:"email" json:"email"`
 	Role    string         `datastore:"role" json:"role"`
-	Profile *datastore.Key `datastore:"profile" json:"profile"`
+	Profile *datastore.Key `datastore:"profile" json:"-"`
+	Meta    []byte         `datastore:"meta,noindex" json:"meta"` // additional meta information that is public
 }
 
 func checkEmail(v string) error {
@@ -101,6 +103,17 @@ func (a *Apis) AuthLoginHandler() http.HandlerFunc {
 			return
 		}
 
+		// get profile
+		var profile map[string]interface{}
+		if user.Profile != nil {
+			h, err := a.options.UserProfileKind.Get(ctx, user.Profile)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+			profile = h.Output(false)
+		}
+
 		// create a token
 		token := NewToken(user)
 
@@ -111,7 +124,7 @@ func (a *Apis) AuthLoginHandler() http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintAuth(w, user, signedToken)
+		ctx.PrintAuth(w, signedToken, user, profile)
 	}
 }
 
@@ -120,7 +133,7 @@ func (a *Apis) AuthRegistrationHandler(role Role) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := a.NewContext(r)
 
-		email, password := r.FormValue("email"), r.FormValue("password")
+		email, password, meta := r.FormValue("email"), r.FormValue("password"), r.FormValue("meta")
 
 		err := checkEmail(email)
 		if err != nil {
@@ -147,6 +160,7 @@ func (a *Apis) AuthRegistrationHandler(role Role) http.HandlerFunc {
 			Email: email,
 			Hash:  hash,
 			Role:  string(role),
+			Meta:  []byte(meta),
 		}
 
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
@@ -177,7 +191,41 @@ func (a *Apis) AuthRegistrationHandler(role Role) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintAuth(w, user, signedToken)
+		ctx.PrintAuth(w, signedToken, user, nil)
+	}
+}
+
+func (a *Apis) AuthUpdateMeta(k *kind.Kind) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, ctx := a.NewContext(r).Authenticate()
+
+		if !ok {
+			ctx.PrintError(w, ErrUnathorized)
+			return
+		}
+
+		meta := r.FormValue("meta")
+		// do everything in a transaction
+		user := new(user)
+
+		err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			// get user
+			err := datastore.Get(ctx, ctx.UserKey, user)
+			if err != nil {
+				return err
+			}
+
+			user.Meta = []byte(meta)
+
+			_, err = datastore.Put(ctx, ctx.UserKey, user)
+			return err
+		}, &datastore.TransactionOptions{XG: true})
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		ctx.Print(w, user)
 	}
 }
 
@@ -203,7 +251,7 @@ func (a *Apis) AuthGetProfile(k *kind.Kind) http.HandlerFunc {
 		}
 
 		if user.Profile == nil {
-			ctx.PrintResult(w, ErrUserProfileDoesNotExist)
+			ctx.PrintError(w, ErrUserProfileDoesNotExist)
 			return
 		}
 
@@ -213,7 +261,7 @@ func (a *Apis) AuthGetProfile(k *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintResult(w, h.Output())
+		ctx.PrintResult(w, h.Output(false))
 	}
 }
 
@@ -235,6 +283,8 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 			return
 		}
 
+		var meta = r.FormValue("meta")
+
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
 			// get user
 			user := new(user)
@@ -253,14 +303,18 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 				if err != nil {
 					return err
 				}
-
 				user.Profile = key
-
-				_, err = datastore.Put(ctx, ctx.UserKey, user)
-				if err != nil {
-					return err
-				}
 			}
+
+			if len(meta) > 0 {
+				user.Meta = []byte(meta)
+			}
+
+			_, err = datastore.Put(ctx, ctx.UserKey, user)
+			if err != nil {
+				return err
+			}
+
 			return nil
 		}, &datastore.TransactionOptions{XG: true})
 		if err != nil {
@@ -268,6 +322,6 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintResult(w, profile.Output())
+		ctx.PrintResult(w, profile.Output(false))
 	}
 }
