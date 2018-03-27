@@ -3,9 +3,8 @@ package apis
 import (
 	"google.golang.org/appengine/datastore"
 	"strings"
-	"github.com/ales6164/apis/kind"
 	"golang.org/x/net/context"
-	"errors"
+	"github.com/ales6164/apis/kind"
 )
 
 type User struct {
@@ -27,14 +26,15 @@ func (u *User) SetMeta(name string, value interface{}) {
 
 func (u *User) LoadProfile(ctx context.Context, k *kind.Kind) (map[string]interface{}, error) {
 	if u.profile != nil {
-		h , err := k.Get(ctx, u.profile)
+		h, err := k.Get(ctx, u.profile)
 		if err != nil {
 			return nil, err
 		}
-		u.Profile = h.Output(false)
+		u.Profile = h.Output()
+		delete(u.Profile, "meta")
 		return u.Profile, nil
 	}
-	return nil, errors.New("no profile")
+	return nil, ErrUserProfileDoesNotExist
 }
 
 func (u *User) Load(ps []datastore.Property) error {

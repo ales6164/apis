@@ -20,7 +20,7 @@ func (a *Apis) QueryHandler(e *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		hs, err := e.Query(ctx, "", 0, 0, ctx.UserKey)
+		hs, err := e.Query(ctx, "", 0, 0, nil, ctx.UserKey)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -28,11 +28,11 @@ func (a *Apis) QueryHandler(e *kind.Kind) http.HandlerFunc {
 
 		var out []map[string]interface{}
 		for _, h := range hs {
-			out = append(out, h.Output(true))
+			out = append(out, ExpandMeta(ctx, h.Output()))
 		}
 
 		ctx.PrintResult(w, map[string]interface{}{
-			"count": len(out),
+			"count":   len(out),
 			"results": out,
 		})
 	}
@@ -72,7 +72,7 @@ func (a *Apis) GetHandler(e *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintResult(w, h.Output(true))
+		ctx.PrintResult(w, ExpandMeta(ctx, h.Output()))
 	}
 }
 
@@ -117,13 +117,13 @@ func (a *Apis) AddHandler(e *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintResult(w, h.Output(true))
+		ctx.PrintResult(w, ExpandMeta(ctx, h.Output()))
 	}
 }
 
 /*
 
-func (a *App) KindUpdateHandler(k *kind.Kind) http.HandlerFunc {
+func (a *App) KindUpdateHandler(k *Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, h, err := NewContext(r).Parse(k)
 		if err != nil {
@@ -150,7 +150,7 @@ func (a *App) KindUpdateHandler(k *kind.Kind) http.HandlerFunc {
 	}
 }
 
-func (a *App) KindDeleteHandler(k *kind.Kind) http.HandlerFunc {
+func (a *App) KindDeleteHandler(k *Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, h, err := NewContext(r).Parse(k)
 		if err != nil {

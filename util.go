@@ -4,6 +4,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"math/rand"
 	"time"
+	"google.golang.org/appengine/datastore"
+	"golang.org/x/net/context"
 )
 
 const COST = 12
@@ -14,6 +16,7 @@ const (
 	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
 	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
 )
+
 var src = rand.NewSource(time.Now().UnixNano())
 
 func RandStringBytesMaskImprSrc(n int) string {
@@ -32,6 +35,29 @@ func RandStringBytesMaskImprSrc(n int) string {
 	}
 
 	return string(b)
+}
+
+func ExpandMeta(ctx context.Context, output map[string]interface{}) map[string]interface{} {
+	if meta, ok := output["meta"].(map[string]interface{}); ok {
+		if k, ok := meta["createdBy"]; ok {
+			key, _ := datastore.DecodeKey(k.(string))
+
+			if key != nil {
+				user := new(User)
+				if err := datastore.Get(ctx, key, user); err == nil {
+
+					meta["createdBy"] = map[string]interface{}{
+						"meta": user.Meta,
+						"id":   k.(string),
+					}
+				}
+			}
+
+		}
+
+	}
+
+	return output
 }
 
 func decrypt(hash []byte, password []byte) error {

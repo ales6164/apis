@@ -7,8 +7,8 @@ import (
 	"strings"
 	"golang.org/x/net/context"
 	"errors"
-	"github.com/ales6164/apis/kind"
 	"encoding/json"
+	"github.com/ales6164/apis/kind"
 )
 
 var (
@@ -243,7 +243,7 @@ func (a *Apis) AuthGetProfile(k *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		if user.Profile == nil {
+		if user.profile == nil {
 			ctx.PrintError(w, ErrUserProfileDoesNotExist)
 			return
 		}
@@ -316,6 +316,6 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintResult(w, profile.Output(false))
+		ctx.PrintResult(w, profile.Output())
 	}
 }

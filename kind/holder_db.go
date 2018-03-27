@@ -5,7 +5,12 @@ import (
 	"google.golang.org/appengine/datastore"
 )
 
-func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, ancestor *datastore.Key) ([]*Holder, error) {
+type Filter struct {
+	FilterStr string
+	Value interface{}
+}
+
+func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, filters []Filter,  ancestor *datastore.Key) ([]*Holder, error) {
 	var hs []*Holder
 	var err error
 
@@ -21,6 +26,12 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, a
 
 	if offset > 0 {
 		q = q.Offset(offset)
+	}
+
+	if len(filters) > 0 {
+		for _, f := range filters {
+			q = q.Filter(f.FilterStr, f.Value)
+		}
 	}
 
 	if ancestor != nil {
