@@ -81,6 +81,7 @@ func New(opt *Options) (*Apis, error) {
 	if a.options.UserProfileKind != nil {
 		a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthGetProfile(a.options.UserProfileKind))).Methods(http.MethodGet)
 		a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthUpdateProfile(a.options.UserProfileKind))).Methods(http.MethodPost)
+		a.router.Handle("/auth/meta", a.middleware.Handler(a.AuthUpdateMeta())).Methods(http.MethodPost)
 	}
 
 	// create handler
@@ -98,7 +99,7 @@ func (a *Apis) withKind(kind *kind.Kind) {
 	//a.router.Handle("/"+name+"/draft", authMiddleware.Handler(a.AddDraftHandler(ent))).Methods(http.MethodPost) // ADD
 	a.router.Handle("/"+kind.Name, a.middleware.Handler(a.AddHandler(kind))).Methods(http.MethodPost) // ADD
 	//a.router.Handle("/"+name+"/{id}", authMiddleware.Handler(a.KindGetHandler(e))).Methods(http.MethodGet)       // GET
-	//a.router.Handle("/{project}/api/"+name+"/{id}", authMiddleware.Handler(a.KindUpdateHandler(e))).Methods(http.MethodPut)    // UPDATE
+	a.router.Handle("/"+kind.Name+"/{id}", a.middleware.Handler(a.UpdateHandler(kind))).Methods(http.MethodPut)    // UPDATE
 	//a.router.Handle("/{project}/api/"+name+"/{id}", authMiddleware.Handler(a.KindDeleteHandler(e))).Methods(http.MethodDelete) // DELETE
 }
 
@@ -114,11 +115,11 @@ func (a *Apis) withGroupKind(kind *kind.Kind) {
 }
 
 func (a *Apis) Handle(path string, handler http.Handler) *mux.Route {
-	return a.router.Handle(path, handler)
+	return a.router.Handle(path, a.middleware.Handler(handler))
 }
 
 func (a *Apis) HandleFunc(path string, f func(http.ResponseWriter, *http.Request)) *mux.Route {
-	return a.router.HandleFunc(path, f)
+	return a.router.Handle(path, a.middleware.Handler(http.HandlerFunc(f)))
 }
 
 func (a *Apis) SignToken(token *jwt.Token) (*Token, error) {

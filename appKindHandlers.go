@@ -121,6 +121,46 @@ func (a *Apis) AddHandler(e *kind.Kind) http.HandlerFunc {
 	}
 }
 
+func (a *Apis) UpdateHandler(k *kind.Kind) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, ctx := a.NewContext(r).Authenticate()
+		if !ok {
+			ctx.PrintError(w, ErrForbidden)
+			return
+		}
+
+		h := k.NewHolder(ctx, ctx.UserKey)
+		err := h.ParseInput(ctx.Body())
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		ctx, err = ctx.HasPermission(k, UPDATE)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		vars := mux.Vars(r)
+		id := vars["id"]
+
+		key, err := datastore.DecodeKey(id)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		err = h.Update(key)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		ctx.PrintResult(w, ExpandMeta(ctx, h.Output()))
+	}
+}
+
 /*
 
 func (a *App) KindUpdateHandler(k *Kind) http.HandlerFunc {

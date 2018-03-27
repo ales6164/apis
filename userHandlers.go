@@ -177,7 +177,7 @@ func (a *Apis) AuthRegistrationHandler(role Role) http.HandlerFunc {
 	}
 }
 
-func (a *Apis) AuthUpdateMeta(k *kind.Kind) http.HandlerFunc {
+func (a *Apis) AuthUpdateMeta() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := a.NewContext(r).Authenticate()
 
@@ -186,11 +186,11 @@ func (a *Apis) AuthUpdateMeta(k *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		meta := r.FormValue("meta")
+		meta := ctx.Body()
 
 		var m map[string]interface{}
 		if len(meta) > 0 {
-			json.Unmarshal([]byte(meta), &m)
+			json.Unmarshal(meta, &m)
 		} else {
 			ctx.PrintError(w, errors.New("meta field empty"))
 			return

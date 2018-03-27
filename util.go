@@ -39,20 +39,19 @@ func RandStringBytesMaskImprSrc(n int) string {
 
 func ExpandMeta(ctx context.Context, output map[string]interface{}) map[string]interface{} {
 	if meta, ok := output["meta"].(map[string]interface{}); ok {
-		if k, ok := meta["createdBy"]; ok {
-			key, _ := datastore.DecodeKey(k.(string))
+		if key, ok := meta["createdBy"]; ok {
+			//key, _ := datastore.DecodeKey(k.(string))
 
-			if key != nil {
+			if k, ok := key.(*datastore.Key); ok {
 				user := new(User)
-				if err := datastore.Get(ctx, key, user); err == nil {
+				if err := datastore.Get(ctx, k, user); err == nil {
 
 					meta["createdBy"] = map[string]interface{}{
 						"meta": user.Meta,
-						"id":   k.(string),
+						"id":   k,
 					}
 				}
 			}
-
 		}
 
 	}
