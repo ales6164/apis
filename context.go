@@ -107,7 +107,7 @@ func (ctx Context) Authenticate() (bool, Context) {
 	return ctx.IsAuthenticated, ctx
 }
 
-func NewToken(user *user) *jwt.Token {
+func NewToken(user *User) *jwt.Token {
 	var exp = time.Now().Add(time.Hour * 72).Unix()
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"aud": "api",
@@ -147,25 +147,13 @@ func (ctx *Context) PrintResult(w http.ResponseWriter, result map[string]interfa
 	json.NewEncoder(w).Encode(result)
 }
 
-func (ctx *Context) PrintAuth(w http.ResponseWriter, token *Token, user *user, profile map[string]interface{}) {
+func (ctx *Context) PrintAuth(w http.ResponseWriter, token *Token, user *User) {
 	w.Header().Set("Content-Type", "application/json")
 
-	var m map[string]interface{}
-	if len(user.Meta) > 0 {
-		json.Unmarshal(user.Meta, &m)
-	}
-
-	var out = AuthResult{
-		User: &User{
-			Email: user.Email,
-			Role:  user.Role,
-			Meta:  m,
-		},
-		Token:   token,
-		Profile: profile,
-	}
-
-	json.NewEncoder(w).Encode(out)
+	json.NewEncoder(w).Encode(AuthResult{
+		User:  user,
+		Token: token,
+	})
 }
 
 func (ctx *Context) PrintError(w http.ResponseWriter, err error) {

@@ -8,6 +8,7 @@ import (
 	"golang.org/x/net/context"
 	"errors"
 	"github.com/ales6164/apis/kind"
+	"encoding/json"
 )
 
 var (
@@ -19,20 +20,6 @@ var (
 	ErrPasswordTooLong   = errors.New("password must be exactly or less than 128 characters long")
 	ErrPasswordTooShort  = errors.New("password must be at least 6 characters long")
 )
-
-type User struct {
-	Email string                 `json:"email"`
-	Role  string                 `json:"role"`
-	Meta  map[string]interface{} `json:"meta"`
-}
-
-type user struct {
-	Hash    []byte         `datastore:"hash,noindex" json:"-"`
-	Email   string         `datastore:"email" json:"email"`
-	Role    string         `datastore:"role" json:"role"`
-	Profile *datastore.Key `datastore:"profile" json:"-"`
-	Meta    []byte         `datastore:"meta,noindex" json:"meta"` // additional meta information that is public
-}
 
 func checkEmail(v string) error {
 	if len(v) == 0 {
@@ -84,7 +71,7 @@ func (a *Apis) AuthLoginHandler() http.HandlerFunc {
 
 		// get user
 		userKey := datastore.NewKey(ctx, "_user", email, 0, nil)
-		user := new(user)
+		user := new(User)
 		err = datastore.Get(ctx, userKey, user)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
@@ -96,7 +83,7 @@ func (a *Apis) AuthLoginHandler() http.HandlerFunc {
 		}
 
 		// decrypt hash
-		err = decrypt(user.Hash, []byte(password))
+		err = decrypt(user.hash, []byte(password))
 		if err != nil {
 			ctx.PrintError(w, ErrUserPasswordIncorrect)
 			// todo: log and report
@@ -104,15 +91,7 @@ func (a *Apis) AuthLoginHandler() http.HandlerFunc {
 		}
 
 		// get profile
-		var profile map[string]interface{}
-		if user.Profile != nil {
-			h, err := a.options.UserProfileKind.Get(ctx, user.Profile)
-			if err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
-			profile = h.Output(false)
-		}
+		user.LoadProfile(ctx, a.options.UserProfileKind)
 
 		// create a token
 		token := NewToken(user)
@@ -124,7 +103,7 @@ func (a *Apis) AuthLoginHandler() http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintAuth(w, signedToken, user, profile)
+		ctx.PrintAuth(w, signedToken, user)
 	}
 }
 
@@ -156,11 +135,14 @@ func (a *Apis) AuthRegistrationHandler(role Role) http.HandlerFunc {
 		}
 
 		// create User
-		user := &user{
+		user := &User{
 			Email: email,
-			Hash:  hash,
+			hash:  hash,
 			Role:  string(role),
-			Meta:  []byte(meta),
+		}
+
+		if len(meta) > 0 {
+			json.Unmarshal([]byte(meta), &user.Meta)
 		}
 
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
@@ -191,7 +173,7 @@ func (a *Apis) AuthRegistrationHandler(role Role) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintAuth(w, signedToken, user, nil)
+		ctx.PrintAuth(w, signedToken, user)
 	}
 }
 
@@ -205,8 +187,17 @@ func (a *Apis) AuthUpdateMeta(k *kind.Kind) http.HandlerFunc {
 		}
 
 		meta := r.FormValue("meta")
+
+		var m map[string]interface{}
+		if len(meta) > 0 {
+			json.Unmarshal([]byte(meta), &m)
+		} else {
+			ctx.PrintError(w, errors.New("meta field empty"))
+			return
+		}
+
 		// do everything in a transaction
-		user := new(user)
+		user := new(User)
 
 		err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
 			// get user
@@ -215,7 +206,9 @@ func (a *Apis) AuthUpdateMeta(k *kind.Kind) http.HandlerFunc {
 				return err
 			}
 
-			user.Meta = []byte(meta)
+			for k, v := range m {
+				user.SetMeta(k, v)
+			}
 
 			_, err = datastore.Put(ctx, ctx.UserKey, user)
 			return err
@@ -243,7 +236,7 @@ func (a *Apis) AuthGetProfile(k *kind.Kind) http.HandlerFunc {
 		}
 
 		// get user
-		user := new(user)
+		user := new(User)
 		err := datastore.Get(ctx, ctx.UserKey, user)
 		if err != nil {
 			ctx.PrintError(w, ErrForbidden)
@@ -255,13 +248,13 @@ func (a *Apis) AuthGetProfile(k *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		h, err := k.Get(ctx, user.Profile)
+		h, err := user.LoadProfile(ctx, a.options.UserProfileKind)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
 
-		ctx.PrintResult(w, h.Output(false))
+		ctx.PrintResult(w, h)
 	}
 }
 
@@ -283,18 +276,21 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		var meta = r.FormValue("meta")
+		var m map[string]interface{}
+		if meta, ok := profile.ParsedInput["meta"].(map[string]interface{}); ok {
+			m = meta
+		}
 
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
 			// get user
-			user := new(user)
+			user := new(User)
 			err := datastore.Get(ctx, ctx.UserKey, user)
 			if err != nil {
 				return err
 			}
 
-			if user.Profile != nil {
-				err = profile.Update(user.Profile)
+			if user.profile != nil {
+				err = profile.Update(user.profile)
 				if err != nil {
 					return err
 				}
@@ -303,12 +299,10 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 				if err != nil {
 					return err
 				}
-				user.Profile = key
+				user.profile = key
 			}
 
-			if len(meta) > 0 {
-				user.Meta = []byte(meta)
-			}
+			user.Meta = m
 
 			_, err = datastore.Put(ctx, ctx.UserKey, user)
 			if err != nil {

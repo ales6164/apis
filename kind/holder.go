@@ -15,6 +15,7 @@ type Holder struct {
 	context context.Context
 	key     *datastore.Key
 
+	ParsedInput         map[string]interface{}
 	preparedInputData   map[*Field][]datastore.Property // user input
 	hasLoadedStoredData bool
 	loadedStoredData    map[string][]datastore.Property // data already stored in datastore - if exists
@@ -31,8 +32,7 @@ func (h *Holder) SetContext(ctx context.Context) {
 }
 
 func (h *Holder) ParseInput(body []byte) error {
-	var m map[string]interface{}
-	err := json.Unmarshal(body, &m)
+	err := json.Unmarshal(body, &h.ParsedInput)
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func (h *Holder) ParseInput(body []byte) error {
 	for _, f := range h.Kind.Fields {
 
 		// check for input
-		if value, ok := m[f.Name]; ok {
+		if value, ok := h.ParsedInput[f.Name]; ok {
 
 			props, err := f.Parse(value)
 			if err != nil {
@@ -50,9 +50,9 @@ func (h *Holder) ParseInput(body []byte) error {
 			h.preparedInputData[f] = props
 		} else {
 			names := strings.Split(f.Name, ".")
-			if _, ok := m[names[0]]; ok {
+			if _, ok := h.ParsedInput[names[0]]; ok {
 
-				var endValue = m[names[0]]
+				var endValue = h.ParsedInput[names[0]]
 				for i := 1; i < len(names); i++ {
 					if nestedMap, ok := endValue.(map[string]interface{}); ok {
 						endValue = nestedMap[names[i]]
@@ -183,7 +183,7 @@ func (h *Holder) Output(expand bool) map[string]interface{} {
 		if meta, ok := output["meta"].(map[string]interface{}); ok {
 			meta["createdBy"] = map[string]interface{}{
 				"meta": m,
-				"id": meta["createdBy"],
+				"id":   meta["createdBy"],
 			}
 		}
 	} else {
