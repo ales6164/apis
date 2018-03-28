@@ -79,8 +79,9 @@ func New(opt *Options) (*Apis, error) {
 
 	// add profile handlers
 	if a.options.UserProfileKind != nil {
+		a.router.Handle("/auth/password", a.middleware.Handler(a.AuthUpdatePasswordHandler())).Methods(http.MethodPost)
 		a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthGetProfile(a.options.UserProfileKind))).Methods(http.MethodGet)
-		a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthUpdateProfile(a.options.UserProfileKind))).Methods(http.MethodPost)
+		a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthUpdateProfile(a.options.UserProfileKind))).Methods(http.MethodPost, http.MethodPut, http.MethodPatch)
 		a.router.Handle("/auth/meta", a.middleware.Handler(a.AuthUpdateMeta())).Methods(http.MethodPost)
 	}
 
@@ -99,7 +100,7 @@ func (a *Apis) withKind(kind *kind.Kind) {
 	//a.router.Handle("/"+name+"/draft", authMiddleware.Handler(a.AddDraftHandler(ent))).Methods(http.MethodPost) // ADD
 	a.router.Handle("/"+kind.Name, a.middleware.Handler(a.AddHandler(kind))).Methods(http.MethodPost) // ADD
 	//a.router.Handle("/"+name+"/{id}", authMiddleware.Handler(a.KindGetHandler(e))).Methods(http.MethodGet)       // GET
-	a.router.Handle("/"+kind.Name+"/{id}", a.middleware.Handler(a.UpdateHandler(kind))).Methods(http.MethodPut)    // UPDATE
+	a.router.Handle("/"+kind.Name+"/{id}", a.middleware.Handler(a.UpdateHandler(kind))).Methods(http.MethodPut) // UPDATE
 	//a.router.Handle("/{project}/api/"+name+"/{id}", authMiddleware.Handler(a.KindDeleteHandler(e))).Methods(http.MethodDelete) // DELETE
 }
 

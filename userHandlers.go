@@ -177,6 +177,86 @@ func (a *Apis) AuthRegistrationHandler(role Role) http.HandlerFunc {
 	}
 }
 
+func (a *Apis) AuthUpdatePasswordHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, ctx := a.NewContext(r).Authenticate()
+
+		if !ok {
+			ctx.PrintError(w, ErrUnathorized)
+			return
+		}
+
+		password, newPassword := r.FormValue("password"), r.FormValue("newPassword")
+
+		err := checkPassword(newPassword)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		// check if password is ok
+		// get user
+		user := new(User)
+		err = datastore.Get(ctx, ctx.UserKey, user)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				ctx.PrintError(w, ErrUserDoesNotExist)
+				return
+			}
+			ctx.PrintError(w, err)
+			return
+		}
+
+		// decrypt hash
+		err = decrypt(user.hash, []byte(password))
+		if err != nil {
+			ctx.PrintError(w, ErrUserPasswordIncorrect)
+			// todo: log and report
+			return
+		}
+
+		// create new password hash
+		user.hash , err = crypt([]byte(newPassword))
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		// create User
+		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			userKey := datastore.NewKey(tc, "_user", user.Email, 0, nil)
+			err := datastore.Get(tc, userKey, &datastore.PropertyList{})
+			if err != nil {
+				if err == datastore.ErrNoSuchEntity {
+					// register
+					_, err := datastore.Put(tc, userKey, user)
+					return err
+				}
+				return err
+			}
+			return ErrUserAlreadyExists
+		}, nil)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+/*
+		// create a token
+		token := NewToken(user)
+
+		// sign the new token
+		signedToken, err := a.SignToken(token)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}*/
+
+		ctx.Print(w, "success")
+
+		//ctx.PrintAuth(w, signedToken, user)
+	}
+}
+
 func (a *Apis) AuthUpdateMeta() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := a.NewContext(r).Authenticate()
