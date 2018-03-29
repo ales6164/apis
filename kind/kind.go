@@ -18,8 +18,8 @@ type Options struct {
 	Name   string
 	Fields []*Field
 
-	OnBeforeWrite func(h *Holder) error `json:"-"`
-	OnAfterWrite func(h *Holder) error `json:"-"`
+	OnBeforeWrite func(ctx context.Context, h *Holder) error `json:"-"`
+	OnAfterWrite func(ctx context.Context, h *Holder) error `json:"-"`
 }
 
 type Field struct {

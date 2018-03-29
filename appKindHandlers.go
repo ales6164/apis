@@ -28,7 +28,8 @@ func (a *Apis) QueryHandler(e *kind.Kind) http.HandlerFunc {
 
 		var out []map[string]interface{}
 		for _, h := range hs {
-			out = append(out, ExpandMeta(ctx, h.Output()))
+			dt, _ := ExpandMeta(ctx, h.Output())
+			out = append(out, dt)
 		}
 
 		ctx.PrintResult(w, map[string]interface{}{
@@ -72,7 +73,8 @@ func (a *Apis) GetHandler(e *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintResult(w, ExpandMeta(ctx, h.Output()))
+		output, _ := ExpandMeta(ctx, h.Output())
+		ctx.PrintResult(w, output)
 	}
 }
 
@@ -117,7 +119,8 @@ func (a *Apis) AddHandler(e *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintResult(w, ExpandMeta(ctx, h.Output()))
+		output, _ := ExpandMeta(ctx, h.Output())
+		ctx.PrintResult(w, output)
 	}
 }
 
@@ -157,7 +160,8 @@ func (a *Apis) UpdateHandler(k *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintResult(w, ExpandMeta(ctx, h.Output()))
+		output, _ := ExpandMeta(ctx, h.Output())
+		ctx.PrintResult(w, output)
 	}
 }
 

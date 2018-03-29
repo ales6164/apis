@@ -37,7 +37,8 @@ func RandStringBytesMaskImprSrc(n int) string {
 	return string(b)
 }
 
-func ExpandMeta(ctx context.Context, output map[string]interface{}) map[string]interface{} {
+func ExpandMeta(ctx context.Context, output map[string]interface{}) (map[string]interface{}, map[string]interface{}) {
+	var userMeta map[string]interface{}
 	if meta, ok := output["meta"].(map[string]interface{}); ok {
 		if key, ok := meta["createdBy"]; ok {
 			//key, _ := datastore.DecodeKey(k.(string))
@@ -45,7 +46,7 @@ func ExpandMeta(ctx context.Context, output map[string]interface{}) map[string]i
 			if k, ok := key.(*datastore.Key); ok {
 				user := new(User)
 				if err := datastore.Get(ctx, k, user); err == nil {
-
+					userMeta = user.Meta
 					meta["createdBy"] = map[string]interface{}{
 						"meta": user.Meta,
 						"id":   k,
@@ -53,10 +54,8 @@ func ExpandMeta(ctx context.Context, output map[string]interface{}) map[string]i
 				}
 			}
 		}
-
 	}
-
-	return output
+	return output, userMeta
 }
 
 func decrypt(hash []byte, password []byte) error {

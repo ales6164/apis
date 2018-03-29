@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"github.com/ales6164/apis/middleware"
 	"github.com/ales6164/apis/kind"
+	"golang.org/x/net/context"
 )
 
 type Apis struct {
@@ -18,17 +19,22 @@ type Apis struct {
 	privateKey []byte
 	kinds      map[string]*kind.Kind
 	permissions
+
+	OnUserSignUp func(ctx context.Context, user User, token Token)
+	//OnUserSignIn func(ctx context.Context, user User)
+	OnUserVerified func(ctx context.Context, user User, token Token)
 }
 
 type Options struct {
-	HandlerPathPrefix     string
-	PrivateKeyPath        string // for password hashing
-	Kinds                 []*kind.Kind
-	AuthorizedOrigins     []string
-	AllowUserRegistration bool
-	DefaultRole           Role
-	UserProfileKind       *kind.Kind
-	RequireTrackingID     bool // todo:generated from pages - track users - stored as session cookie
+	HandlerPathPrefix        string
+	PrivateKeyPath           string // for password hashing
+	Kinds                    []*kind.Kind
+	AuthorizedOrigins        []string
+	AllowUserRegistration    bool
+	DefaultRole              Role
+	RequireEmailConfirmation bool
+	/*UserProfileKind          *kind.Kind*/
+	RequireTrackingID bool // todo:generated from pages - track users - stored as session cookie
 	Permissions
 }
 
@@ -78,12 +84,11 @@ func New(opt *Options) (*Apis, error) {
 	}
 
 	// add profile handlers
-	if a.options.UserProfileKind != nil {
-		a.router.Handle("/auth/password", a.middleware.Handler(a.AuthUpdatePasswordHandler())).Methods(http.MethodPost)
-		a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthGetProfile(a.options.UserProfileKind))).Methods(http.MethodGet)
-		a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthUpdateProfile(a.options.UserProfileKind))).Methods(http.MethodPost, http.MethodPut, http.MethodPatch)
-		a.router.Handle("/auth/meta", a.middleware.Handler(a.AuthUpdateMeta())).Methods(http.MethodPost)
-	}
+	a.router.Handle("/auth/confirm", a.middleware.Handler(a.AuthConfirmAccountPasswordHandler()))
+	a.router.Handle("/auth/password", a.middleware.Handler(a.AuthUpdatePasswordHandler())).Methods(http.MethodPost)
+	//a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthGetProfile(a.options.UserProfileKind))).Methods(http.MethodGet)
+	//a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthUpdateProfile(a.options.UserProfileKind))).Methods(http.MethodPost, http.MethodPut, http.MethodPatch)
+	a.router.Handle("/auth/meta", a.middleware.Handler(a.AuthUpdateMeta())).Methods(http.MethodPost)
 
 	// create handler
 	a.Handler = &Server{a.router}

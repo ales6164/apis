@@ -8,11 +8,9 @@ import (
 	"golang.org/x/net/context"
 	"errors"
 	"encoding/json"
-	"github.com/ales6164/apis/kind"
 )
 
 var (
-	ErrCallbackUndefined = errors.New("callback undefined")
 	ErrEmailUndefined    = errors.New("email undefined")
 	ErrPasswordUndefined = errors.New("password undefined")
 	ErrInvalidCallback   = errors.New("callback is not a valid URL")
@@ -91,7 +89,7 @@ func (a *Apis) AuthLoginHandler() http.HandlerFunc {
 		}
 
 		// get profile
-		user.LoadProfile(ctx, a.options.UserProfileKind)
+		//user.LoadProfile(ctx, a.options.UserProfileKind)
 
 		// create a token
 		token := NewToken(user)
@@ -173,7 +171,15 @@ func (a *Apis) AuthRegistrationHandler(role Role) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintAuth(w, signedToken, user)
+		if a.options.RequireEmailConfirmation && user.HasConfirmedEmail {
+			ctx.PrintAuth(w, signedToken, user)
+		} else {
+			ctx.Print(w, "success")
+		}
+
+		if a.OnUserSignUp != nil {
+			a.OnUserSignUp(ctx, *user, *signedToken)
+		}
 	}
 }
 
@@ -194,53 +200,80 @@ func (a *Apis) AuthUpdatePasswordHandler() http.HandlerFunc {
 			return
 		}
 
-		// check if password is ok
-		// get user
 		user := new(User)
-		err = datastore.Get(ctx, ctx.UserKey, user)
-		if err != nil {
-			if err == datastore.ErrNoSuchEntity {
-				ctx.PrintError(w, ErrUserDoesNotExist)
-				return
-			}
-			ctx.PrintError(w, err)
-			return
-		}
-
-		// decrypt hash
-		err = decrypt(user.hash, []byte(password))
-		if err != nil {
-			ctx.PrintError(w, ErrUserPasswordIncorrect)
-			// todo: log and report
-			return
-		}
-
-		// create new password hash
-		user.hash , err = crypt([]byte(newPassword))
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		// create User
+		// update User
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			userKey := datastore.NewKey(tc, "_user", user.Email, 0, nil)
-			err := datastore.Get(tc, userKey, &datastore.PropertyList{})
+
+			err = datastore.Get(tc, ctx.UserKey, user)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
-					// register
-					_, err := datastore.Put(tc, userKey, user)
-					return err
+					return ErrUserDoesNotExist
 				}
 				return err
 			}
-			return ErrUserAlreadyExists
+
+			// decrypt hash
+			err = decrypt(user.hash, []byte(password))
+			if err != nil {
+				return ErrUserPasswordIncorrect
+			}
+
+			// create new password hash
+			user.hash , err = crypt([]byte(newPassword))
+			if err != nil {
+				return err
+			}
+
+			_, err := datastore.Put(tc, ctx.UserKey, user)
+			return err
 		}, nil)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
-/*
+
+		ctx.Print(w, "success")
+	}
+}
+
+
+func (a *Apis) AuthConfirmAccountPasswordHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, ctx := a.NewContext(r).Authenticate()
+
+		if !ok {
+			ctx.PrintError(w, ErrUnathorized)
+			return
+		}
+
+		callback := r.FormValue("callback")
+		if !govalidator.IsURL(callback) {
+			ctx.PrintError(w, ErrInvalidCallback)
+			return
+		}
+
+		user := new(User)
+		// update User
+		err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
+
+			err := datastore.Get(tc, ctx.UserKey, user)
+			if err != nil {
+				if err == datastore.ErrNoSuchEntity {
+					return ErrUserDoesNotExist
+				}
+				return err
+			}
+
+			user.HasConfirmedEmail = true
+
+			_, err = datastore.Put(tc, ctx.UserKey, user)
+			return err
+		}, nil)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
 		// create a token
 		token := NewToken(user)
 
@@ -249,11 +282,13 @@ func (a *Apis) AuthUpdatePasswordHandler() http.HandlerFunc {
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
-		}*/
+		}
 
-		ctx.Print(w, "success")
+		if a.OnUserVerified != nil {
+			a.OnUserVerified(ctx, *user, *signedToken)
+		}
 
-		//ctx.PrintAuth(w, signedToken, user)
+		http.Redirect(w, r, callback, http.StatusTemporaryRedirect)
 	}
 }
 
@@ -272,7 +307,7 @@ func (a *Apis) AuthUpdateMeta() http.HandlerFunc {
 		if len(meta) > 0 {
 			json.Unmarshal(meta, &m)
 		} else {
-			ctx.PrintError(w, errors.New("meta field empty"))
+			ctx.PrintError(w, errors.New("body is empty"))
 			return
 		}
 
@@ -306,6 +341,7 @@ func (a *Apis) AuthUpdateMeta() http.HandlerFunc {
 Profile handlers
  */
 
+/*
 func (a *Apis) AuthGetProfile(k *kind.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := a.NewContext(r).Authenticate()
@@ -399,3 +435,4 @@ func (a *Apis) AuthUpdateProfile(k *kind.Kind) http.HandlerFunc {
 		ctx.PrintResult(w, profile.Output())
 	}
 }
+*/

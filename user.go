@@ -3,18 +3,17 @@ package apis
 import (
 	"google.golang.org/appengine/datastore"
 	"strings"
-	"golang.org/x/net/context"
-	"github.com/ales6164/apis/kind"
 )
 
 type User struct {
-	Email   string                 `json:"email"`
-	Role    string                 `json:"role"`
-	Meta    map[string]interface{} `json:"meta"`
-	Profile map[string]interface{} `json:"profile"`
+	Email             string                 `json:"email"`
+	Role              string                 `json:"role"`
+	HasConfirmedEmail bool                   `json:"confirmedEmail"`
+	Meta              map[string]interface{} `json:"meta"`
+	//Profile           map[string]interface{} `json:"profile"`
 
 	hash    []byte
-	profile *datastore.Key
+	//profile *datastore.Key
 }
 
 func (u *User) SetMeta(name string, value interface{}) {
@@ -24,7 +23,7 @@ func (u *User) SetMeta(name string, value interface{}) {
 	u.Meta[name] = value
 }
 
-func (u *User) LoadProfile(ctx context.Context, k *kind.Kind) (map[string]interface{}, error) {
+/*func (u *User) LoadProfile(ctx context.Context, k *kind.Kind) (map[string]interface{}, error) {
 	if u.profile != nil {
 		h, err := k.Get(ctx, u.profile)
 		if err != nil {
@@ -35,7 +34,7 @@ func (u *User) LoadProfile(ctx context.Context, k *kind.Kind) (map[string]interf
 		return u.Profile, nil
 	}
 	return nil, ErrUserProfileDoesNotExist
-}
+}*/
 
 func (u *User) Load(ps []datastore.Property) error {
 	u.Meta = map[string]interface{}{}
@@ -43,15 +42,25 @@ func (u *User) Load(ps []datastore.Property) error {
 	for _, prop := range ps {
 		switch prop.Name {
 		case "email":
-			u.Email = prop.Value.(string)
+			if k, ok := prop.Value.(string); ok {
+				u.Email = k
+			}
 		case "role":
-			u.Role = prop.Value.(string)
-		case "profile":
+			if k, ok := prop.Value.(string); ok {
+				u.Role = k
+			}
+		/*case "profile":
 			if k, ok := prop.Value.(*datastore.Key); ok {
 				u.profile = k
+			}*/
+		case "confirmedEmail":
+			if k, ok := prop.Value.(bool); ok {
+				u.HasConfirmedEmail = k
 			}
 		case "hash":
-			u.hash = prop.Value.([]byte)
+			if k, ok := prop.Value.([]byte); ok {
+				u.hash = k
+			}
 		default:
 			spl := strings.Split(prop.Name, ".")
 			if len(spl) > 1 {
@@ -76,15 +85,19 @@ func (u *User) Save() ([]datastore.Property, error) {
 		Name:  "role",
 		Value: u.Role,
 	})
-	ps = append(ps, datastore.Property{
+	/*ps = append(ps, datastore.Property{
 		Name:    "profile",
 		Value:   u.profile,
 		NoIndex: true,
-	})
+	})*/
 	ps = append(ps, datastore.Property{
 		Name:    "hash",
 		Value:   u.hash,
 		NoIndex: true,
+	})
+	ps = append(ps, datastore.Property{
+		Name:  "confirmedEmail",
+		Value: u.HasConfirmedEmail,
 	})
 	if u.Meta != nil {
 		for k, v := range u.Meta {

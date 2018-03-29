@@ -74,7 +74,7 @@ func (h *Holder) Add(userKey *datastore.Key) (*datastore.Key, error) {
 	h.key = h.Kind.NewIncompleteKey(h.context, userKey)
 
 	if h.Kind.OnBeforeWrite != nil {
-		if err = h.Kind.OnBeforeWrite(h); err != nil {
+		if err = h.Kind.OnBeforeWrite(h.context, h); err != nil {
 			return h.key, err
 		}
 	}
@@ -85,7 +85,7 @@ func (h *Holder) Add(userKey *datastore.Key) (*datastore.Key, error) {
 	}
 
 	if h.Kind.OnAfterWrite != nil {
-		if err = h.Kind.OnBeforeWrite(h); err != nil {
+		if err = h.Kind.OnAfterWrite(h.context, h); err != nil {
 			return h.key, err
 		}
 	}
@@ -104,7 +104,7 @@ func (h *Holder) Update(key *datastore.Key) error {
 		}
 
 		if h.Kind.OnBeforeWrite != nil {
-			if err = h.Kind.OnBeforeWrite(h); err != nil {
+			if err = h.Kind.OnBeforeWrite(h.context, h); err != nil {
 				return err
 			}
 		}
@@ -124,7 +124,7 @@ func (h *Holder) Update(key *datastore.Key) error {
 	//dataHolder.updateSearchIndex()
 
 	if h.Kind.OnAfterWrite != nil {
-		if err = h.Kind.OnBeforeWrite(h); err != nil {
+		if err = h.Kind.OnAfterWrite(h.context, h); err != nil {
 			return err
 		}
 	}

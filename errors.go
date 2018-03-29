@@ -29,6 +29,7 @@ var (
 	ErrInvalidFormInput        = NewError("invalid form input", 108)
 	ErrProjectAlreadyExists    = NewError("project already exists", 109)
 	ErrUnathorized             = errors.New("unathorized")
+	ErrCallbackUndefined       = errors.New("callback undefined")
 	ErrUserProfileDoesNotExist = NewError("user profile does not exist", 110)
 	ErrForbidden               = errors.New("action forbidden")
 	ErrPageNotFound            = errors.New("404 page not found")

@@ -22,9 +22,14 @@ type Holder struct {
 	datastoreData       []datastore.Property            // list of properties stored in datastore - refreshed on Load or Save
 
 	// populated on Load ... with HasAccess can check if current user is the same as createdBy
-	createdBy *datastore.Key
+	CreatedBy *datastore.Key
+	CreatedAt time.Time
 
 	isOldVersion bool // when updating entity we want to also update old entry meta.
+}
+
+func (h *Holder) Id() string {
+	return h.key.Encode()
 }
 
 func (h *Holder) SetContext(ctx context.Context) {
@@ -181,7 +186,9 @@ func (h *Holder) Load(ps []datastore.Property) error {
 	for _, prop := range ps {
 		h.loadedStoredData[prop.Name] = append(h.loadedStoredData[prop.Name], prop)
 		if prop.Name == "meta.createdBy" && prop.Value != nil {
-			h.createdBy = prop.Value.(*datastore.Key)
+			h.CreatedBy = prop.Value.(*datastore.Key)
+		} else if prop.Name == "meta.createdAt" && prop.Value != nil {
+			h.CreatedAt = prop.Value.(time.Time)
 		}
 	}
 	return nil
@@ -231,9 +238,11 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 	})
 	if h.hasLoadedStoredData {
 		if metaCreatedAt, ok := h.loadedStoredData["meta.createdAt"]; ok {
+			h.CreatedAt = metaCreatedAt[0].Value.(time.Time)
 			h.datastoreData = append(h.datastoreData, metaCreatedAt[0])
 		}
 		if metaCreatedBy, ok := h.loadedStoredData["meta.createdBy"]; ok {
+			h.CreatedBy = metaCreatedBy[0].Value.(*datastore.Key)
 			h.datastoreData = append(h.datastoreData, metaCreatedBy[0])
 		}
 		if metaVersion, ok := h.loadedStoredData["meta.version"]; ok {
@@ -246,10 +255,12 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 			Name:  "meta.createdAt",
 			Value: now,
 		})
+		h.CreatedAt = now
 		h.datastoreData = append(h.datastoreData, datastore.Property{
 			Name:  "meta.createdBy",
 			Value: h.user,
 		})
+		h.CreatedBy = h.user
 		h.datastoreData = append(h.datastoreData, datastore.Property{
 			Name:  "meta.version",
 			Value: int64(0),
