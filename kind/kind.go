@@ -18,8 +18,11 @@ type Options struct {
 	Name   string
 	Fields []*Field
 
-	OnBeforeWrite func(ctx context.Context, h *Holder) error `json:"-"`
-	OnAfterWrite func(ctx context.Context, h *Holder) error `json:"-"`
+	OnBeforeCreate func(ctx context.Context, h *Holder) error `json:"-"`
+	OnAfterCreate  func(ctx context.Context, h *Holder) error `json:"-"`
+
+	OnBeforeUpdate func(ctx context.Context, h *Holder) error `json:"-"`
+	OnAfterUpdate  func(ctx context.Context, h *Holder) error `json:"-"`
 }
 
 type Field struct {
@@ -29,7 +32,7 @@ type Field struct {
 	NoIndex    bool
 	Kind       *Kind
 
-	isKind bool
+	isKind   bool
 	isNested bool
 }
 

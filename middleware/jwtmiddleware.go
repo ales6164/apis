@@ -167,6 +167,12 @@ func FromParameter(param string) TokenExtractor {
 	}
 }
 
+func FromFormValue(param string) TokenExtractor {
+	return func(r *http.Request) (string, error) {
+		return r.FormValue(param), nil
+	}
+}
+
 // FromParameter returns a function that extracts the token from the specified
 // query string parameter
 /*func FromSession(sessionName string) TokenExtractor {

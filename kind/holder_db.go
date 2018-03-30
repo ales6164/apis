@@ -7,10 +7,10 @@ import (
 
 type Filter struct {
 	FilterStr string
-	Value interface{}
+	Value     interface{}
 }
 
-func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, filters []Filter,  ancestor *datastore.Key) ([]*Holder, error) {
+func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, filters []Filter, ancestor *datastore.Key) ([]*Holder, error) {
 	var hs []*Holder
 	var err error
 
@@ -73,8 +73,8 @@ func (h *Holder) Add(userKey *datastore.Key) (*datastore.Key, error) {
 
 	h.key = h.Kind.NewIncompleteKey(h.context, userKey)
 
-	if h.Kind.OnBeforeWrite != nil {
-		if err = h.Kind.OnBeforeWrite(h.context, h); err != nil {
+	if h.Kind.OnBeforeCreate != nil {
+		if err = h.Kind.OnBeforeCreate(h.context, h); err != nil {
 			return h.key, err
 		}
 	}
@@ -84,8 +84,8 @@ func (h *Holder) Add(userKey *datastore.Key) (*datastore.Key, error) {
 		return h.key, err
 	}
 
-	if h.Kind.OnAfterWrite != nil {
-		if err = h.Kind.OnAfterWrite(h.context, h); err != nil {
+	if h.Kind.OnAfterCreate != nil {
+		if err = h.Kind.OnAfterCreate(h.context, h); err != nil {
 			return h.key, err
 		}
 	}
@@ -103,8 +103,8 @@ func (h *Holder) Update(key *datastore.Key) error {
 			return err
 		}
 
-		if h.Kind.OnBeforeWrite != nil {
-			if err = h.Kind.OnBeforeWrite(h.context, h); err != nil {
+		if h.Kind.OnBeforeUpdate != nil {
+			if err = h.Kind.OnBeforeUpdate(h.context, h); err != nil {
 				return err
 			}
 		}
@@ -123,8 +123,8 @@ func (h *Holder) Update(key *datastore.Key) error {
 
 	//dataHolder.updateSearchIndex()
 
-	if h.Kind.OnAfterWrite != nil {
-		if err = h.Kind.OnAfterWrite(h.context, h); err != nil {
+	if h.Kind.OnAfterUpdate != nil {
+		if err = h.Kind.OnAfterUpdate(h.context, h); err != nil {
 			return err
 		}
 	}

@@ -62,10 +62,10 @@ func (a *Apis) GetHandler(e *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		if !key.Parent().Equal(ctx.UserKey) {
+		/*if !key.Parent().Equal(ctx.UserKey) {
 			ctx.PrintError(w, ErrForbidden)
 			return
-		}
+		}*/
 
 		h, err := e.Get(ctx, key)
 		if err != nil {

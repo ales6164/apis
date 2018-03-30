@@ -7,6 +7,7 @@ func AuthMiddleware(signingKey []byte) *JWTMiddleware {
 		Extractor: FromFirst(
 			FromAuthHeader,
 			FromParameter("key"),
+			FromFormValue("key"),
 		),
 		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
 			return signingKey, nil
