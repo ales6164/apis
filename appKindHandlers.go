@@ -20,10 +20,19 @@ func (a *Apis) QueryHandler(e *kind.Kind) http.HandlerFunc {
 			return
 		}
 
-		hs, err := e.Query(ctx, "", 0, 0, nil, ctx.UserKey)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
+		var hs []*kind.Holder
+		if ctx.Role != AdminRole {
+			hs, err = e.Query(ctx, "", 0, 0, nil, ctx.UserKey)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+		} else {
+			hs, err = e.Query(ctx, "", 0, 0, nil, nil)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
 		}
 
 		var out []map[string]interface{}
