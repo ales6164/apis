@@ -5,8 +5,7 @@ import (
 	"reflect"
 	"google.golang.org/appengine/datastore"
 	"golang.org/x/net/context"
-	"errors"
-	"strings"
+	"github.com/ales6164/apis/errors"
 )
 
 type Worker interface {
@@ -59,33 +58,12 @@ func (x *Field) Parse(value interface{}) ([]datastore.Property, error) {
 
 func (x *Field) Property(value interface{}) ([]datastore.Property, error) {
 	var props []datastore.Property
-
-	if x.isKind {
-		if v, ok := value.(map[string]interface{}); ok {
-			h := x.Kind.NewEmptyHolder()
-			err := h.Parse(v)
-			if err != nil {
-				return props, err
-			}
-			for _, ps := range h.preparedInputData {
-				for _, p := range ps {
-					p.Name = strings.Join([]string{x.Name, p.Name}, ".")
-					p.Multiple = x.Multiple
-					props = append(props, p)
-				}
-			}
-		} else {
-			return props, errors.New("property not of type map")
-		}
-	} else {
-		props = append(props, datastore.Property{
-			Name:     x.Name,
-			Multiple: x.Multiple,
-			NoIndex:  x.NoIndex,
-			Value:    value,
-		})
-	}
-
+	props = append(props, datastore.Property{
+		Name:     x.Name,
+		Multiple: x.Multiple,
+		NoIndex:  x.NoIndex,
+		Value:    value,
+	})
 	return props, nil
 }
 
@@ -93,7 +71,7 @@ func (x *Field) Check(value interface{}) (interface{}, error) {
 	var err error
 	if value == nil {
 		if x.IsRequired {
-			return value, fmt.Errorf("field '%s' value is required", x.Name)
+			return value, errors.ErrFieldRequired.With(fmt.Sprintf("field '%s' value is required", x.Name))
 		}
 	} else {
 		err = x.Validate(value)
@@ -113,6 +91,6 @@ func (x *Field) Transform(value interface{}) (interface{}, error) {
 	return value, nil
 }
 
-func (x *Field) Output(ctx context.Context, value interface{}) interface{} {
+func (x *Field) Output(value interface{}) interface{} {
 	return value
 }

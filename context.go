@@ -13,14 +13,16 @@ import (
 	"google.golang.org/appengine/datastore"
 	"github.com/ales6164/apis/kind"
 	"google.golang.org/appengine/log"
+	"github.com/ales6164/apis/errors"
 )
 
 type Context struct {
-	a                 *Apis
+	R                 *Route
 	r                 *http.Request
 	hasReadAuthHeader bool
 	IsAuthenticated   bool
 	context.Context
+	CountryCode       string // 2 character string; gb, si, ... -- ISO 3166-1 alpha-2
 	UserEmail         string
 	UserKey           *datastore.Key
 	Role              Role
@@ -32,13 +34,18 @@ type body struct {
 	body        []byte
 }
 
-func (a *Apis) NewContext(r *http.Request) Context {
+func (R *Route) NewContext(r *http.Request) Context {
+	cc := r.Header.Get("X-Custom-Country")
+	if len(cc) == 0 {
+		cc = r.Header.Get("X-AppEngine-Country")
+	}
 	return Context{
-		a:       a,
-		r:       r,
-		Role:    PublicRole,
-		Context: appengine.NewContext(r),
-		body:    &body{hasReadBody: false},
+		R:           R,
+		r:           r,
+		CountryCode: cc,
+		Role:        PublicRole,
+		Context:     appengine.NewContext(r),
+		body:        &body{hasReadBody: false},
 	}
 }
 
@@ -55,21 +62,38 @@ func (ctx Context) Id() string {
 	return mux.Vars(ctx.r)["id"]
 }
 
+func (ctx Context) Language() string {
+	if _, ok := ctx.R.a.allowedTranslations[ctx.CountryCode]; ok {
+		return ctx.CountryCode
+	}
+	return ctx.R.a.options.DefaultLanguage
+}
+
 func (ctx Context) SetGroup(group string) (Context, error) {
 	var err error
 	ctx.Context, err = appengine.Namespace(ctx, group)
 	return ctx, err
 }
 
-func (ctx Context) HasPermission(k *kind.Kind, scope Scope) (Context, error) {
-	if val1, ok := ctx.a.permissions[ctx.Role]; ok {
+// AdminRole has all permissions
+func (ctx Context) HasPermission(k *kind.Kind, scope Scope) bool {
+	if ctx.Role == AdminRole {
+		return true
+	}
+	if val1, ok := ctx.R.a.permissions[ctx.Role]; ok {
 		if val2, ok := val1[scope]; ok {
 			if val3, ok := val2[k]; ok && val3 {
-				return ctx, nil
+				if ctx.R.roles != nil {
+					if _, ok := ctx.R.roles[ctx.Role]; ok {
+						return true
+					}
+				} else {
+					return true
+				}
 			}
 		}
 	}
-	return ctx, ErrForbidden
+	return false
 }
 
 // Authenticates user
@@ -158,11 +182,11 @@ func (ctx *Context) PrintAuth(w http.ResponseWriter, token *Token, user *User) {
 
 func (ctx *Context) PrintError(w http.ResponseWriter, err error) {
 	log.Errorf(ctx, "context error: %v", err)
-	if err == ErrUnathorized {
+	if err == errors.ErrUnathorized {
 		w.WriteHeader(http.StatusUnauthorized)
-	} else if err == ErrForbidden {
+	} else if err == errors.ErrForbidden {
 		w.WriteHeader(http.StatusForbidden)
-	} else if _, ok := err.(*Error); ok {
+	} else if _, ok := err.(*errors.Error); ok {
 		w.WriteHeader(http.StatusBadRequest)
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)

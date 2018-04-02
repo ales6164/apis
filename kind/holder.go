@@ -1,7 +1,6 @@
 package kind
 
 import (
-	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
 	"time"
 	"errors"
@@ -10,13 +9,13 @@ import (
 )
 
 type Holder struct {
-	Kind    *Kind `json:"entity"`
-	user    *datastore.Key
-	context context.Context
-	key     *datastore.Key
+	Kind *Kind `json:"entity"`
+	user *datastore.Key
+	k    *datastore.Key
 
-	ParsedInput         map[string]interface{}
-	preparedInputData   map[*Field][]datastore.Property // user input
+	ParsedInput       map[string]interface{}
+	preparedInputData map[*Field][]datastore.Property // user input
+
 	hasLoadedStoredData bool
 	loadedStoredData    map[string][]datastore.Property // data already stored in datastore - if exists
 	datastoreData       []datastore.Property            // list of properties stored in datastore - refreshed on Load or Save
@@ -24,47 +23,98 @@ type Holder struct {
 	// populated on Load ... with HasAccess can check if current user is the same as createdBy
 	CreatedBy *datastore.Key
 	CreatedAt time.Time
-
-	isOldVersion bool // when updating entity we want to also update old entry meta.
 }
 
 func (h *Holder) Id() string {
-	return h.key.Encode()
+	return h.k.Encode()
 }
 
-func (h *Holder) SetContext(ctx context.Context) {
-	h.context = ctx
+// strips fields from input
+func (h *Holder) Strip(names ...string) {
+	for _, name := range names {
+		if f, ok := h.Kind.fields[name]; ok {
+			if _, ok := h.preparedInputData[f]; ok {
+				delete(h.preparedInputData, f)
+			}
+			if _, ok := h.ParsedInput[name]; ok {
+				delete(h.ParsedInput, name)
+			}
+		}
+	}
+}
+
+// strips all but
+func (h *Holder) StripAllBut(names ...string) {
+	var keepThese = map[string]bool{}
+	for _, name := range names {
+		keepThese[name] = true
+	}
+	for _, f := range h.Kind.Fields {
+		if _, ok := h.preparedInputData[f]; ok {
+			if _, ok := keepThese[f.Name]; !ok {
+				delete(h.preparedInputData, f)
+			}
+		}
+		if _, ok := h.ParsedInput[f.Name]; ok {
+			if _, ok := keepThese[f.Name]; !ok {
+				delete(h.ParsedInput, f.Name)
+			}
+		}
+	}
+}
+
+func (h *Holder) GetValue(name string) interface{} {
+	if h.hasLoadedStoredData {
+		var output = map[string]interface{}{}
+		if ps, ok := h.loadedStoredData[name]; ok {
+			f := h.Kind.fields[name]
+			for _, prop := range ps {
+				output = h.appendPropertyValue(output, prop, f)
+			}
+		}
+		for _, value := range output {
+			return value
+		}
+	}
+	var output = map[string]interface{}{}
+	if f, ok := h.Kind.fields[name]; ok {
+		for _, prop := range h.preparedInputData[f] {
+			output = h.appendPropertyValue(output, prop, f)
+		}
+	}
+	return output[name]
 }
 
 func (h *Holder) ParseInput(body []byte) error {
-	err := json.Unmarshal(body, &h.ParsedInput)
-	if err != nil {
-		return err
-	}
+	return json.Unmarshal(body, &h.ParsedInput)
+}
 
+func (h *Holder) Prepare() error {
 	for _, f := range h.Kind.Fields {
-
-		// check for input
-		if value, ok := h.ParsedInput[f.Name]; ok {
-
-			props, err := f.Parse(value)
-			if err != nil {
-				return err
-			}
-
-			h.preparedInputData[f] = props
-		} else {
-			names := strings.Split(f.Name, ".")
-			if _, ok := h.ParsedInput[names[0]]; ok {
-
-				var endValue = h.ParsedInput[names[0]]
-				for i := 1; i < len(names); i++ {
-					if nestedMap, ok := endValue.(map[string]interface{}); ok {
-						endValue = nestedMap[names[i]]
-					} else {
-						continue
+		if value, ok  := h.ParsedInput[f.Name]; ok {
+			if f.Kind != nil {
+				if f.Multiple {
+					if arr, ok := value.([]interface{}); ok {
+						for _, v := range arr {
+							bs, _ := json.Marshal(v)
+							h.preparedInputData[f] = append(h.preparedInputData[f], datastore.Property{
+								Value:    string(bs),
+								NoIndex:  true,
+								Multiple: f.Multiple,
+								Name:     f.Name,
+							})
+						}
 					}
+				} else {
+					bs, _ := json.Marshal(value)
+					h.preparedInputData[f] = append(h.preparedInputData[f], datastore.Property{
+						Value:    string(bs),
+						NoIndex:  true,
+						Multiple: f.Multiple,
+						Name:     f.Name,
+					})
 				}
+			} else {
 				props, err := f.Parse(value)
 				if err != nil {
 					return err
@@ -72,79 +122,38 @@ func (h *Holder) ParseInput(body []byte) error {
 				h.preparedInputData[f] = props
 			}
 		}
-	}
-	return nil
-}
 
-// used in parsing function with field that has Kind specified
-func (h *Holder) Value(name string, value interface{}) error {
-	if f, ok := h.Kind.fields[name]; ok {
-		if value != nil {
-			props, err := f.Parse(value)
-			if err != nil {
-				return err
-			}
-			h.preparedInputData[f] = props
-		}
-		return nil
-	}
-	return errors.New("field " + name + " doesn't exist")
-}
-
-// used in parsing function with field that has Kind specified
-func (h *Holder) Parse(m map[string]interface{}) error {
-	for _, f := range h.Kind.Fields {
-
-		// check for input
-		if value, ok := m[f.Name]; ok {
-
-			props, err := f.Parse(value)
-			if err != nil {
-				return err
-			}
-
-			h.preparedInputData[f] = props
-		} else {
-			names := strings.Split(f.Name, ".")
-			if _, ok := m[names[0]]; ok {
-
-				var endValue = m[names[0]]
-				for i := 1; i < len(names); i++ {
-					if nestedMap, ok := endValue.(map[string]interface{}); ok {
-						endValue = nestedMap[names[i]]
-					} else {
-						continue
-					}
-				}
-				props, err := f.Parse(value)
-				if err != nil {
-					return err
-				}
-				h.preparedInputData[f] = props
-			}
-		}
 	}
 	return nil
 }
 
 // appends value
 func (h *Holder) appendValue(dst interface{}, field *Field, value interface{}, multiple bool) interface{} {
-	value = field.Output(h.context, value)
+	value = field.Output(value)
+
+	if field != nil && field.Kind != nil {
+		if body, ok := value.(string); ok {
+			var fdst map[string]interface{}
+			if err := json.Unmarshal([]byte(body), &fdst); err == nil {
+				value = fdst
+			}
+		}
+	}
+
 	if multiple {
 		if dst == nil {
 			dst = []interface{}{}
 		}
-
 		dst = append(dst.([]interface{}), value)
 	} else {
 		dst = value
 	}
+
 	return dst
 }
 
 // appends property to dst; it can return a flat object or structured
 func (h *Holder) appendPropertyValue(dst map[string]interface{}, prop datastore.Property, field *Field) map[string]interface{} {
-
 	names := strings.Split(prop.Name, ".")
 	if len(names) > 1 {
 		prop.Name = strings.Join(names[1:], ".")
@@ -155,16 +164,7 @@ func (h *Holder) appendPropertyValue(dst map[string]interface{}, prop datastore.
 	} else {
 		dst[names[0]] = h.appendValue(dst[names[0]], field, prop.Value, prop.Multiple)
 	}
-
 	return dst
-}
-
-type Account struct {
-	Hash    []byte         `datastore:"hash,noindex" json:"-"`
-	Email   string         `datastore:"email" json:"email"`
-	Role    string         `datastore:"role" json:"role"`
-	Profile *datastore.Key `datastore:"profile" json:"-"`
-	Meta    []byte         `datastore:"meta,noindex" json:"meta"` // additional meta information that is public
 }
 
 func (h *Holder) Output() map[string]interface{} {
@@ -175,8 +175,8 @@ func (h *Holder) Output() map[string]interface{} {
 		output = h.appendPropertyValue(output, prop, h.Kind.fields[prop.Name])
 	}
 
-	if h.key != nil {
-		output["id"] = h.key.Encode()
+	if h.k != nil {
+		output["id"] = h.k.Encode()
 	}
 
 	return output
@@ -218,14 +218,6 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 		}
 
 		h.datastoreData = append(h.datastoreData, toSaveProps...)
-
-		// save search field
-		// TODO:
-		/*if field.toSearchFieldConvertFunc != nil {
-			if err := field.toSearchFieldConvertFunc(holder, toSaveProps...); err != nil {
-				return nil, err
-			}
-		}*/
 	}
 
 	// set meta tags
@@ -233,10 +225,6 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 	h.datastoreData = append(h.datastoreData, datastore.Property{
 		Name:  "meta.updatedAt",
 		Value: now,
-	})
-	h.datastoreData = append(h.datastoreData, datastore.Property{
-		Name:  "meta.status",
-		Value: "active",
 	})
 	if h.hasLoadedStoredData {
 		if metaCreatedAt, ok := h.loadedStoredData["meta.createdAt"]; ok {
@@ -246,11 +234,6 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 		if metaCreatedBy, ok := h.loadedStoredData["meta.createdBy"]; ok {
 			h.CreatedBy = metaCreatedBy[0].Value.(*datastore.Key)
 			h.datastoreData = append(h.datastoreData, metaCreatedBy[0])
-		}
-		if metaVersion, ok := h.loadedStoredData["meta.version"]; ok {
-			var version = metaVersion[0]
-			version.Value = version.Value.(int64) + 1
-			h.datastoreData = append(h.datastoreData, version)
 		}
 	} else {
 		h.datastoreData = append(h.datastoreData, datastore.Property{
@@ -263,50 +246,9 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 			Value: h.user,
 		})
 		h.CreatedBy = h.user
-		h.datastoreData = append(h.datastoreData, datastore.Property{
-			Name:  "meta.version",
-			Value: int64(0),
-		})
 	}
-
-	h.datastoreData = append(h.datastoreData, datastore.Property{
-		Name:  "meta.updatedBy",
-		Value: h.user,
-	})
 
 	ps = h.datastoreData
-
-	return ps, nil
-}
-
-type HolderOld struct {
-	data *Holder
-	key  *datastore.Key
-}
-
-func (h *Holder) OldHolder(replacementKey *datastore.Key) *HolderOld {
-	var old = &HolderOld{
-		data: h,
-		key:  replacementKey,
-	}
-	return old
-}
-
-func (h *HolderOld) Load(ps []datastore.Property) error {
-	return nil
-}
-
-func (h *HolderOld) Save() ([]datastore.Property, error) {
-	var ps []datastore.Property
-
-	h.data.loadedStoredData["meta.status"] = []datastore.Property{{
-		Name:  "meta.status",
-		Value: nil,
-	}}
-
-	for _, props := range h.data.loadedStoredData {
-		ps = append(ps, props...)
-	}
 
 	return ps, nil
 }

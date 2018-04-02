@@ -23,19 +23,6 @@ func (u *User) SetMeta(name string, value interface{}) {
 	u.Meta[name] = value
 }
 
-/*func (u *User) LoadProfile(ctx context.Context, k *kind.Kind) (map[string]interface{}, error) {
-	if u.profile != nil {
-		h, err := k.Get(ctx, u.profile)
-		if err != nil {
-			return nil, err
-		}
-		u.Profile = h.Output()
-		delete(u.Profile, "meta")
-		return u.Profile, nil
-	}
-	return nil, ErrUserProfileDoesNotExist
-}*/
-
 func (u *User) Load(ps []datastore.Property) error {
 	u.Meta = map[string]interface{}{}
 

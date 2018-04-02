@@ -8,31 +8,30 @@ import (
 	"io/ioutil"
 	"github.com/ales6164/apis/middleware"
 	"github.com/ales6164/apis/kind"
-	"golang.org/x/net/context"
 )
 
 type Apis struct {
-	options    *Options
-	router     *mux.Router
-	Handler    http.Handler
-	middleware *middleware.JWTMiddleware
-	privateKey []byte
-	kinds      map[string]*kind.Kind
-	permissions
+	options *Options
+	routes  []*Route
 
-	OnUserSignUp func(ctx context.Context, user User, token Token)
+	middleware          *middleware.JWTMiddleware
+	privateKey          []byte
+	permissions
+	allowedTranslations map[string]bool
+
+	OnUserSignUp func(ctx Context, user User, token Token)
 	//OnUserSignIn func(ctx context.Context, user User)
-	OnUserVerified func(ctx context.Context, user User, token Token)
+	OnUserVerified func(ctx Context, user User, token Token)
 }
 
 type Options struct {
-	HandlerPathPrefix        string
 	PrivateKeyPath           string // for password hashing
-	Kinds                    []*kind.Kind
 	AuthorizedOrigins        []string
 	AllowUserRegistration    bool
 	DefaultRole              Role
 	RequireEmailConfirmation bool
+	HasTranslationsFor       []string
+	DefaultLanguage          string
 	/*UserProfileKind          *kind.Kind*/
 	RequireTrackingID bool // todo:generated from pages - track users - stored as session cookie
 	Permissions
@@ -40,9 +39,8 @@ type Options struct {
 
 func New(opt *Options) (*Apis, error) {
 	a := &Apis{
-		options: opt,
-		kinds:   map[string]*kind.Kind{},
-		router:  mux.NewRouter().PathPrefix(opt.HandlerPathPrefix).Subrouter(),
+		options:             opt,
+		allowedTranslations: map[string]bool{},
 	}
 
 	// read private key
@@ -61,71 +59,56 @@ func New(opt *Options) (*Apis, error) {
 	// set auth middleware
 	a.middleware = middleware.AuthMiddleware(a.privateKey)
 
-	// init and add kind endpoints
-	for _, k := range a.options.Kinds {
-		err = k.Init()
-		if err != nil {
-			return a, err
-		}
-		a.withKind(k)
+	// languages
+	for _, l := range opt.HasTranslationsFor {
+		a.allowedTranslations[l] = true
 	}
-
-	// add kind endpoints for groups
-	for _, k := range a.kinds {
-		a.withGroupKind(k)
-	}
-
-	// add login handler
-	a.router.Handle("/auth/login", a.AuthLoginHandler()).Methods(http.MethodPost)
-
-	// add register handler
-	if a.options.AllowUserRegistration {
-		a.router.Handle("/auth/register", a.AuthRegistrationHandler(a.options.DefaultRole)).Methods(http.MethodPost)
-	}
-
-	// add profile handlers
-	a.router.Handle("/auth/confirm", a.middleware.Handler(a.AuthConfirmAccountPasswordHandler()))
-	a.router.Handle("/auth/password", a.middleware.Handler(a.AuthUpdatePasswordHandler())).Methods(http.MethodPost)
-	//a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthGetProfile(a.options.UserProfileKind))).Methods(http.MethodGet)
-	//a.router.Handle("/auth/profile", a.middleware.Handler(a.AuthUpdateProfile(a.options.UserProfileKind))).Methods(http.MethodPost, http.MethodPut, http.MethodPatch)
-	a.router.Handle("/auth/meta", a.middleware.Handler(a.AuthUpdateMeta())).Methods(http.MethodPost)
-
-	// create handler
-	a.Handler = &Server{a.router}
 
 	return a, nil
 }
 
-func (a *Apis) withKind(kind *kind.Kind) {
-	a.kinds[kind.Name] = kind
+func (a *Apis) Handle(p string, kind *kind.Kind) *Route {
+	r := &Route{
+		kind:    kind,
+		a:       a,
+		path:    p,
+		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+	}
 
-	a.router.Handle("/"+kind.Name, a.middleware.Handler(a.QueryHandler(kind))).Methods(http.MethodGet)
-	a.router.Handle("/"+kind.Name+"/{id}", a.middleware.Handler(a.GetHandler(kind))).Methods(http.MethodGet)
-
-	//a.router.Handle("/"+name+"/draft", authMiddleware.Handler(a.AddDraftHandler(ent))).Methods(http.MethodPost) // ADD
-	a.router.Handle("/"+kind.Name, a.middleware.Handler(a.AddHandler(kind))).Methods(http.MethodPost) // ADD
-	//a.router.Handle("/"+name+"/{id}", authMiddleware.Handler(a.KindGetHandler(e))).Methods(http.MethodGet)       // GET
-	a.router.Handle("/"+kind.Name+"/{id}", a.middleware.Handler(a.UpdateHandler(kind))).Methods(http.MethodPut) // UPDATE
-	//a.router.Handle("/{project}/api/"+name+"/{id}", authMiddleware.Handler(a.KindDeleteHandler(e))).Methods(http.MethodDelete) // DELETE
+	a.routes = append(a.routes, r)
+	return r
 }
 
-func (a *Apis) withGroupKind(kind *kind.Kind) {
-	a.router.Handle("/{group}/"+kind.Name, a.middleware.Handler(a.QueryHandler(kind))).Methods(http.MethodGet)
-	a.router.Handle("/{group}/"+kind.Name+"/{id}", a.middleware.Handler(a.GetHandler(kind))).Methods(http.MethodGet)
+func (a *Apis) Handler(pathPrefix string) http.Handler {
+	r := mux.NewRouter().PathPrefix(pathPrefix).Subrouter()
 
-	//a.router.Handle("/"+name+"/draft", authMiddleware.Handler(a.AddDraftHandler(ent))).Methods(http.MethodPost) // ADD
-	a.router.Handle("/{group}/"+kind.Name, a.middleware.Handler(a.AddHandler(kind))).Methods(http.MethodPost) // ADD
-	//a.router.Handle("/"+name+"/{id}", authMiddleware.Handler(a.KindGetHandler(e))).Methods(http.MethodGet)       // GET
-	//a.router.Handle("/{project}/api/"+name+"/{id}", authMiddleware.Handler(a.KindUpdateHandler(e))).Methods(http.MethodPut)    // UPDATE
-	//a.router.Handle("/{project}/api/"+name+"/{id}", authMiddleware.Handler(a.KindDeleteHandler(e))).Methods(http.MethodDelete) // DELETE
-}
+	for _, route := range a.routes {
+		for _, method := range route.methods {
+			switch method {
+			case http.MethodGet:
+				r.Handle(route.path, a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
+			case http.MethodPost:
+				r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+			case http.MethodPut:
+				r.Handle(route.path, a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
+			}
+		}
+	}
 
-func (a *Apis) Handle(path string, handler http.Handler) *mux.Route {
-	return a.router.Handle(path, a.middleware.Handler(handler))
-}
 
-func (a *Apis) HandleFunc(path string, f func(http.ResponseWriter, *http.Request)) *mux.Route {
-	return a.router.Handle(path, a.middleware.Handler(http.HandlerFunc(f)))
+	authRoute := &Route{
+		a:       a,
+		methods: []string{},
+	}
+	r.Handle("/auth/login", authRoute.loginHandler()).Methods(http.MethodPost)
+	if a.options.AllowUserRegistration {
+		r.Handle("/auth/register", authRoute.registrationHandler(a.options.DefaultRole)).Methods(http.MethodPost)
+	}
+	r.Handle("/auth/confirm", a.middleware.Handler(authRoute.confirmEmailHandler()))
+	r.Handle("/auth/password", a.middleware.Handler(authRoute.changePasswordHandler())).Methods(http.MethodPost)
+	r.Handle("/auth/meta", a.middleware.Handler(authRoute.updateMeta())).Methods(http.MethodPost)
+
+	return &Server{r}
 }
 
 func (a *Apis) SignToken(token *jwt.Token) (*Token, error) {
@@ -133,6 +116,5 @@ func (a *Apis) SignToken(token *jwt.Token) (*Token, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return &Token{Id: signedToken, ExpiresAt: token.Claims.(jwt.MapClaims)["exp"].(int64)}, nil
 }
