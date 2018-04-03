@@ -95,7 +95,6 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 		}
 	}
 
-
 	authRoute := &Route{
 		a:       a,
 		methods: []string{},
@@ -107,6 +106,8 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	r.Handle("/auth/confirm", a.middleware.Handler(authRoute.confirmEmailHandler()))
 	r.Handle("/auth/password", a.middleware.Handler(authRoute.changePasswordHandler())).Methods(http.MethodPost)
 	r.Handle("/auth/meta", a.middleware.Handler(authRoute.updateMeta())).Methods(http.MethodPost)
+
+	r.Handle("/user", a.middleware.Handler(authRoute.getUserHandler())).Methods(http.MethodGet)
 
 	return &Server{r}
 }

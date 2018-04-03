@@ -16,6 +16,20 @@ type User struct {
 	//profile *datastore.Key
 }
 
+func (u *User) Language(ctx Context) string {
+	if u.Meta == nil {
+		return ""
+	}
+	if l, ok := u.Meta["lang"]; ok {
+		if ls, ok := l.(string); ok {
+			if _, ok := ctx.R.a.allowedTranslations[ls]; ok {
+				return ls
+			}
+		}
+	}
+	return ""
+}
+
 func (u *User) SetMeta(name string, value interface{}) {
 	if u.Meta == nil {
 		u.Meta = map[string]interface{}{}

@@ -299,6 +299,41 @@ func checkPassword(v string) error {
 }
 
 // USER HANDLERS
+func (R *Route) getUserHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, ctx := R.NewContext(r).Authenticate()
+		if !ok {
+			ctx.PrintError(w, errors.ErrUnathorized)
+			return
+		}
+		if ctx.Role != AdminRole {
+			ctx.PrintError(w, errors.ErrUnathorized)
+			return
+		}
+
+		id := r.FormValue("id")
+		keyId, err := datastore.DecodeKey(id)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		// get user
+		user := new(User)
+		err = datastore.Get(ctx, keyId, user)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				ctx.PrintError(w, errors.ErrUserDoesNotExist)
+				return
+			}
+			ctx.PrintError(w, err)
+			return
+		}
+
+		ctx.Print(w, user)
+	}
+}
+
 func (R *Route) loginHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
@@ -391,6 +426,14 @@ func (R *Route) registrationHandler(role Role) http.HandlerFunc {
 
 		if len(meta) > 0 {
 			json.Unmarshal([]byte(meta), &user.Meta)
+		}
+
+		if user.Meta == nil {
+			user.Meta = map[string]interface{}{}
+		}
+
+		if _, ok := user.Meta["lang"]; !ok {
+			user.Meta["lang"] = ctx.Language()
 		}
 
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
