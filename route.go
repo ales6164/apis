@@ -89,7 +89,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 			return
 		}
 
-		q, id, sort, limit, offset := r.FormValue("q"), r.FormValue("id"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset")
+		q, id, sort, limit, offset, ancestor := r.FormValue("q"), r.FormValue("id"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset"), r.FormValue("ancestor")
 
 		if err := R.trigger(BeforeRead, ctx, nil); err != nil {
 			ctx.PrintError(w, err)
@@ -128,11 +128,22 @@ func (R *Route) getHandler() http.HandlerFunc {
 			limitInt, _ := strconv.Atoi(limit)
 			offsetInt, _ := strconv.Atoi(offset)
 
-			hs, err := R.kind.Query(ctx, sort, limitInt, offsetInt, nil, ctx.UserKey)
-			if err != nil {
-				ctx.PrintError(w, err)
-				return
+			var hs []*kind.Holder
+			var err error
+			if ancestor == "false" && ctx.Role == AdminRole {
+				hs, err = R.kind.Query(ctx, sort, limitInt, offsetInt, nil, nil)
+				if err != nil {
+					ctx.PrintError(w, err)
+					return
+				}
+			} else {
+				hs, err = R.kind.Query(ctx, sort, limitInt, offsetInt, nil, ctx.UserKey)
+				if err != nil {
+					ctx.PrintError(w, err)
+					return
+				}
 			}
+
 			var out []map[string]interface{}
 			for _, h := range hs {
 				if err := R.trigger(AfterRead, ctx, h); err != nil {
