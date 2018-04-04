@@ -3,6 +3,7 @@ package apis
 import (
 	"google.golang.org/appengine/datastore"
 	"strings"
+	"golang.org/x/net/context"
 )
 
 type User struct {
@@ -12,8 +13,14 @@ type User struct {
 	Meta              map[string]interface{} `json:"meta"`
 	//Profile           map[string]interface{} `json:"profile"`
 
-	hash    []byte
+	hash []byte
 	//profile *datastore.Key
+}
+
+func GetUser(ctx context.Context, userKey *datastore.Key) (*User, error) {
+	user := new(User)
+	err := datastore.Get(ctx, userKey, user)
+	return user, err
 }
 
 func (u *User) Language(ctx Context) string {
@@ -50,10 +57,10 @@ func (u *User) Load(ps []datastore.Property) error {
 			if k, ok := prop.Value.(string); ok {
 				u.Role = k
 			}
-		/*case "profile":
-			if k, ok := prop.Value.(*datastore.Key); ok {
-				u.profile = k
-			}*/
+			/*case "profile":
+				if k, ok := prop.Value.(*datastore.Key); ok {
+					u.profile = k
+				}*/
 		case "confirmedEmail":
 			if k, ok := prop.Value.(bool); ok {
 				u.HasConfirmedEmail = k

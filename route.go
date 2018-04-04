@@ -22,6 +22,11 @@ type Route struct {
 	roles map[Role]bool
 
 	methods []string
+
+	get    http.HandlerFunc
+	post   http.HandlerFunc
+	put    http.HandlerFunc
+	delete http.HandlerFunc
 }
 
 type Listener func(ctx Context, h *kind.Holder) error
@@ -76,7 +81,27 @@ func (R *Route) Methods(ms ...string) *Route {
 	return R
 }
 
+func (R *Route) Get(x http.HandlerFunc) *Route {
+	R.get = x
+	return R
+}
+func (R *Route) Post(x http.HandlerFunc) *Route {
+	R.post = x
+	return R
+}
+func (R *Route) Put(x http.HandlerFunc) *Route {
+	R.put = x
+	return R
+}
+func (R *Route) Delete(x http.HandlerFunc) *Route {
+	R.delete = x
+	return R
+}
+
 func (R *Route) getHandler() http.HandlerFunc {
+	if R.get != nil {
+		return R.get
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := R.NewContext(r).Authenticate()
 		if !ok {
@@ -163,6 +188,9 @@ func (R *Route) getHandler() http.HandlerFunc {
 }
 
 func (R *Route) postHandler() http.HandlerFunc {
+	if R.post != nil {
+		return R.post
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := R.NewContext(r).Authenticate()
 		if !ok {
@@ -210,6 +238,9 @@ func (R *Route) postHandler() http.HandlerFunc {
 }
 
 func (R *Route) putHandler() http.HandlerFunc {
+	if R.put != nil {
+		return R.put
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := R.NewContext(r).Authenticate()
 		if !ok {
