@@ -7,6 +7,7 @@ import (
 )
 
 type User struct {
+	Id                *datastore.Key         `json:"id"` // not stored
 	Email             string                 `json:"email"`
 	Role              string                 `json:"role"`
 	HasConfirmedEmail bool                   `json:"confirmedEmail"`

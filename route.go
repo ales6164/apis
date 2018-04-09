@@ -376,6 +376,41 @@ func (R *Route) getUserHandler() http.HandlerFunc {
 	}
 }
 
+func (R *Route) getUsersHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, ctx := R.NewContext(r).Authenticate()
+		if !ok {
+			ctx.PrintError(w, errors.ErrUnathorized)
+			return
+		}
+		if ctx.Role != AdminRole {
+			ctx.PrintError(w, errors.ErrUnathorized)
+			return
+		}
+
+		var hs []*User
+		var err error
+
+		q := datastore.NewQuery("_user")
+
+		t := q.Run(ctx)
+		for {
+			var h = new(User)
+			h.Id, err = t.Next(h)
+			if err == datastore.Done {
+				break
+			}
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+			hs = append(hs, h)
+		}
+
+		ctx.Print(w, hs)
+	}
+}
+
 func (R *Route) loginHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)

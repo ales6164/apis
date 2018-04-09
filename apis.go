@@ -108,6 +108,7 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	r.Handle("/auth/meta", a.middleware.Handler(authRoute.updateMeta())).Methods(http.MethodPost)
 
 	r.Handle("/user", a.middleware.Handler(authRoute.getUserHandler())).Methods(http.MethodGet)
+	r.Handle("/users", a.middleware.Handler(authRoute.getUsersHandler())).Methods(http.MethodGet)
 
 	return &Server{r}
 }
