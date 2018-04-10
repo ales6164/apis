@@ -17,19 +17,7 @@ type Worker interface {
 func (x *Field) Parse(value interface{}) ([]datastore.Property, error) {
 	var list []datastore.Property
 	if x.Multiple {
-		if multiArray, ok := value.([]interface{}); ok {
-			for _, value := range multiArray {
-				value, err := x.Check(value)
-				if err != nil {
-					return list, err
-				}
-				props, err := x.Property(value)
-				if err != nil {
-					return list, err
-				}
-				list = append(list, props...)
-			}
-		} else if value == nil {
+		if value == nil {
 			value, err := x.Check(value)
 			if err != nil {
 				return list, err
@@ -40,7 +28,24 @@ func (x *Field) Parse(value interface{}) ([]datastore.Property, error) {
 			}
 			list = append(list, props...)
 		} else {
-			return list, fmt.Errorf("field '%s' value type '%s' is not valid", x.Name, reflect.TypeOf(value).String())
+			rt := reflect.TypeOf(value)
+			switch rt.Kind() {
+			case reflect.Slice:
+			case reflect.Array:
+				for _, value := range value.([]interface{}) {
+					value, err := x.Check(value)
+					if err != nil {
+						return list, err
+					}
+					props, err := x.Property(value)
+					if err != nil {
+						return list, err
+					}
+					list = append(list, props...)
+				}
+			default:
+				return list, fmt.Errorf("field '%s' value type '%s' is not valid", x.Name, reflect.TypeOf(value).String())
+			}
 		}
 	} else {
 		value, err := x.Check(value)

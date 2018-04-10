@@ -3,6 +3,7 @@ package kind
 import (
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
+	"github.com/ales6164/apis/errors"
 )
 
 type Filter struct {
@@ -34,7 +35,7 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 	t := q.Run(ctx)
 	for {
 		var h = k.NewHolder(nil)
-		h.k, err = t.Next(h)
+		h.Key, err = t.Next(h)
 		if err == datastore.Done {
 			break
 		}
@@ -47,36 +48,43 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 }
 
 func (h *Holder) Get(ctx context.Context, key *datastore.Key) error {
-	h.k = key
+	h.Key = key
 	return datastore.Get(ctx, key, h)
 }
 
-func (h *Holder) Add(ctx context.Context, key *datastore.Key) error {
-	var err error
-	h.k = key
-	h.k, err = datastore.Put(ctx, h.k, h)
-	if err != nil {
-		return err
+func (h *Holder) Add(ctx context.Context) error {
+	if h.Key == nil {
+		h.Key = h.Kind.NewIncompleteKey(ctx, h.user)
 	}
-	return nil
+	return datastore.RunInTransaction(ctx, func(tc context.Context) error {
+		err := datastore.Get(tc, h.Key, h)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				h.Key, err = datastore.Put(tc, h.Key, h)
+				return err
+			}
+			return err
+		}
+		return errors.ErrEntityExists
+	}, nil)
 }
 
 func (h *Holder) Update(ctx context.Context, key *datastore.Key) error {
-	h.k = key
+	h.Key = key
 	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
-		err := datastore.Get(tc, h.k, h)
+		err := datastore.Get(tc, h.Key, h)
 		if err != nil {
 			return err
 		}
-		h.k, err = datastore.Put(ctx, h.k, h)
+		h.Key, err = datastore.Put(ctx, h.Key, h)
 		return err
 	}, &datastore.TransactionOptions{XG: true})
 	return err
 }
 
 func (h *Holder) Delete(ctx context.Context, key *datastore.Key) error {
-	h.k = key
-	err := datastore.Delete(ctx, h.k)
+	h.Key = key
+	err := datastore.Delete(ctx, h.Key)
 	if err != nil {
 		return err
 	}

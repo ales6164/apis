@@ -21,7 +21,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method == "OPTIONS" {
 		return
 	}
-
 	s.h.ServeHTTP(w, req)
 }
 

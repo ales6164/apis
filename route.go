@@ -102,19 +102,18 @@ func (R *Route) getHandler() http.HandlerFunc {
 	if R.get != nil {
 		return R.get
 	}
+	if R.kind == nil {
+		return func(w http.ResponseWriter, r *http.Request) {}
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		ok, ctx := R.NewContext(r).Authenticate()
-		if !ok {
-			ctx.PrintError(w, errors.ErrForbidden)
-			return
-		}
+		_, ctx := R.NewContext(r).Authenticate()
 
 		if ok := ctx.HasPermission(R.kind, READ); !ok {
 			ctx.PrintError(w, errors.ErrForbidden)
 			return
 		}
 
-		q, id, sort, limit, offset, ancestor := r.FormValue("q"), r.FormValue("id"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset"), r.FormValue("ancestor")
+		q, name, id, sort, limit, offset, ancestor := r.FormValue("q"), r.FormValue("name"), r.FormValue("id"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset"), r.FormValue("ancestor")
 
 		if err := R.trigger(BeforeRead, ctx, nil); err != nil {
 			ctx.PrintError(w, err)
@@ -141,6 +140,23 @@ func (R *Route) getHandler() http.HandlerFunc {
 			}
 			h := R.kind.NewHolder(ctx.UserKey)
 			err = h.Get(ctx, key)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+			output, _ := ExpandMeta(ctx, h.Output())
+			ctx.PrintResult(w, output)
+			return
+		} else if len(name) > 0 {
+			// ordinary get
+			var parent *datastore.Key
+			if ancestor != "false" {
+				parent = ctx.UserKey
+			}
+
+			key := R.kind.NewKey(ctx, name, parent)
+			h := R.kind.NewHolder(ctx.UserKey)
+			err := h.Get(ctx, key)
 			if err != nil {
 				ctx.PrintError(w, err)
 				return
@@ -191,9 +207,13 @@ func (R *Route) postHandler() http.HandlerFunc {
 	if R.post != nil {
 		return R.post
 	}
+	if R.kind == nil {
+		return func(w http.ResponseWriter, r *http.Request) {}
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		ok, ctx := R.NewContext(r).Authenticate()
-		if !ok {
+		_, ctx := R.NewContext(r).Authenticate()
+
+		if ok := ctx.HasPermission(R.kind, CREATE); !ok {
 			ctx.PrintError(w, errors.ErrForbidden)
 			return
 		}
@@ -210,18 +230,12 @@ func (R *Route) postHandler() http.HandlerFunc {
 			return
 		}
 
-		if ok := ctx.HasPermission(R.kind, CREATE); !ok {
-			ctx.PrintError(w, errors.ErrForbidden)
-			return
-		}
-
 		if err := h.Prepare(); err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
 
-		key := h.Kind.NewIncompleteKey(ctx, ctx.UserKey)
-		err = h.Add(ctx, key)
+		err = h.Add(ctx)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -241,9 +255,13 @@ func (R *Route) putHandler() http.HandlerFunc {
 	if R.put != nil {
 		return R.put
 	}
+	if R.kind == nil {
+		return func(w http.ResponseWriter, r *http.Request) {}
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		ok, ctx := R.NewContext(r).Authenticate()
-		if !ok {
+		_, ctx := R.NewContext(r).Authenticate()
+
+		if ok := ctx.HasPermission(R.kind, UPDATE); !ok {
 			ctx.PrintError(w, errors.ErrForbidden)
 			return
 		}
@@ -255,17 +273,13 @@ func (R *Route) putHandler() http.HandlerFunc {
 			return
 		}
 
-		if ok := ctx.HasPermission(R.kind, UPDATE); !ok {
-			ctx.PrintError(w, errors.ErrForbidden)
-			return
-		}
-
 		var id string
 		inId := h.ParsedInput["id"]
 		if inId == nil {
 			ctx.PrintError(w, errors.New("id not defined"))
 			return
 		}
+		var ok bool
 		if id, ok = inId.(string); !ok {
 			ctx.PrintError(w, errors.New("id must be of type string"))
 			return

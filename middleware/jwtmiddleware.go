@@ -132,7 +132,7 @@ func (m *JWTMiddleware) Handler(h http.Handler) http.Handler {
 			if len(m.Options.RedirectOnError) > 0 {
 				redirect(w, r, m.Options.RedirectOnError)
 			} else {
-				panic(err)
+				//panic(err)
 				//printError(w, err, http.StatusUnauthorized)
 			}
 			return

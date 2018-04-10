@@ -11,7 +11,7 @@ import (
 type Holder struct {
 	Kind *Kind `json:"entity"`
 	user *datastore.Key
-	k    *datastore.Key
+	Key    *datastore.Key
 
 	ParsedInput       map[string]interface{}
 	preparedInputData map[*Field][]datastore.Property // user input
@@ -26,7 +26,7 @@ type Holder struct {
 }
 
 func (h *Holder) Id() string {
-	return h.k.Encode()
+	return h.Key.Encode()
 }
 
 // strips fields from input
@@ -175,8 +175,8 @@ func (h *Holder) Output() map[string]interface{} {
 		output = h.appendPropertyValue(output, prop, h.Kind.fields[prop.Name])
 	}
 
-	if h.k != nil {
-		output["id"] = h.k.Encode()
+	if h.Key != nil {
+		output["id"] = h.Key.Encode()
 	}
 
 	return output

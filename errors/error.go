@@ -23,6 +23,7 @@ func New(msg string) *Error {
 
 var (
 	ErrPasswordLength          = New("password must be between 6 and 128 characters long")
+	ErrEntityExists            = New("entity already exists")
 	ErrEntityNameTooShort      = New("entity name must be at least 3 characters long")
 	ErrEntrySlugDouble         = New("entry with the same slug already exists")
 	ErrUserDoesNotExist        = New("user with that email does not exist")

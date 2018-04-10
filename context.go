@@ -124,7 +124,7 @@ func (ctx Context) Authenticate() (bool, Context) {
 		ctx.UserKey = datastore.NewKey(ctx, "_user", userEmail, 0, nil)
 	} else {
 		ctx.UserEmail = ""
-		ctx.Role = ""
+		ctx.Role = PublicRole
 		ctx.UserKey = nil
 	}
 
