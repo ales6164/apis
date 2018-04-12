@@ -91,6 +91,8 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 				r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 			case http.MethodPut:
 				r.Handle(route.path, a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
+			case http.MethodDelete:
+				r.Handle(route.path, a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
 			}
 		}
 	}

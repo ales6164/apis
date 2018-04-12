@@ -2,10 +2,10 @@ package kind
 
 import (
 	"fmt"
-	"reflect"
 	"google.golang.org/appengine/datastore"
 	"golang.org/x/net/context"
 	"github.com/ales6164/apis/errors"
+	"reflect"
 )
 
 type Worker interface {
@@ -28,11 +28,8 @@ func (x *Field) Parse(value interface{}) ([]datastore.Property, error) {
 			}
 			list = append(list, props...)
 		} else {
-			rt := reflect.TypeOf(value)
-			switch rt.Kind() {
-			case reflect.Slice:
-			case reflect.Array:
-				for _, value := range value.([]interface{}) {
+			if arr, ok := value.([]interface{}); ok {
+				for _, value := range arr {
 					value, err := x.Check(value)
 					if err != nil {
 						return list, err
@@ -43,7 +40,19 @@ func (x *Field) Parse(value interface{}) ([]datastore.Property, error) {
 					}
 					list = append(list, props...)
 				}
-			default:
+			} else if arr, ok := value.([]string); ok {
+				for _, value := range arr {
+					value, err := x.Check(value)
+					if err != nil {
+						return list, err
+					}
+					props, err := x.Property(value)
+					if err != nil {
+						return list, err
+					}
+					list = append(list, props...)
+				}
+			} else {
 				return list, fmt.Errorf("field '%s' value type '%s' is not valid", x.Name, reflect.TypeOf(value).String())
 			}
 		}

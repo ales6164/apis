@@ -11,7 +11,7 @@ import (
 type Holder struct {
 	Kind *Kind `json:"entity"`
 	user *datastore.Key
-	Key    *datastore.Key
+	Key  *datastore.Key
 
 	ParsedInput       map[string]interface{}
 	preparedInputData map[*Field][]datastore.Property // user input
@@ -91,10 +91,21 @@ func (h *Holder) ParseInput(body []byte) error {
 
 func (h *Holder) Prepare() error {
 	for _, f := range h.Kind.Fields {
-		if value, ok  := h.ParsedInput[f.Name]; ok {
+		if value, ok := h.ParsedInput[f.Name]; ok {
 			if f.Kind != nil {
+				// IF KIND SPECIFIED
 				if f.Multiple {
 					if arr, ok := value.([]interface{}); ok {
+						for _, v := range arr {
+							bs, _ := json.Marshal(v)
+							h.preparedInputData[f] = append(h.preparedInputData[f], datastore.Property{
+								Value:    string(bs),
+								NoIndex:  true,
+								Multiple: f.Multiple,
+								Name:     f.Name,
+							})
+						}
+					} else if arr, ok := value.([]string); ok {
 						for _, v := range arr {
 							bs, _ := json.Marshal(v)
 							h.preparedInputData[f] = append(h.preparedInputData[f], datastore.Property{

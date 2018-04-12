@@ -317,6 +317,14 @@ func (R *Route) putHandler() http.HandlerFunc {
 	}
 }
 
+// todo
+func (R *Route) deleteHandler() http.HandlerFunc {
+	if R.delete != nil {
+		return R.delete
+	}
+	return func(w http.ResponseWriter, r *http.Request) {}
+}
+
 var (
 	ErrEmailUndefined    = errors.New("email undefined")
 	ErrPasswordUndefined = errors.New("password undefined")
