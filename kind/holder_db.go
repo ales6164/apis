@@ -35,7 +35,7 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 	t := q.Run(ctx)
 	for {
 		var h = k.NewHolder(nil)
-		h.Key, err = t.Next(h)
+		h.key, err = t.Next(h)
 		if err == datastore.Done {
 			break
 		}
@@ -48,43 +48,50 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 }
 
 func (h *Holder) Get(ctx context.Context, key *datastore.Key) error {
-	h.Key = key
+	h.key = key
 	return datastore.Get(ctx, key, h)
 }
 
+// key id must be a string otherwise it creates incomplete key
 func (h *Holder) Add(ctx context.Context) error {
-	if h.Key == nil {
-		h.Key = h.Kind.NewIncompleteKey(ctx, h.user)
+	if !h.hasKey || h.key == nil {
+		h.key = h.Kind.NewIncompleteKey(ctx, h.user)
 	}
-	return datastore.RunInTransaction(ctx, func(tc context.Context) error {
-		err := datastore.Get(tc, h.Key, h)
-		if err != nil {
-			if err == datastore.ErrNoSuchEntity {
-				h.Key, err = datastore.Put(tc, h.Key, h)
+	if h.key.Incomplete() {
+		var err error
+		h.key, err = datastore.Put(ctx, h.key, h)
+		return err
+	} else {
+		return datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			err := datastore.Get(tc, h.key, h)
+			if err != nil {
+				if err == datastore.ErrNoSuchEntity {
+					h.key, err = datastore.Put(tc, h.key, h)
+					return err
+				}
 				return err
 			}
-			return err
-		}
-		return errors.ErrEntityExists
-	}, nil)
+			return errors.ErrEntityExists
+		}, nil)
+	}
 }
 
 func (h *Holder) Update(ctx context.Context, key *datastore.Key) error {
-	h.Key = key
+	h.key = key
 	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
-		err := datastore.Get(tc, h.Key, h)
+		err := datastore.Get(tc, h.key, h)
 		if err != nil {
 			return err
 		}
-		h.Key, err = datastore.Put(ctx, h.Key, h)
+		h.key, err = datastore.Put(ctx, h.key, h)
 		return err
 	}, &datastore.TransactionOptions{XG: true})
 	return err
 }
 
 func (h *Holder) Delete(ctx context.Context, key *datastore.Key) error {
-	h.Key = key
-	err := datastore.Delete(ctx, h.Key)
+	h.key = key
+	err := datastore.Delete(ctx, h.key)
 	if err != nil {
 		return err
 	}
