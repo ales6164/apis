@@ -9,13 +9,16 @@ import (
 )
 
 type Holder struct {
-	Kind   *Kind `json:"entity"`
+	Kind   *Kind
 	user   *datastore.Key
 	key    *datastore.Key
 	hasKey bool
 
+
+
+
 	ParsedInput       map[string]interface{}
-	preparedInputData map[*Field][]datastore.Property // user input
+	preparedInputData map[*Field][]datastore.Property // todo: DO WE NEED TO PROPERTISE BEFORE SAVING TO DATASTORE?!
 
 	hasLoadedStoredData bool
 	loadedStoredData    map[string][]datastore.Property // data already stored in datastore - if exists
@@ -254,7 +257,7 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 			h.CreatedAt = metaCreatedAt[0].Value.(time.Time)
 			h.datastoreData = append(h.datastoreData, metaCreatedAt[0])
 		}
-		if metaCreatedBy, ok := h.loadedStoredData["meta.createdBy"]; ok {
+		if metaCreatedBy, ok := h.loadedStoredData["meta.createdBy"]; ok && metaCreatedBy[0].Value != nil {
 			h.CreatedBy = metaCreatedBy[0].Value.(*datastore.Key)
 			h.datastoreData = append(h.datastoreData, metaCreatedBy[0])
 		}
