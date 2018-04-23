@@ -165,6 +165,11 @@ func (ctx *Context) Print(w http.ResponseWriter, result interface{}) {
 	json.NewEncoder(w).Encode(result)
 }
 
+func (ctx *Context) PrintBytes(w http.ResponseWriter, result []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(result)
+}
+
 func (ctx *Context) PrintResult(w http.ResponseWriter, result map[string]interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 

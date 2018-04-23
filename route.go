@@ -10,6 +10,9 @@ import (
 	"encoding/json"
 	"golang.org/x/net/context"
 	"github.com/ales6164/apis/errors"
+	"bytes"
+	"google.golang.org/appengine/search"
+	"reflect"
 )
 
 type Route struct {
@@ -120,11 +123,27 @@ func (R *Route) getHandler() http.HandlerFunc {
 			return
 		}
 
-		if len(q) > 0 && R.searchListener != nil {
-			results, err := R.searchListener(ctx, q)
+		if len(q) > 0 && R.kind.EnableSearch {
+			if q == "*" {
+				q = ""
+			}
+			index, err := OpenIndex(R.kind.Name)
 			if err != nil {
 				ctx.PrintError(w, err)
 				return
+			}
+			var results []interface{}
+			for t := index.Search(ctx, q, nil); ; {
+				var doc = reflect.New(R.kind.SearchType).Interface()
+				_, err := t.Next(doc)
+				if err == search.Done {
+					break
+				}
+				if err != nil {
+					ctx.PrintError(w, err)
+					return
+				}
+				results = append(results, doc)
 			}
 			ctx.PrintResult(w, map[string]interface{}{
 				"count":   len(results),
@@ -144,8 +163,8 @@ func (R *Route) getHandler() http.HandlerFunc {
 				ctx.PrintError(w, err)
 				return
 			}
-			output, _ := ExpandMeta(ctx, h.Output())
-			ctx.PrintResult(w, output)
+			output := h.Output()
+			ctx.Print(w, output)
 			return
 		} else if len(name) > 0 {
 			// ordinary get
@@ -161,8 +180,8 @@ func (R *Route) getHandler() http.HandlerFunc {
 				ctx.PrintError(w, err)
 				return
 			}
-			output, _ := ExpandMeta(ctx, h.Output())
-			ctx.PrintResult(w, output)
+			output := h.Output()
+			ctx.Print(w, output)
 			return
 		} else {
 			// query
@@ -185,13 +204,13 @@ func (R *Route) getHandler() http.HandlerFunc {
 				}
 			}
 
-			var out []map[string]interface{}
+			var out []interface{}
 			for _, h := range hs {
 				if err := R.trigger(AfterRead, ctx, h); err != nil {
 					ctx.PrintError(w, err)
 					return
 				}
-				dt, _ := ExpandMeta(ctx, h.Output())
+				dt := h.Output()
 				out = append(out, dt)
 			}
 			ctx.PrintResult(w, map[string]interface{}{
@@ -219,18 +238,13 @@ func (R *Route) postHandler() http.HandlerFunc {
 		}
 
 		h := R.kind.NewHolder(ctx.UserKey)
-		err := h.ParseInput(ctx.Body())
+		err := h.Parse(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
 
 		if err := R.trigger(BeforeCreate, ctx, h); err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		if err := h.Prepare(); err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
@@ -246,8 +260,35 @@ func (R *Route) postHandler() http.HandlerFunc {
 			return
 		}
 
-		output, _ := ExpandMeta(ctx, h.Output())
-		ctx.PrintResult(w, output)
+		if R.kind.EnableSearch {
+			// put to search
+			index, err := OpenIndex(R.kind.Name)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+
+			v := reflect.ValueOf(h.Value()).Elem()
+
+			doc := reflect.New(R.kind.SearchType)
+
+			for i := 0; i < R.kind.SearchType.NumField(); i++ {
+				docFieldName := R.kind.SearchType.Field(i).Name
+
+				valField := v.FieldByName(docFieldName)
+
+				docField := doc.Elem().FieldByName(docFieldName)
+				docField.Set(valField.Convert(docField.Type()))
+			}
+
+
+			if _, err := index.Put(ctx, h.Id(), doc.Interface()); err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+		}
+
+		ctx.Print(w, h.Output())
 	}
 }
 
@@ -258,6 +299,11 @@ func (R *Route) putHandler() http.HandlerFunc {
 	if R.kind == nil {
 		return func(w http.ResponseWriter, r *http.Request) {}
 	}
+	type UpdateVal struct {
+		Id    string      `json:"id"`
+		Name  string      `json:"name"`
+		Value interface{} `json:"value"`
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		_, ctx := R.NewContext(r).Authenticate()
 
@@ -266,29 +312,42 @@ func (R *Route) putHandler() http.HandlerFunc {
 			return
 		}
 
+		var data = UpdateVal{}
+		json.Unmarshal(ctx.Body(), &data)
+
 		h := R.kind.NewHolder(ctx.UserKey)
-		err := h.ParseInput(ctx.Body())
+		err := h.Parse(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
 
-		var id string
-		inId := h.ParsedInput["id"]
-		if inId == nil {
-			ctx.PrintError(w, errors.New("id not defined"))
-			return
-		}
-		var ok bool
-		if id, ok = inId.(string); !ok {
-			ctx.PrintError(w, errors.New("id must be of type string"))
+		if len(data.Id) == 0 && len(data.Name) == 0 {
+			ctx.PrintError(w, errors.New("must provide id or name"))
 			return
 		}
 
-		key, err := datastore.DecodeKey(id)
+		var buf bytes.Buffer
+		err = json.NewEncoder(&buf).Encode(data.Value)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
+		}
+
+		if data.Value == nil {
+			ctx.PrintError(w, errors.New("must provide value"))
+			return
+		}
+
+		var key *datastore.Key
+		if len(data.Id) > 0 {
+			key, err = datastore.DecodeKey(data.Id)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+		} else {
+			key = R.kind.NewKey(ctx, data.Name, ctx.UserKey)
 		}
 
 		if err := R.trigger(BeforeUpdate, ctx, h); err != nil {
@@ -296,10 +355,10 @@ func (R *Route) putHandler() http.HandlerFunc {
 			return
 		}
 
-		if err := h.Prepare(); err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
+		h.Parse(buf.Bytes())
+
+		/*ctx.Print(w, h.Output())
+		return*/
 
 		err = h.Update(ctx, key)
 		if err != nil {
@@ -312,8 +371,8 @@ func (R *Route) putHandler() http.HandlerFunc {
 			return
 		}
 
-		output, _ := ExpandMeta(ctx, h.Output())
-		ctx.PrintResult(w, output)
+		output := h.Output()
+		ctx.Print(w, output)
 	}
 }
 
