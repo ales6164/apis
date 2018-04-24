@@ -9,9 +9,11 @@ import (
 )
 
 type Kind struct {
-	Type   reflect.Type
+	Type        reflect.Type
+	MetaFields  []MetaField
+	MetaIdField MetaField
 	*Options
-	fields []*Field
+	fields      []*Field
 }
 
 type Options struct {
@@ -19,6 +21,11 @@ type Options struct {
 	EnableSearch         bool
 	RetrieveByIDOnSearch bool
 	SearchType           reflect.Type
+}
+
+type MetaField struct {
+	Type      string
+	FieldName string
 }
 
 type Field struct {
@@ -95,6 +102,26 @@ func New(t reflect.Type, opt *Options) *Kind {
 					} else if v == "onlyfilter" {
 						field.SearchField = false
 						field.SearchField = true
+					}
+				}
+			}
+		}
+
+		if val, ok := structField.Tag.Lookup("apis"); ok {
+			for n, v := range strings.Split(val, ",") {
+				v = strings.ToLower(strings.TrimSpace(v))
+				switch n {
+				case 0:
+					if v == "id" {
+						k.MetaIdField = MetaField{
+							Type:      v,
+							FieldName: structField.Name,
+						}
+					} else {
+						k.MetaFields = append(k.MetaFields, MetaField{
+							Type:      v,
+							FieldName: structField.Name,
+						})
 					}
 				}
 			}

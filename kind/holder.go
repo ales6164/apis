@@ -5,6 +5,7 @@ import (
 	"time"
 	"encoding/json"
 	"github.com/imdario/mergo"
+	"reflect"
 )
 
 type Holder struct {
@@ -12,8 +13,8 @@ type Holder struct {
 	user   *datastore.Key
 	hasKey bool
 
+	key   *datastore.Key
 	value interface{}
-	meta  Meta
 
 	hasInputData  bool // when updating
 	hasLoadedData bool
@@ -29,17 +30,20 @@ type Meta struct {
 
 func (h *Holder) Id() string {
 	if h.hasKey {
-		return h.meta.Id.Encode()
+		return h.key.Encode()
 	}
 	return ""
 }
 
 func (h *Holder) Value() interface{} {
+	if h.hasKey {
+		v := reflect.ValueOf(h.value).Elem()
+		idField := v.FieldByName(h.Kind.MetaIdField.FieldName)
+		if idField.IsValid() && idField.CanSet() {
+			idField.Set(reflect.ValueOf(h.key))
+		}
+	}
 	return h.value
-}
-
-func (h *Holder) Meta() Meta {
-	return h.meta
 }
 
 func (h *Holder) Parse(body []byte) error {
@@ -48,95 +52,56 @@ func (h *Holder) Parse(body []byte) error {
 	return json.Unmarshal(body, &h.value)
 }
 
-func (h *Holder) Bytes(withMeta bool) ([]byte, error) {
-	if withMeta {
-		m := h.Meta()
-		m.Value = h.Value()
-		return json.Marshal(m)
-	}
+func (h *Holder) Bytes() ([]byte, error) {
 	return json.Marshal(h.Value())
-}
-
-func (h *Holder) Output() interface{} {
-	m := h.Meta()
-	m.Value = h.Value()
-	return m
 }
 
 func (h *Holder) SetKey(k *datastore.Key) {
 	if k != nil {
-		h.meta.Id = k
+		h.key = k
 		h.hasKey = true
 	}
 }
 
 func (h *Holder) GetKey() *datastore.Key {
-	return h.meta.Id
+	return h.key
 }
 
 func (h *Holder) Load(ps []datastore.Property) error {
 	h.hasLoadedData = true
-	var ls []datastore.Property
-	for _, prop := range ps {
-		switch prop.Name {
-		case "meta.createdBy":
-			if v, ok := prop.Value.(*datastore.Key); ok {
-				h.meta.CreatedBy = v
-			}
-		case "meta.createdAt":
-			if v, ok := prop.Value.(time.Time); ok {
-				h.meta.CreatedAt = v
-			}
-		case "meta.updatedAt":
-			if v, ok := prop.Value.(time.Time); ok {
-				h.meta.UpdatedAt = v
-			}
-		default:
-			ls = append(ls, prop)
-		}
-	}
 
 	if h.hasInputData {
 		// replace only empty fields
 		n := h.Kind.New()
-		if err := datastore.LoadStruct(n, ls); err != nil {
+		if err := datastore.LoadStruct(n, ps); err != nil {
 			return err
 		}
 		return mergo.Merge(h.value, n)
 	}
 
-	return datastore.LoadStruct(h.value, ls)
+	return datastore.LoadStruct(h.value, ps)
 }
 
 func (h *Holder) Save() ([]datastore.Property, error) {
-	ps, err := datastore.SaveStruct(h.value)
-	var now = time.Now()
-	if h.hasLoadedData {
-		ps = append(ps, datastore.Property{
-			Name:  "meta.createdBy",
-			Value: h.meta.CreatedBy,
-		})
-		ps = append(ps, datastore.Property{
-			Name:  "meta.createdAt",
-			Value: h.meta.CreatedAt,
-		})
-		ps = append(ps, datastore.Property{
-			Name:  "meta.updatedAt",
-			Value: now,
-		})
-	} else {
-		ps = append(ps, datastore.Property{
-			Name:  "meta.createdBy",
-			Value: h.user,
-		})
-		ps = append(ps, datastore.Property{
-			Name:  "meta.createdAt",
-			Value: now,
-		})
-		ps = append(ps, datastore.Property{
-			Name:  "meta.updatedAt",
-			Value: now,
-		})
+	var now = reflect.ValueOf(time.Now())
+
+	v := reflect.ValueOf(h.value).Elem()
+	for _, meta := range h.Kind.MetaFields {
+		field := v.FieldByName(meta.FieldName)
+		if field.CanSet() {
+			switch meta.Type {
+			case "updatedAt":
+				field.Set(now)
+			case "createdAt":
+				if !h.hasLoadedData {
+					field.Set(now)
+				}
+			case "createdBy":
+				if !h.hasLoadedData {
+					field.Set(reflect.ValueOf(h.user))
+				}
+			}
+		}
 	}
-	return ps, err
+	return datastore.SaveStruct(h.value)
 }

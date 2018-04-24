@@ -132,10 +132,57 @@ func (R *Route) getHandler() http.HandlerFunc {
 				ctx.PrintError(w, err)
 				return
 			}
+
+			// search refinements
+
+			var itDiscovery = index.Search(ctx, q, &search.SearchOptions{
+				Facets: []search.FacetSearchOption{
+					search.AutoFacetDiscovery(0, 0),
+				},
+			})
+
+			facetsResult, _ := itDiscovery.Facets()
+			var facsOutput = map[string]interface{}{}
+			for _, f := range facetsResult {
+				for _, v := range f {
+					facsOutput[v.Name] = f
+				}
+			}
+
+			var facets []search.Facet
+			for key, val := range r.URL.Query() {
+				if key == "filter" {
+					for _, v := range val {
+						filter := strings.Split(v, ":")
+						if len(filter) == 2 {
+							// todo: currently only supports facet type search.Atom
+							facets = append(facets, search.Facet{Name: filter[0], Value: search.Atom(filter[1])})
+						}
+
+					}
+				}
+			}
+
+			var sortExpr []search.SortExpression
+			if len(sort) > 0 {
+				var desc bool
+				if sort[:1] == "-" {
+					sort = sort[1:]
+					desc = true
+				}
+				sortExpr = append(sortExpr, search.SortExpression{Expr: sort, Reverse: !desc})
+			}
+
 			var results []interface{}
-			for t := index.Search(ctx, q, nil); ; {
+			var docKeys []*datastore.Key
+
+			for t := index.Search(ctx, q, &search.SearchOptions{
+				Refinements: facets,
+				Sort: &search.SortOptions{
+					Expressions: sortExpr,
+				}}); ; {
 				var doc = reflect.New(R.kind.SearchType).Interface()
-				_, err := t.Next(doc)
+				docKey, err := t.Next(doc)
 				if err == search.Done {
 					break
 				}
@@ -143,12 +190,32 @@ func (R *Route) getHandler() http.HandlerFunc {
 					ctx.PrintError(w, err)
 					return
 				}
+
+				if key, err := datastore.DecodeKey(docKey); err == nil {
+					docKeys = append(docKeys, key)
+				}
+
 				results = append(results, doc)
 			}
+
+			if R.kind.RetrieveByIDOnSearch && len(docKeys) == len(results) {
+				hs, err := kind.GetMulti(ctx, R.kind, docKeys...)
+				if err != nil {
+					ctx.PrintError(w, err)
+					return
+				}
+
+				for k, h := range hs {
+					results[k] = h.Value()
+				}
+			}
+
 			ctx.PrintResult(w, map[string]interface{}{
 				"count":   len(results),
 				"results": results,
+				"filters": facsOutput,
 			})
+
 			return
 		} else if len(id) > 0 {
 			// ordinary get
@@ -163,8 +230,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 				ctx.PrintError(w, err)
 				return
 			}
-			output := h.Output()
-			ctx.Print(w, output)
+			ctx.Print(w, h.Value())
 			return
 		} else if len(name) > 0 {
 			// ordinary get
@@ -180,8 +246,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 				ctx.PrintError(w, err)
 				return
 			}
-			output := h.Output()
-			ctx.Print(w, output)
+			ctx.Print(w, h.Value())
 			return
 		} else {
 			// query
@@ -210,8 +275,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 					ctx.PrintError(w, err)
 					return
 				}
-				dt := h.Output()
-				out = append(out, dt)
+				out = append(out, h.Value())
 			}
 			ctx.PrintResult(w, map[string]interface{}{
 				"count":   len(out),
@@ -276,11 +340,28 @@ func (R *Route) postHandler() http.HandlerFunc {
 				docFieldName := R.kind.SearchType.Field(i).Name
 
 				valField := v.FieldByName(docFieldName)
+				if !valField.IsValid() {
+					continue
+				}
 
 				docField := doc.Elem().FieldByName(docFieldName)
-				docField.Set(valField.Convert(docField.Type()))
-			}
+				if docField.CanSet() {
+					if docField.Kind() == reflect.Slice {
 
+						// make slice to get value type
+						sliceValTyp := reflect.MakeSlice(docField.Type(), 1, 1).Index(0).Type()
+
+						if valField.Kind() == reflect.Slice {
+							for j := 0; j < valField.Len(); j++ {
+								docField.Set(reflect.Append(docField, valField.Index(j).Convert(sliceValTyp)))
+							}
+						}
+					} else {
+						docField.Set(valField.Convert(docField.Type()))
+					}
+
+				}
+			}
 
 			if _, err := index.Put(ctx, h.Id(), doc.Interface()); err != nil {
 				ctx.PrintError(w, err)
@@ -288,7 +369,7 @@ func (R *Route) postHandler() http.HandlerFunc {
 			}
 		}
 
-		ctx.Print(w, h.Output())
+		ctx.Print(w, h.Value())
 	}
 }
 
@@ -371,8 +452,7 @@ func (R *Route) putHandler() http.HandlerFunc {
 			return
 		}
 
-		output := h.Output()
-		ctx.Print(w, output)
+		ctx.Print(w, h.Value())
 	}
 }
 

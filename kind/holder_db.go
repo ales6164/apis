@@ -35,7 +35,8 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 	t := q.Run(ctx)
 	for {
 		var h = k.NewHolder(nil)
-		h.meta.Id, err = t.Next(h)
+		h.key, err = t.Next(h)
+		h.hasKey = true
 		if err == datastore.Done {
 			break
 		}
@@ -47,26 +48,38 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 	return hs, nil
 }
 
+func GetMulti(ctx context.Context, kind *Kind, key ...*datastore.Key) ([]*Holder, error) {
+	var hs []*Holder
+	for _, k := range key {
+		h := kind.NewHolder(nil)
+		h.SetKey(k)
+		hs = append(hs, h)
+	}
+
+	err := datastore.GetMulti(ctx, key, hs)
+	return hs, err
+}
+
 func (h *Holder) Get(ctx context.Context, key *datastore.Key) error {
-	h.meta.Id = key
+	h.SetKey(key)
 	return datastore.Get(ctx, key, h)
 }
 
 // key id must be a string otherwise it creates incomplete key
 func (h *Holder) Add(ctx context.Context) error {
-	if !h.hasKey || h.meta.Id == nil {
-		h.meta.Id = h.Kind.NewIncompleteKey(ctx, h.user)
+	if !h.hasKey || h.key == nil {
+		h.SetKey(h.Kind.NewIncompleteKey(ctx, h.user))
 	}
-	if h.meta.Id.Incomplete() {
+	if h.key.Incomplete() {
 		var err error
-		h.meta.Id, err = datastore.Put(ctx, h.meta.Id, h)
+		h.key, err = datastore.Put(ctx, h.key, h)
 		return err
 	} else {
 		return datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			err := datastore.Get(tc, h.meta.Id, h)
+			err := datastore.Get(tc, h.key, h)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
-					h.meta.Id, err = datastore.Put(tc, h.meta.Id, h)
+					h.key, err = datastore.Put(tc, h.key, h)
 					return err
 				}
 				return err
@@ -77,21 +90,21 @@ func (h *Holder) Add(ctx context.Context) error {
 }
 
 func (h *Holder) Update(ctx context.Context, key *datastore.Key) error {
-	h.meta.Id = key
+	h.SetKey(key)
 	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
-		err := datastore.Get(tc, h.meta.Id, h)
+		err := datastore.Get(tc, h.key, h)
 		if err != nil {
 			return err
 		}
-		h.meta.Id, err = datastore.Put(ctx, h.meta.Id, h)
+		h.key, err = datastore.Put(ctx, h.key, h)
 		return err
 	}, &datastore.TransactionOptions{XG: true})
 	return err
 }
 
 func (h *Holder) Delete(ctx context.Context, key *datastore.Key) error {
-	h.meta.Id = key
-	err := datastore.Delete(ctx, h.meta.Id)
+	h.SetKey(key)
+	err := datastore.Delete(ctx, h.key)
 	if err != nil {
 		return err
 	}
