@@ -173,7 +173,12 @@ func (ctx *Context) PrintBytes(w http.ResponseWriter, result []byte) {
 func (ctx *Context) PrintResult(w http.ResponseWriter, result map[string]interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(result)
+	bs, err := json.Marshal(result)
+	if err != nil {
+		ctx.PrintError(w, err)
+		return
+	}
+	w.Write(bs)
 }
 
 func (ctx *Context) PrintAuth(w http.ResponseWriter, token *Token, user *User) {

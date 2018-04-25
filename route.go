@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"google.golang.org/appengine/search"
 	"reflect"
+	"math"
 )
 
 type Route struct {
@@ -101,6 +102,12 @@ func (R *Route) Delete(x http.HandlerFunc) *Route {
 	return R
 }
 
+type FacetOutput struct {
+	Count int         `json:"count"`
+	Value interface{} `json:"value"`
+	Name  string      `json:"name"`
+}
+
 func (R *Route) getHandler() http.HandlerFunc {
 	if R.get != nil {
 		return R.get
@@ -116,7 +123,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 			return
 		}
 
-		q, name, id, sort, limit, offset, ancestor := r.FormValue("q"), r.FormValue("name"), r.FormValue("id"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset"), r.FormValue("ancestor")
+		q, next, name, id, sort, limit, offset, ancestor := r.FormValue("q"), r.FormValue("next"), r.FormValue("name"), r.FormValue("id"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset"), r.FormValue("ancestor")
 
 		if err := R.trigger(BeforeRead, ctx, nil); err != nil {
 			ctx.PrintError(w, err)
@@ -133,22 +140,48 @@ func (R *Route) getHandler() http.HandlerFunc {
 				return
 			}
 
-			// search refinements
-
+			// we need this to retrieve possible facets/filters
 			var itDiscovery = index.Search(ctx, q, &search.SearchOptions{
+				IDsOnly: R.kind.RetrieveByIDOnSearch,
 				Facets: []search.FacetSearchOption{
 					search.AutoFacetDiscovery(0, 0),
 				},
 			})
 
 			facetsResult, _ := itDiscovery.Facets()
-			var facsOutput = map[string]interface{}{}
+			var facsOutput = map[string][]FacetOutput{}
 			for _, f := range facetsResult {
 				for _, v := range f {
-					facsOutput[v.Name] = f
+					if _, ok := facsOutput[v.Name]; !ok {
+						facsOutput[v.Name] = []FacetOutput{}
+					}
+					if rang, ok := v.Value.(search.Range); ok {
+						var value interface{}
+						if rang.Start == math.Inf(-1) || rang.End == math.Inf(1) {
+							value = "Inf"
+						} else {
+							value = map[string]interface{}{
+								"start": rang.Start,
+								"end":   rang.End,
+							}
+						}
+						facsOutput[v.Name] = append(facsOutput[v.Name], FacetOutput{
+							Count: v.Count,
+							Value: value,
+							Name:  v.Name,
+						})
+					} else if rang, ok := v.Value.(search.Atom); ok {
+						facsOutput[v.Name] = append(facsOutput[v.Name], FacetOutput{
+							Count: v.Count,
+							Value: string(rang),
+							Name:  v.Name,
+						})
+					}
+
 				}
 			}
 
+			// build facets
 			var facets []search.Facet
 			for key, val := range r.URL.Query() {
 				if key == "filter" {
@@ -160,9 +193,33 @@ func (R *Route) getHandler() http.HandlerFunc {
 						}
 
 					}
+				} else if key == "range" {
+					for _, v := range val {
+						filter := strings.Split(v, ":")
+						if len(filter) == 2 {
+
+							rangeStr := strings.Split(filter[1], "-")
+							if len(rangeStr) == 2 {
+								rangeStart, _ := strconv.ParseFloat(rangeStr[0], 64)
+								rangeEnd, _ := strconv.ParseFloat(rangeStr[1], 64)
+
+								facets = append(facets, search.Facet{Name: filter[0], Value: search.Range{
+									Start: rangeStart,
+									End:   rangeEnd,
+								}})
+							}
+						}
+					}
 				}
 			}
 
+			// limit
+			var intLimit int
+			if len(limit) > 0 {
+				intLimit, _ = strconv.Atoi(limit)
+			}
+
+			// sorting
 			var sortExpr []search.SortExpression
 			if len(sort) > 0 {
 				var desc bool
@@ -173,11 +230,16 @@ func (R *Route) getHandler() http.HandlerFunc {
 				sortExpr = append(sortExpr, search.SortExpression{Expr: sort, Reverse: !desc})
 			}
 
+			// real search
 			var results []interface{}
 			var docKeys []*datastore.Key
-
-			for t := index.Search(ctx, q, &search.SearchOptions{
-				Refinements: facets,
+			var t *search.Iterator
+			for t = index.Search(ctx, q, &search.SearchOptions{
+				IDsOnly:       R.kind.RetrieveByIDOnSearch,
+				Refinements:   facets,
+				Cursor:        search.Cursor(next),
+				CountAccuracy: intLimit,
+				Limit:         intLimit,
 				Sort: &search.SortOptions{
 					Expressions: sortExpr,
 				}}); ; {
@@ -198,22 +260,31 @@ func (R *Route) getHandler() http.HandlerFunc {
 				results = append(results, doc)
 			}
 
-			if R.kind.RetrieveByIDOnSearch && len(docKeys) == len(results) {
-				hs, err := kind.GetMulti(ctx, R.kind, docKeys...)
-				if err != nil {
-					ctx.PrintError(w, err)
+			// fetch real entries from datastore
+			if R.kind.RetrieveByIDOnSearch {
+				if len(docKeys) == len(results) {
+					hs, err := kind.GetMulti(ctx, R.kind, docKeys...)
+					if err != nil {
+						ctx.PrintError(w, err)
+						return
+					}
+					for k, h := range hs {
+						results[k] = h.Value()
+					}
+				} else {
+					ctx.PrintError(w, errors.New("results mismatch"))
 					return
-				}
-
-				for k, h := range hs {
-					results[k] = h.Value()
 				}
 			}
 
 			ctx.PrintResult(w, map[string]interface{}{
-				"count":   len(results),
+				"count":   t.Count(),
 				"results": results,
 				"filters": facsOutput,
+				"cursor": map[string]interface{}{
+					"next": t.Cursor(),
+					"prev": next,
+				},
 			})
 
 			return
