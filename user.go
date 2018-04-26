@@ -7,15 +7,13 @@ import (
 )
 
 type User struct {
-	Id                *datastore.Key         `json:"id"` // not stored
-	Email             string                 `json:"email"`
-	Role              string                 `json:"role"`
-	HasConfirmedEmail bool                   `json:"confirmedEmail"`
-	Meta              map[string]interface{} `json:"meta"`
-	//Profile           map[string]interface{} `json:"profile"`
-
-	hash []byte
-	//profile *datastore.Key
+	Id                *datastore.Key         `datastore:"-" json:"id"`
+	Email             string                 `datastore:"email" json:"email"`
+	Role              string                 `datastore:"role" json:"role"`
+	IsAnonymous       bool                   `datastore:"anonymous" json:"anonymous"`
+	HasConfirmedEmail bool                   `datastore:"confirmedEmail" json:"confirmedEmail"`
+	Meta              map[string]interface{} `datastore:"meta" json:"meta"`
+	Hash              []byte                 `datastore:"hash" json:"-"`
 }
 
 func GetUser(ctx context.Context, userKey *datastore.Key) (*User, error) {
@@ -24,9 +22,9 @@ func GetUser(ctx context.Context, userKey *datastore.Key) (*User, error) {
 	return user, err
 }
 
-func (u *User) Language(ctx Context) string {
+func (u *User) Language(ctx Context, defaultLang string) string {
 	if u.Meta == nil {
-		return ""
+		return defaultLang
 	}
 	if l, ok := u.Meta["lang"]; ok {
 		if ls, ok := l.(string); ok {
@@ -35,7 +33,7 @@ func (u *User) Language(ctx Context) string {
 			}
 		}
 	}
-	return ""
+	return defaultLang
 }
 
 func (u *User) SetMeta(name string, value interface{}) {
@@ -47,7 +45,6 @@ func (u *User) SetMeta(name string, value interface{}) {
 
 func (u *User) Load(ps []datastore.Property) error {
 	u.Meta = map[string]interface{}{}
-
 	for _, prop := range ps {
 		switch prop.Name {
 		case "email":
@@ -58,17 +55,17 @@ func (u *User) Load(ps []datastore.Property) error {
 			if k, ok := prop.Value.(string); ok {
 				u.Role = k
 			}
-			/*case "profile":
-				if k, ok := prop.Value.(*datastore.Key); ok {
-					u.profile = k
-				}*/
 		case "confirmedEmail":
 			if k, ok := prop.Value.(bool); ok {
 				u.HasConfirmedEmail = k
 			}
 		case "hash":
 			if k, ok := prop.Value.([]byte); ok {
-				u.hash = k
+				u.Hash = k
+			}
+		case "anonymous":
+			if k, ok := prop.Value.(bool); ok {
+				u.IsAnonymous = k
 			}
 		default:
 			spl := strings.Split(prop.Name, ".")
@@ -79,13 +76,11 @@ func (u *User) Load(ps []datastore.Property) error {
 			}
 		}
 	}
-
 	return nil
 }
 
 func (u *User) Save() ([]datastore.Property, error) {
 	var ps []datastore.Property
-
 	ps = append(ps, datastore.Property{
 		Name:  "email",
 		Value: u.Email,
@@ -94,19 +89,18 @@ func (u *User) Save() ([]datastore.Property, error) {
 		Name:  "role",
 		Value: u.Role,
 	})
-	/*ps = append(ps, datastore.Property{
-		Name:    "profile",
-		Value:   u.profile,
-		NoIndex: true,
-	})*/
 	ps = append(ps, datastore.Property{
 		Name:    "hash",
-		Value:   u.hash,
+		Value:   u.Hash,
 		NoIndex: true,
 	})
 	ps = append(ps, datastore.Property{
 		Name:  "confirmedEmail",
 		Value: u.HasConfirmedEmail,
+	})
+	ps = append(ps, datastore.Property{
+		Name:  "anonymous",
+		Value: u.IsAnonymous,
 	})
 	if u.Meta != nil {
 		for k, v := range u.Meta {
@@ -118,6 +112,5 @@ func (u *User) Save() ([]datastore.Property, error) {
 			})
 		}
 	}
-
 	return ps, nil
 }

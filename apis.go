@@ -101,16 +101,15 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 		a:       a,
 		methods: []string{},
 	}
-	r.Handle("/auth/login", authRoute.loginHandler()).Methods(http.MethodPost)
+	r.Handle("/auth/login", loginHandler(authRoute)).Methods(http.MethodPost)
 	if a.options.AllowUserRegistration {
-		r.Handle("/auth/register", authRoute.registrationHandler(a.options.DefaultRole)).Methods(http.MethodPost)
+		r.Handle("/auth/register", registrationHandler(authRoute, a.options.DefaultRole)).Methods(http.MethodPost)
 	}
-	r.Handle("/auth/confirm", a.middleware.Handler(authRoute.confirmEmailHandler()))
-	r.Handle("/auth/password", a.middleware.Handler(authRoute.changePasswordHandler())).Methods(http.MethodPost)
-	r.Handle("/auth/meta", a.middleware.Handler(authRoute.updateMeta())).Methods(http.MethodPost)
-
-	r.Handle("/user", a.middleware.Handler(authRoute.getUserHandler())).Methods(http.MethodGet)
-	r.Handle("/users", a.middleware.Handler(authRoute.getUsersHandler())).Methods(http.MethodGet)
+	r.Handle("/auth/confirm", a.middleware.Handler(confirmEmailHandler(authRoute)))
+	r.Handle("/auth/password", a.middleware.Handler(changePasswordHandler(authRoute))).Methods(http.MethodPost)
+	r.Handle("/auth/meta", a.middleware.Handler(updateMeta(authRoute))).Methods(http.MethodPost)
+	r.Handle("/user", a.middleware.Handler(getUserHandler(authRoute))).Methods(http.MethodGet)
+	r.Handle("/users", a.middleware.Handler(getUsersHandler(authRoute))).Methods(http.MethodGet)
 
 	return &Server{r}
 }

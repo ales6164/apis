@@ -89,8 +89,7 @@ func (h *Holder) Add(ctx context.Context) error {
 	}
 }
 
-func (h *Holder) Update(ctx context.Context, key *datastore.Key) error {
-	h.SetKey(key)
+func (h *Holder) Update(ctx context.Context) error {
 	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
 		err := datastore.Get(tc, h.key, h)
 		if err != nil {
@@ -102,8 +101,7 @@ func (h *Holder) Update(ctx context.Context, key *datastore.Key) error {
 	return err
 }
 
-func (h *Holder) Delete(ctx context.Context, key *datastore.Key) error {
-	h.SetKey(key)
+func (h *Holder) Delete(ctx context.Context) error {
 	err := datastore.Delete(ctx, h.key)
 	if err != nil {
 		return err

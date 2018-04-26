@@ -20,6 +20,7 @@ type Context struct {
 	R                 *Route
 	r                 *http.Request
 	hasReadAuthHeader bool
+	IsAnonymous       bool
 	IsAuthenticated   bool
 	context.Context
 	CountryCode       string // 2 character string; gb, si, ... -- ISO 3166-1 alpha-2
@@ -99,8 +100,8 @@ func (ctx Context) HasPermission(k *kind.Kind, scope Scope) bool {
 // Authenticates user
 func (ctx Context) Authenticate() (bool, Context) {
 	ctx.hasReadAuthHeader = true
-	var isAuthenticated, isExpired bool
-	var userEmail, role string
+	var isAuthenticated, isExpired, isAnonymous bool
+	var userEncodedKey, userEmail, role string
 
 	tkn := gcontext.Get(ctx.r, "auth")
 	if tkn != nil {
@@ -109,8 +110,20 @@ func (ctx Context) Authenticate() (bool, Context) {
 			if err := claims.Valid(); err == nil {
 				if userEmail, ok = claims["sub"].(string); ok && len(userEmail) > 0 {
 					isAuthenticated = true
+					if userEncodedKey, ok = claims["uid"].(string); ok && len(userEncodedKey) > 0 {
+						if ctx.UserKey, err = datastore.DecodeKey(userEncodedKey); err == nil {
+							isAuthenticated = true
+						} else {
+							isAuthenticated = false
+						}
+					} else {
+						isAuthenticated = false
+					}
 				}
 				if role, ok = claims["rol"].(string); !ok || len(role) == 0 {
+					isAuthenticated = false
+				}
+				if isAnonymous, ok = claims["ann"].(bool); ok && isAnonymous {
 					isAuthenticated = false
 				}
 			}
@@ -118,16 +131,13 @@ func (ctx Context) Authenticate() (bool, Context) {
 	}
 
 	ctx.IsAuthenticated = isAuthenticated && !isExpired
+	ctx.UserEmail = userEmail
 	if ctx.IsAuthenticated {
-		ctx.UserEmail = userEmail
 		ctx.Role = Role(role)
-		ctx.UserKey = datastore.NewKey(ctx, "_user", userEmail, 0, nil)
 	} else {
-		ctx.UserEmail = ""
 		ctx.Role = PublicRole
-		ctx.UserKey = nil
+		ctx.IsAnonymous = isAnonymous
 	}
-
 	return ctx.IsAuthenticated, ctx
 }
 
@@ -139,7 +149,9 @@ func NewToken(user *User) *jwt.Token {
 		"exp": exp,
 		"iat": time.Now().Unix(),
 		"iss": "sdk",
+		"uid": user.Id.Encode(),
 		"sub": user.Email,
+		"ann": user.IsAnonymous,
 		"rol": user.Role,
 	})
 }
