@@ -128,10 +128,38 @@ func (R *Route) getHandler() http.HandlerFunc {
 			return
 		}
 
-		if len(q) > 0 && R.kind.EnableSearch {
-			if q == "*" {
-				q = ""
+		if len(id) > 0 {
+			// ordinary get
+			key, err := datastore.DecodeKey(id)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
 			}
+			h := R.kind.NewHolder(ctx.UserKey)
+			err = h.Get(ctx, key)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+			ctx.Print(w, h.Value())
+			return
+		} else if len(name) > 0 {
+			// ordinary get
+			var parent *datastore.Key
+			if ancestor != "false" {
+				parent = ctx.UserKey
+			}
+
+			key := R.kind.NewKey(ctx, name, parent)
+			h := R.kind.NewHolder(ctx.UserKey)
+			err := h.Get(ctx, key)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+			ctx.Print(w, h.Value())
+			return
+		} else if R.kind.EnableSearch {
 			index, err := OpenIndex(R.kind.Name)
 			if err != nil {
 				ctx.PrintError(w, err)
@@ -216,6 +244,11 @@ func (R *Route) getHandler() http.HandlerFunc {
 			if len(limit) > 0 {
 				intLimit, _ = strconv.Atoi(limit)
 			}
+			// offset
+			var intOffset int
+			if len(offset) > 0 {
+				intOffset, _ = strconv.Atoi(offset)
+			}
 
 			// sorting
 			var sortExpr []search.SortExpression
@@ -236,7 +269,8 @@ func (R *Route) getHandler() http.HandlerFunc {
 				IDsOnly:       R.kind.RetrieveByIDOnSearch,
 				Refinements:   facets,
 				Cursor:        search.Cursor(next),
-				CountAccuracy: intLimit,
+				CountAccuracy: 1000,
+				Offset:        intOffset,
 				Limit:         intLimit,
 				Sort: &search.SortOptions{
 					Expressions: sortExpr,
@@ -276,7 +310,8 @@ func (R *Route) getHandler() http.HandlerFunc {
 			}
 
 			ctx.PrintResult(w, map[string]interface{}{
-				"count":   t.Count(),
+				"count":   len(results),
+				"total":   t.Count(),
 				"results": results,
 				"filters": facsOutput,
 				"cursor": map[string]interface{}{
@@ -285,37 +320,6 @@ func (R *Route) getHandler() http.HandlerFunc {
 				},
 			})
 
-			return
-		} else if len(id) > 0 {
-			// ordinary get
-			key, err := datastore.DecodeKey(id)
-			if err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
-			h := R.kind.NewHolder(ctx.UserKey)
-			err = h.Get(ctx, key)
-			if err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
-			ctx.Print(w, h.Value())
-			return
-		} else if len(name) > 0 {
-			// ordinary get
-			var parent *datastore.Key
-			if ancestor != "false" {
-				parent = ctx.UserKey
-			}
-
-			key := R.kind.NewKey(ctx, name, parent)
-			h := R.kind.NewHolder(ctx.UserKey)
-			err := h.Get(ctx, key)
-			if err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
-			ctx.Print(w, h.Value())
 			return
 		} else {
 			// query
@@ -464,8 +468,6 @@ func (R *Route) putHandler() http.HandlerFunc {
 
 		var data = UpdateVal{}
 		json.Unmarshal(ctx.Body(), &data)
-
-
 
 		if len(data.Id) == 0 && len(data.Name) == 0 {
 			ctx.PrintError(w, errors.New("must provide id or name"))
