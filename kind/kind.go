@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"github.com/ales6164/apis/errors"
+	"google.golang.org/appengine/search"
 )
 
 type Kind struct {
@@ -14,6 +15,8 @@ type Kind struct {
 	MetaIdField MetaField
 	*Options
 	fields      []*Field
+
+	searchFields map[string]SearchField // map of all fields
 }
 
 type Options struct {
@@ -35,13 +38,12 @@ type Field struct {
 	Multiple   bool
 	NoIndex    bool
 
-	SearchName    string
-	SearchDoStore bool
-	SearchType    string
-	SearchField   bool
-	SearchFacet   bool
-
 	Kind *Kind
+}
+
+type SearchField struct {
+	Name    string
+	IsFacet bool
 }
 
 func New(t reflect.Type, opt *Options) *Kind {
@@ -54,21 +56,18 @@ func New(t reflect.Type, opt *Options) *Kind {
 	}
 
 	k := &Kind{
-		Type:    t,
-		Options: opt,
+		Type:         t,
+		Options:      opt,
+		searchFields: map[string]SearchField{},
 	}
 
 	for i := 0; i < t.NumField(); i++ {
 		structField := t.Field(i)
 		field := new(Field)
 
-		// defaults
-		field.SearchField = true
-		field.SearchDoStore = true
-
 		if val, ok := structField.Tag.Lookup("datastore"); ok {
 			for n, v := range strings.Split(val, ",") {
-				v = strings.ToLower(strings.TrimSpace(v))
+				v = strings.TrimSpace(v)
 				switch n {
 				case 0:
 					if v == "-" {
@@ -83,33 +82,9 @@ func New(t reflect.Type, opt *Options) *Kind {
 			}
 		}
 
-		if val, ok := structField.Tag.Lookup("search"); ok {
-			for n, v := range strings.Split(val, ",") {
-				v = strings.ToLower(strings.TrimSpace(v))
-				switch n {
-				case 0:
-					if v == "-" {
-						field.SearchDoStore = false
-					} else {
-						field.SearchDoStore = true
-					}
-					field.SearchName = v
-				case 1:
-					field.SearchType = v // define this, if need type conversion: string|[]byte -> atom, string|[]byte -> html
-				case 2:
-					if v == "nofilter" {
-						field.SearchFacet = false
-					} else if v == "onlyfilter" {
-						field.SearchField = false
-						field.SearchField = true
-					}
-				}
-			}
-		}
-
 		if val, ok := structField.Tag.Lookup("apis"); ok {
 			for n, v := range strings.Split(val, ",") {
-				v = strings.ToLower(strings.TrimSpace(v))
+				v = strings.TrimSpace(v)
 				switch n {
 				case 0:
 					if v == "id" {
@@ -131,10 +106,6 @@ func New(t reflect.Type, opt *Options) *Kind {
 			field.Name = structField.Name
 		}
 
-		if len(field.SearchName) == 0 {
-			field.SearchName = structField.Name
-		}
-
 		if structField.Type.Kind() == reflect.Slice {
 			field.Multiple = true
 		}
@@ -146,6 +117,35 @@ func New(t reflect.Type, opt *Options) *Kind {
 
 	if k.SearchType == nil {
 		k.SearchType = t
+	}
+
+	for i := 0; i < k.SearchType.NumField(); i++ {
+		searchField := k.SearchType.Field(i)
+
+		var field = SearchField{
+			Name:    searchField.Name,
+			IsFacet: false,
+		}
+
+		if val, ok := searchField.Tag.Lookup("search"); ok {
+
+			for n, v := range strings.Split(val, ",") {
+				v = strings.TrimSpace(v)
+				switch n {
+				case 0:
+					if v == "-" {
+						field.Name = ""
+					} else {
+						field.Name = v
+					}
+				case 1:
+					field.IsFacet = v == "facet"
+				}
+			}
+		}
+
+		k.searchFields[field.Name] = field
+
 	}
 
 	return k
@@ -169,4 +169,16 @@ func (k *Kind) NewIncompleteKey(c context.Context, parent *datastore.Key) *datas
 
 func (k *Kind) NewKey(c context.Context, nameId string, parent *datastore.Key) *datastore.Key {
 	return datastore.NewKey(c, k.Name, nameId, 0, parent)
+}
+
+func (k *Kind) RetrieveSearchParameter(parameterName string, value string, fields []search.Field, facets []search.Facet) ([]search.Field, []search.Facet) {
+	if f, ok := k.searchFields[parameterName]; ok {
+		if f.IsFacet {
+			// todo: currently only supports facet type search.Atom
+			facets = append(facets, search.Facet{Name: parameterName, Value: search.Atom(value)})
+		} else {
+			fields = append(fields, search.Field{Name: parameterName, Value: value})
+		}
+	}
+	return fields, facets
 }

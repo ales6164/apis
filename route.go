@@ -208,6 +208,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 			}
 
 			// build facets
+			var fields []search.Field
 			var facets []search.Facet
 			for key, val := range r.URL.Query() {
 				if key == "filter" {
@@ -217,7 +218,6 @@ func (R *Route) getHandler() http.HandlerFunc {
 							// todo: currently only supports facet type search.Atom
 							facets = append(facets, search.Facet{Name: filter[0], Value: search.Atom(filter[1])})
 						}
-
 					}
 				} else if key == "range" {
 					for _, v := range val {
@@ -235,6 +235,21 @@ func (R *Route) getHandler() http.HandlerFunc {
 								}})
 							}
 						}
+					}
+				} else {
+					for _, v := range val {
+						fields, facets = R.kind.RetrieveSearchParameter(key, v, fields, facets)
+					}
+				}
+			}
+
+			// build []search.Field to a query string and append
+			if len(fields) > 0 {
+				for _, f := range fields {
+					if len(q) > 0 {
+						q += " AND " + f.Name + ":" + f.Value.(string)
+					} else {
+						q += f.Name + ":" + f.Value.(string)
 					}
 				}
 			}
