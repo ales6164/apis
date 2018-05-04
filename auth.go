@@ -8,6 +8,7 @@ import (
 	"strings"
 	"encoding/json"
 	"golang.org/x/net/context"
+	"github.com/ales6164/apis/user"
 )
 
 var (
@@ -47,7 +48,6 @@ func checkPassword(v string) error {
 	return nil
 }
 
-
 func getAnonymousToken(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := R.NewContext(r).Authenticate()
@@ -55,7 +55,6 @@ func getAnonymousToken(R *Route) http.HandlerFunc {
 			ctx.PrintError(w, errors.New("user already authenticated"))
 			return
 		}
-
 
 	}
 }
@@ -80,7 +79,7 @@ func getUserHandler(R *Route) http.HandlerFunc {
 		}
 
 		// get user
-		usr := new(User)
+		usr := new(user.User)
 		err = datastore.Get(ctx, keyId, usr)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
@@ -95,7 +94,7 @@ func getUserHandler(R *Route) http.HandlerFunc {
 	}
 }
 
-func getUsersHandler(R *Route) http.HandlerFunc {
+/*func getUsersHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := R.NewContext(r).Authenticate()
 		if !ok {
@@ -107,7 +106,7 @@ func getUsersHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		var hs []*User
+		var hs []*user.User
 		var err error
 
 		q := datastore.NewQuery("_user")
@@ -128,7 +127,7 @@ func getUsersHandler(R *Route) http.HandlerFunc {
 
 		ctx.Print(w, hs)
 	}
-}
+}*/
 
 func loginHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -150,9 +149,9 @@ func loginHandler(R *Route) http.HandlerFunc {
 		email = strings.ToLower(email)
 
 		// get user
-		var users []*User
-		keys, err := datastore.NewQuery("_user").Filter("email =", email).Limit(1).GetAll(ctx, &users)
-		if err != nil || len(users) == 0 {
+		var usr *user.User
+		userKey := datastore.NewKey(ctx, "_user", email, 0, nil)
+		if err = datastore.Get(ctx, userKey, usr); err != nil {
 			if err == datastore.ErrNoSuchEntity {
 				ctx.PrintError(w, errors.ErrUserDoesNotExist)
 				return
@@ -161,10 +160,10 @@ func loginHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		users[0].Id = keys[0]
+		usr.Id = userKey
 
 		// decrypt hash
-		err = decrypt(users[0].Hash, []byte(password))
+		err = decrypt(usr.Hash, []byte(password))
 		if err != nil {
 			ctx.PrintError(w, errors.ErrUserPasswordIncorrect)
 			// todo: log and report
@@ -172,7 +171,7 @@ func loginHandler(R *Route) http.HandlerFunc {
 		}
 
 		// create a token
-		token := NewToken(users[0])
+		token := NewToken(usr)
 
 		// sign the new token
 		signedToken, err := R.a.SignToken(token)
@@ -181,15 +180,15 @@ func loginHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		ctx.PrintAuth(w, signedToken, users[0])
+		ctx.PrintAuth(w, signedToken, usr.Profile)
 	}
 }
 
 func registrationHandler(R *Route, role Role) http.HandlerFunc {
 	type InputUser struct {
-		Email    string                 `json:"email"`
-		Password string                 `json:"password"`
-		Meta     map[string]interface{} `json:"meta"`
+		Email    string       `json:"email"`
+		Password string       `json:"password"`
+		Profile  user.Profile `json:"profile"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
@@ -221,34 +220,31 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 		}
 
 		// create User
-		usr := &User{
-			Email: inputUser.Email,
-			Hash:  hash,
-			Role:  string(role),
-			Meta:  inputUser.Meta,
+		usr := &user.User{
+			Email:    inputUser.Email,
+			Hash:     hash,
+			Language: ctx.Language(),
+			Role:     string(role),
+			Profile:  inputUser.Profile,
 		}
 
-		if usr.Meta == nil {
-			usr.Meta = map[string]interface{}{}
-		}
 
-		if _, ok := usr.Meta["lang"]; !ok {
-			usr.Meta["lang"] = ctx.Language()
-		}
-
-		// check if it already exists and try to log in if it does
-		var users []*User
-		_, err = datastore.NewQuery("_user").Filter("email =", inputUser.Email).Limit(1).GetAll(ctx, &users)
-		if err == nil || len(users) > 0 {
-			ctx.PrintError(w, errors.ErrUserAlreadyExists)
+		if err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			userKey := datastore.NewKey(tc, "_user", usr.Email, 0, nil)
+			err := datastore.Get(tc, userKey, &datastore.PropertyList{})
+			if err != nil {
+				if err == datastore.ErrNoSuchEntity {
+					// register
+					usr.Id, err = datastore.Put(tc, userKey, usr)
+					return err
+				}
+				return err
+			}
+			return errors.ErrUserAlreadyExists
+		}, nil); err != nil {
+			ctx.PrintError(w, err)
 			return
 		}
-
-		// store the new user
-		userKey := datastore.NewIncompleteKey(ctx, "_user", nil)
-		userKey, err = datastore.Put(ctx, userKey, usr)
-
-		usr.Id = userKey
 
 		// create a token
 		token := NewToken(usr)
@@ -261,7 +257,7 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 		}
 
 		if R.a.options.RequireEmailConfirmation && usr.HasConfirmedEmail {
-			ctx.PrintAuth(w, signedToken, usr)
+			ctx.PrintAuth(w, signedToken, usr.Profile)
 		} else {
 			ctx.Print(w, "success")
 		}
@@ -287,7 +283,7 @@ func confirmEmailHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		usr := new(User)
+		usr := new(user.User)
 		// update User
 		err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
 			err := datastore.Get(tc, ctx.UserKey, usr)
@@ -298,15 +294,13 @@ func confirmEmailHandler(R *Route) http.HandlerFunc {
 				return err
 			}
 			usr.HasConfirmedEmail = true
-			_, err = datastore.Put(tc, ctx.UserKey, usr)
+			usr.Id, err = datastore.Put(tc, ctx.UserKey, usr)
 			return err
 		}, nil)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
-
-		usr.Id = ctx.UserKey
 
 		// create a token
 		token := NewToken(usr)
@@ -343,7 +337,7 @@ func changePasswordHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		usr := new(User)
+		usr := new(user.User)
 		// update User
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
 			err = datastore.Get(tc, ctx.UserKey, usr)
@@ -379,7 +373,8 @@ func changePasswordHandler(R *Route) http.HandlerFunc {
 	}
 }
 
-func updateMeta(R *Route) http.HandlerFunc {
+// todo:
+func updateProfile(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := R.NewContext(r).Authenticate()
 		if !ok {
@@ -397,7 +392,7 @@ func updateMeta(R *Route) http.HandlerFunc {
 		}
 
 		// do everything in a transaction
-		usr := new(User)
+		usr := new(user.User)
 		err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
 			// get user
 			err := datastore.Get(ctx, ctx.UserKey, usr)

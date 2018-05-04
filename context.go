@@ -14,6 +14,7 @@ import (
 	"github.com/ales6164/apis/kind"
 	"google.golang.org/appengine/log"
 	"github.com/ales6164/apis/errors"
+	"github.com/ales6164/apis/user"
 )
 
 type Context struct {
@@ -141,7 +142,7 @@ func (ctx Context) Authenticate() (bool, Context) {
 	return ctx.IsAuthenticated, ctx
 }
 
-func NewToken(user *User) *jwt.Token {
+func NewToken(user *user.User) *jwt.Token {
 	var exp = time.Now().Add(time.Hour * 72).Unix()
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"aud": "api",
@@ -166,9 +167,8 @@ type Token struct {
 }
 
 type AuthResult struct {
-	Token   *Token                 `json:"token"`
-	User    *User                  `json:"user"`
-	Profile map[string]interface{} `json:"profile"`
+	Token *Token       `json:"token"`
+	User  user.Profile `json:"profile"`
 }
 
 func (ctx *Context) Print(w http.ResponseWriter, result interface{}) {
@@ -193,7 +193,7 @@ func (ctx *Context) PrintResult(w http.ResponseWriter, result map[string]interfa
 	w.Write(bs)
 }
 
-func (ctx *Context) PrintAuth(w http.ResponseWriter, token *Token, user *User) {
+func (ctx *Context) PrintAuth(w http.ResponseWriter, token *Token, user user.Profile) {
 	w.Header().Set("Content-Type", "application/json")
 
 	json.NewEncoder(w).Encode(AuthResult{
