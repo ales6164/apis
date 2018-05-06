@@ -7,27 +7,26 @@ import (
 	"io/ioutil"
 	"net/http"
 	"github.com/dgrijalva/jwt-go"
-	"time"
 	"encoding/json"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
 	"github.com/ales6164/apis/kind"
 	"google.golang.org/appengine/log"
 	"github.com/ales6164/apis/errors"
-	"github.com/ales6164/apis/user"
+	"strings"
+	"strconv"
+	"time"
 )
 
 type Context struct {
-	R                 *Route
-	r                 *http.Request
-	hasReadAuthHeader bool
-	IsAnonymous       bool
-	IsAuthenticated   bool
+	*Route
+	*ClientRequest
+	claims           Claims
+	ClientSession    *ClientSession
+	error            error
+	clientRequestKey *datastore.Key
+	r                *http.Request
 	context.Context
-	CountryCode       string // 2 character string; gb, si, ... -- ISO 3166-1 alpha-2
-	UserEmail         string
-	UserKey           *datastore.Key
-	Role              Role
 	*body
 }
 
@@ -36,21 +35,100 @@ type body struct {
 	body        []byte
 }
 
+type Device struct {
+	UserAgent  string
+	IP         string
+	Country    string
+	Region     string
+	City       string
+	CityLatLng appengine.GeoPoint
+}
+
+type ClientRequest struct {
+	Time            time.Time
+	Device          Device
+	URL             string
+	Method          string
+	ClientSession   *datastore.Key
+	Error           string
+	IsAuthenticated bool
+	IsBlocked       bool
+	IsExpired       bool
+}
+
+// authenticated request is necessary - not yet
+// logs every request
 func (R *Route) NewContext(r *http.Request) Context {
-	cc := r.Header.Get("X-Custom-Country")
-	if len(cc) == 0 {
-		cc = r.Header.Get("X-AppEngine-Country")
+	clientReq := new(ClientRequest)
+	ctx := Context{
+		ClientRequest: clientReq,
+		Route:         R,
+		r:             r,
+		Context:       appengine.NewContext(r),
+		body:          &body{hasReadBody: false},
 	}
-	return Context{
-		R:           R,
-		r:           r,
-		CountryCode: cc,
-		Role:        PublicRole,
-		Context:     appengine.NewContext(r),
-		body:        &body{hasReadBody: false},
+	clientReq.Time = time.Now()
+	clientReq.URL = r.URL.String()
+	clientReq.Method = r.Method
+	clientReq.Device = Device{
+		IP:        r.RemoteAddr,
+		UserAgent: r.UserAgent(),
+		City:      r.Header.Get("X-AppEngine-City"),
+		Country:   r.Header.Get("X-AppEngine-Country"),
+		Region:    r.Header.Get("X-AppEngine-Region"),
+	}
+	latlng := strings.Split(r.Header.Get("X-AppEngine-CityLatLong"), ",")
+	if len(latlng) == 2 {
+		lat, _ := strconv.ParseFloat(latlng[0], 64)
+		lng, _ := strconv.ParseFloat(latlng[1], 64)
+		clientReq.Device.CityLatLng = appengine.GeoPoint{Lat: lat, Lng: lng}
+	}
+
+	tkn := gcontext.Get(r, "auth")
+	if tkn != nil {
+		if token, ok := tkn.(*jwt.Token); ok {
+			if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+
+				// todo: decode claims.Nonce as ClientSession key and compare with datastore entry;
+				// todo: implement and check if session was blocked
+
+				// authenticated
+				ctx.claims = *claims
+
+				clientReq.ClientSession, ctx.error = datastore.DecodeKey(claims.Nonce)
+				ctx.check()
+
+				ctx.error = datastore.Get(ctx, clientReq.ClientSession, ctx.ClientSession)
+				ctx.check()
+			}
+		}
+	}
+
+	// check if session is ok
+	if ctx.ClientSession != nil {
+		ctx.IsExpired = ctx.ClientSession.ExpiresAt.After(ctx.Time)
+		if !ctx.IsExpired {
+			ctx.IsBlocked = ctx.ClientSession.IsBlocked
+			ctx.IsAuthenticated = !ctx.IsBlocked
+		}
+	}
+
+	// store to datastore
+	ctx.clientRequestKey = datastore.NewIncompleteKey(ctx, "_clientRequest", nil)
+	ctx.clientRequestKey, ctx.error = datastore.Put(ctx, ctx.clientRequestKey, nil)
+	ctx.check()
+
+	return ctx
+}
+
+// logs error if any
+func (ctx Context) check() {
+	if ctx.error != nil {
+		log.Criticalf(ctx, "context error: %v", ctx.error)
 	}
 }
 
+// reads body once and stores contents
 func (ctx Context) Body() []byte {
 	if !ctx.body.hasReadBody {
 		ctx.body.body, _ = ioutil.ReadAll(ctx.r.Body)
@@ -60,116 +138,65 @@ func (ctx Context) Body() []byte {
 	return ctx.body.body
 }
 
+func (ctx Context) UserKey() *datastore.Key {
+	key, _ := datastore.DecodeKey(ctx.claims.StandardClaims.Subject)
+	return key
+}
+
+func (ctx Context) Roles() []string {
+	if len(ctx.claims.Roles) > 0 {
+		return ctx.claims.Roles
+	}
+	return PublicRoles
+}
+
 func (ctx Context) Id() string {
 	return mux.Vars(ctx.r)["id"]
 }
 
-func (ctx Context) Language() string {
-	if _, ok := ctx.R.a.allowedTranslations[ctx.CountryCode]; ok {
-		return ctx.CountryCode
-	}
-	return ctx.R.a.options.DefaultLanguage
-}
-
-func (ctx Context) SetGroup(group string) (Context, error) {
+func (ctx Context) SetNamespace(namespace string) (Context, error) {
 	var err error
-	ctx.Context, err = appengine.Namespace(ctx, group)
+	ctx.Context, err = appengine.Namespace(ctx, namespace)
 	return ctx, err
 }
 
-// AdminRole has all permissions
-func (ctx Context) HasPermission(k *kind.Kind, scope Scope) bool {
-	if ctx.Role == AdminRole {
-		return true
-	}
-	if val1, ok := ctx.R.a.permissions[ctx.Role]; ok {
-		if val2, ok := val1[scope]; ok {
-			if val3, ok := val2[k]; ok && val3 {
-				if ctx.R.roles != nil {
-					if _, ok := ctx.R.roles[ctx.Role]; ok {
-						return true
-					}
-				} else {
-					return true
-				}
-			}
+func (ctx Context) HasRole(role Role) bool {
+	sr := string(role)
+	for _, r := range ctx.claims.Roles {
+		if r == sr {
+			return true
 		}
 	}
 	return false
 }
 
-// Authenticates user
-func (ctx Context) Authenticate() (bool, Context) {
-	ctx.hasReadAuthHeader = true
-	var isAuthenticated, isExpired, isAnonymous bool
-	var userEncodedKey, userEmail, role string
-
-	tkn := gcontext.Get(ctx.r, "auth")
-	if tkn != nil {
-		token := tkn.(*jwt.Token)
-		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			if err := claims.Valid(); err == nil {
-				if userEmail, ok = claims["sub"].(string); ok && len(userEmail) > 0 {
-					isAuthenticated = true
-					if userEncodedKey, ok = claims["uid"].(string); ok && len(userEncodedKey) > 0 {
-						if ctx.UserKey, err = datastore.DecodeKey(userEncodedKey); err == nil {
-							isAuthenticated = true
-						} else {
-							isAuthenticated = false
+// AdminRole has all permissions
+func (ctx Context) HasPermission(k *kind.Kind, scope Scope) bool {
+	roles := ctx.Roles()
+	for _, role := range roles {
+		if val1, ok := ctx.a.permissions[role]; ok {
+			if val2, ok := val1[scope]; ok {
+				if val3, ok := val2[k]; ok && val3 {
+					if ctx.roles != nil {
+						if _, ok := ctx.roles[role]; ok {
+							return true
 						}
 					} else {
-						isAuthenticated = false
+						return true
 					}
-				}
-				if role, ok = claims["rol"].(string); !ok || len(role) == 0 {
-					isAuthenticated = false
-				}
-				if isAnonymous, ok = claims["ann"].(bool); ok && isAnonymous {
-					isAuthenticated = false
 				}
 			}
 		}
+		if role == string(AdminRole) {
+			return true
+		}
 	}
-
-	ctx.IsAuthenticated = isAuthenticated && !isExpired
-	ctx.UserEmail = userEmail
-	if ctx.IsAuthenticated {
-		ctx.Role = Role(role)
-	} else {
-		ctx.Role = PublicRole
-		ctx.IsAnonymous = isAnonymous
-	}
-	return ctx.IsAuthenticated, ctx
-}
-
-func NewToken(user *user.User) *jwt.Token {
-	var exp = time.Now().Add(time.Hour * 72).Unix()
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"aud": "api",
-		"nbf": time.Now().Add(-time.Minute).Unix(),
-		"exp": exp,
-		"iat": time.Now().Unix(),
-		"iss": "sdk",
-		"uid": user.Id.Encode(),
-		"sub": user.Email,
-		"ann": user.IsAnonymous,
-		"rol": user.Role,
-	})
+	return false
 }
 
 /**
 RESPONSE
  */
-
-type Token struct {
-	Id        string `json:"id"`
-	ExpiresAt int64  `json:"expiresAt"`
-}
-
-type AuthResult struct {
-	Token *Token       `json:"token"`
-	User  user.Profile `json:"profile"`
-}
 
 func (ctx *Context) Print(w http.ResponseWriter, result interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -193,17 +220,10 @@ func (ctx *Context) PrintResult(w http.ResponseWriter, result map[string]interfa
 	w.Write(bs)
 }
 
-func (ctx *Context) PrintAuth(w http.ResponseWriter, token *Token, user user.Profile) {
-	w.Header().Set("Content-Type", "application/json")
-
-	json.NewEncoder(w).Encode(AuthResult{
-		User:  user,
-		Token: token,
-	})
-}
-
 func (ctx *Context) PrintError(w http.ResponseWriter, err error) {
 	log.Errorf(ctx, "context error: %v", err)
+	ctx.ClientRequest.Error = err.Error()
+	datastore.Put(ctx, ctx.clientRequestKey, ctx.ClientRequest)
 	if err == errors.ErrUnathorized {
 		w.WriteHeader(http.StatusUnauthorized)
 	} else if err == errors.ErrForbidden {

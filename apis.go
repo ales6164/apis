@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/dgrijalva/jwt-go"
 	"io/ioutil"
 	"github.com/ales6164/apis/middleware"
 	"github.com/ales6164/apis/kind"
@@ -19,14 +18,16 @@ type Apis struct {
 	permissions
 	allowedTranslations map[string]bool
 
-	OnUserSignUp func(ctx Context, user User, token Token)
+	OnUserSignUp func(ctx Context, user User)
 	//OnUserSignIn func(ctx context.Context, user User)
-	OnUserVerified func(ctx Context, user User, token Token)
+	OnUserVerified func(ctx Context, user User)
 }
 
 type Options struct {
+	AppName                  string
 	PrivateKeyPath           string // for password hashing
 	AuthorizedOrigins        []string
+	AuthorizedRedirectURIs   []string
 	AllowUserRegistration    bool
 	DefaultRole              Role
 	RequireEmailConfirmation bool
@@ -107,17 +108,7 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	}
 	r.Handle("/auth/confirm", a.middleware.Handler(confirmEmailHandler(authRoute)))
 	r.Handle("/auth/password", a.middleware.Handler(changePasswordHandler(authRoute))).Methods(http.MethodPost)
-	r.Handle("/auth/meta", a.middleware.Handler(updateMeta(authRoute))).Methods(http.MethodPost)
 	r.Handle("/user", a.middleware.Handler(getUserHandler(authRoute))).Methods(http.MethodGet)
-	r.Handle("/users", a.middleware.Handler(getUsersHandler(authRoute))).Methods(http.MethodGet)
 
 	return &Server{r}
-}
-
-func (a *Apis) SignToken(token *jwt.Token) (*Token, error) {
-	signedToken, err := token.SignedString(a.privateKey)
-	if err != nil {
-		return nil, err
-	}
-	return &Token{Id: signedToken, ExpiresAt: token.Claims.(jwt.MapClaims)["exp"].(int64)}, nil
 }

@@ -21,7 +21,7 @@ type Route struct {
 
 	listeners map[string]Listener
 	searchListener func(ctx Context, query string) ([]interface{}, error)
-	roles map[Role]bool
+	roles map[string]bool
 
 	methods []string
 
@@ -71,9 +71,9 @@ func (R *Route) Search(searchListener func(ctx Context, query string) ([]interfa
 }
 
 func (R *Route) Roles(rs ...Role) *Route {
-	R.roles = map[Role]bool{}
+	R.roles = map[string]bool{}
 	for _, r := range rs {
-		R.roles[r] = true
+		R.roles[string(r)] = true
 	}
 	return R
 }
@@ -114,8 +114,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {}
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, ctx := R.NewContext(r).Authenticate()
-
+		ctx := R.NewContext(r)
 		if ok := ctx.HasPermission(R.kind, READ); !ok {
 			ctx.PrintError(w, errors.ErrForbidden)
 			return
@@ -135,7 +134,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 				ctx.PrintError(w, err)
 				return
 			}
-			h := R.kind.NewHolder(ctx.UserKey)
+			h := R.kind.NewHolder(ctx.UserKey())
 			err = h.Get(ctx, key)
 			if err != nil {
 				ctx.PrintError(w, err)
@@ -147,11 +146,11 @@ func (R *Route) getHandler() http.HandlerFunc {
 			// ordinary get
 			var parent *datastore.Key
 			if ancestor != "false" {
-				parent = ctx.UserKey
+				parent = ctx.UserKey()
 			}
 
 			key := R.kind.NewKey(ctx, name, parent)
-			h := R.kind.NewHolder(ctx.UserKey)
+			h := R.kind.NewHolder(ctx.UserKey())
 			err := h.Get(ctx, key)
 			if err != nil {
 				ctx.PrintError(w, err)
@@ -343,14 +342,14 @@ func (R *Route) getHandler() http.HandlerFunc {
 
 			var hs []*kind.Holder
 			var err error
-			if ancestor == "false" && ctx.Role == AdminRole {
+			if ancestor == "false" && ctx.HasRole(AdminRole) {
 				hs, err = R.kind.Query(ctx, sort, limitInt, offsetInt, nil, nil)
 				if err != nil {
 					ctx.PrintError(w, err)
 					return
 				}
 			} else {
-				hs, err = R.kind.Query(ctx, sort, limitInt, offsetInt, nil, ctx.UserKey)
+				hs, err = R.kind.Query(ctx, sort, limitInt, offsetInt, nil, ctx.UserKey())
 				if err != nil {
 					ctx.PrintError(w, err)
 					return
@@ -382,14 +381,14 @@ func (R *Route) postHandler() http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {}
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, ctx := R.NewContext(r).Authenticate()
+		ctx := R.NewContext(r)
 
 		if ok := ctx.HasPermission(R.kind, CREATE); !ok {
 			ctx.PrintError(w, errors.ErrForbidden)
 			return
 		}
 
-		h := R.kind.NewHolder(ctx.UserKey)
+		h := R.kind.NewHolder(ctx.UserKey())
 		err := h.Parse(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err)
@@ -474,7 +473,7 @@ func (R *Route) putHandler() http.HandlerFunc {
 		Value interface{} `json:"value"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, ctx := R.NewContext(r).Authenticate()
+		ctx := R.NewContext(r)
 
 		if ok := ctx.HasPermission(R.kind, UPDATE); !ok {
 			ctx.PrintError(w, errors.ErrForbidden)
@@ -501,7 +500,7 @@ func (R *Route) putHandler() http.HandlerFunc {
 			return
 		}
 
-		h := R.kind.NewHolder(ctx.UserKey)
+		h := R.kind.NewHolder(ctx.UserKey())
 		err = h.Parse(buf.Bytes())
 		if err != nil {
 			ctx.PrintError(w, err)
@@ -516,7 +515,7 @@ func (R *Route) putHandler() http.HandlerFunc {
 				return
 			}
 		} else {
-			key = R.kind.NewKey(ctx, data.Name, ctx.UserKey)
+			key = R.kind.NewKey(ctx, data.Name, ctx.UserKey())
 		}
 
 		h.SetKey(key)

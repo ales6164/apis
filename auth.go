@@ -8,7 +8,8 @@ import (
 	"strings"
 	"encoding/json"
 	"golang.org/x/net/context"
-	"github.com/ales6164/apis/user"
+	"time"
+	"reflect"
 )
 
 var (
@@ -48,49 +49,29 @@ func checkPassword(v string) error {
 	return nil
 }
 
-func getAnonymousToken(R *Route) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ok, ctx := R.NewContext(r).Authenticate()
-		if ok {
-			ctx.PrintError(w, errors.New("user already authenticated"))
-			return
-		}
-
-	}
-}
-
 func getUserHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ok, ctx := R.NewContext(r).Authenticate()
-		if !ok {
-			ctx.PrintError(w, errors.ErrUnathorized)
-			return
-		}
-		if ctx.Role != AdminRole {
+		ctx := R.NewContext(r)
+		if !ctx.HasRole(AdminRole) {
 			ctx.PrintError(w, errors.ErrUnathorized)
 			return
 		}
 
 		id := r.FormValue("id")
-		keyId, err := datastore.DecodeKey(id)
+		key, err := datastore.DecodeKey(id)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
 
 		// get user
-		usr := new(user.User)
-		err = datastore.Get(ctx, keyId, usr)
+		u, err := getUser(ctx, key)
 		if err != nil {
-			if err == datastore.ErrNoSuchEntity {
-				ctx.PrintError(w, errors.ErrUserDoesNotExist)
-				return
-			}
 			ctx.PrintError(w, err)
 			return
 		}
 
-		ctx.Print(w, usr)
+		ctx.Print(w, u)
 	}
 }
 
@@ -148,47 +129,43 @@ func loginHandler(R *Route) http.HandlerFunc {
 
 		email = strings.ToLower(email)
 
-		// get user
-		var usr *user.User
-		userKey := datastore.NewKey(ctx, "_user", email, 0, nil)
-		if err = datastore.Get(ctx, userKey, usr); err != nil {
-			if err == datastore.ErrNoSuchEntity {
-				ctx.PrintError(w, errors.ErrUserDoesNotExist)
-				return
-			}
-			ctx.PrintError(w, err)
-			return
-		}
-
-		usr.Id = userKey
-
-		// decrypt hash
-		err = decrypt(usr.Hash, []byte(password))
-		if err != nil {
-			ctx.PrintError(w, errors.ErrUserPasswordIncorrect)
-			// todo: log and report
-			return
-		}
-
-		// create a token
-		token := NewToken(usr)
-
-		// sign the new token
-		signedToken, err := R.a.SignToken(token)
+		signedToken, u, err := login(ctx, email, password)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
 
-		ctx.PrintAuth(w, signedToken, usr.Profile)
+		ctx.Print(w, map[string]interface{}{
+			"token_id": signedToken,
+			"user":     u,
+		})
 	}
 }
 
 func registrationHandler(R *Route, role Role) http.HandlerFunc {
 	type InputUser struct {
-		Email    string       `json:"email"`
-		Password string       `json:"password"`
-		Profile  user.Profile `json:"profile"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
+
+		// can be changed by user
+		Name       string `json:"name"`
+		GivenName  string `json:"given_name"`
+		FamilyName string `json:"family_name"`
+		MiddleName string `json:"middle_name"`
+		Nickname   string `json:"nickname"`
+		Picture    string `json:"picture"` // profile picture URL
+		Website    string `json:"website"` // website URL
+		Locale     string `json:"locale"`  // locale
+
+		// is not added to JWT and is private to user
+		DateOfBirth    time.Time       `json:"date_of_birth"`
+		PlaceOfBirth   Address         `json:"place_of_birth"`
+		Title          string          `json:"title"`
+		Address        Address         `json:"address"`
+		Address2       Address         `json:"address_2"`
+		Company        Company         `json:"company"`
+		Contact        Contact         `json:"contact"`
+		SocialProfiles []SocialProfile `json:"social_profiles"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
@@ -219,23 +196,46 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 			return
 		}
 
+		userKey := datastore.NewKey(ctx, "_user", inputUser.Email, 0, nil)
+
 		// create User
-		usr := &user.User{
-			Email:    inputUser.Email,
-			Hash:     hash,
-			Language: ctx.Language(),
-			Role:     string(role),
-			Profile:  inputUser.Profile,
+		u := &user{
+			Hash:  hash,
+			Email: inputUser.Email,
+			User: User{
+				userKey,
+				[]string{string(role)},
+				inputUser.Email,
+				false,
+				"",
+				false,
+				ctx.Time,
+				ctx.Time,
+				inputUser.Name,
+				inputUser.GivenName,
+				inputUser.FamilyName,
+				inputUser.MiddleName,
+				inputUser.Nickname,
+				inputUser.Picture,
+				inputUser.Website,
+				inputUser.Locale,
+				inputUser.DateOfBirth,
+				inputUser.PlaceOfBirth,
+				inputUser.Title,
+				inputUser.Address,
+				inputUser.Address2,
+				inputUser.Company,
+				inputUser.Contact,
+				inputUser.SocialProfiles,
+			},
 		}
 
-
 		if err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			userKey := datastore.NewKey(tc, "_user", usr.Email, 0, nil)
 			err := datastore.Get(tc, userKey, &datastore.PropertyList{})
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					// register
-					usr.Id, err = datastore.Put(tc, userKey, usr)
+					_, err = datastore.Put(tc, userKey, u)
 					return err
 				}
 				return err
@@ -246,33 +246,18 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 			return
 		}
 
-		// create a token
-		token := NewToken(usr)
-
-		// sign the new token
-		signedToken, err := R.a.SignToken(token)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		if R.a.options.RequireEmailConfirmation && usr.HasConfirmedEmail {
-			ctx.PrintAuth(w, signedToken, usr.Profile)
-		} else {
-			ctx.Print(w, "success")
-		}
+		//dont create a token on registration
 
 		if R.a.OnUserSignUp != nil {
-			R.a.OnUserSignUp(ctx, *usr, *signedToken)
+			R.a.OnUserSignUp(ctx, u.User)
 		}
 	}
 }
 
 func confirmEmailHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ok, ctx := R.NewContext(r).Authenticate()
-
-		if !ok {
+		ctx := R.NewContext(r)
+		if !ctx.IsAuthenticated {
 			ctx.PrintError(w, errors.ErrUnathorized)
 			return
 		}
@@ -283,18 +268,33 @@ func confirmEmailHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		usr := new(user.User)
-		// update User
+		var match bool
+		if len(R.a.options.AuthorizedRedirectURIs) == 0 {
+			match = true
+		} else {
+			for _, uri := range R.a.options.AuthorizedRedirectURIs {
+				if uri == callback {
+					match = true
+					break
+				}
+			}
+		}
+		if !match {
+			ctx.PrintError(w, ErrInvalidCallback)
+			return
+		}
+
+		var u user
 		err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			err := datastore.Get(tc, ctx.UserKey, usr)
+			err := datastore.Get(tc, ctx.UserKey(), &u)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					return errors.ErrUserDoesNotExist
 				}
 				return err
 			}
-			usr.HasConfirmedEmail = true
-			usr.Id, err = datastore.Put(tc, ctx.UserKey, usr)
+			u.User.EmailVerified = true
+			_, err = datastore.Put(tc, ctx.UserKey(), &u)
 			return err
 		}, nil)
 		if err != nil {
@@ -302,18 +302,8 @@ func confirmEmailHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		// create a token
-		token := NewToken(usr)
-
-		// sign the new token
-		signedToken, err := R.a.SignToken(token)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
 		if R.a.OnUserVerified != nil {
-			R.a.OnUserVerified(ctx, *usr, *signedToken)
+			R.a.OnUserVerified(ctx, u.User)
 		}
 
 		http.Redirect(w, r, callback, http.StatusTemporaryRedirect)
@@ -322,14 +312,13 @@ func confirmEmailHandler(R *Route) http.HandlerFunc {
 
 func changePasswordHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ok, ctx := R.NewContext(r).Authenticate()
-
-		if !ok {
+		ctx := R.NewContext(r)
+		if !ctx.IsAuthenticated {
 			ctx.PrintError(w, errors.ErrUnathorized)
 			return
 		}
 
-		password, newPassword := r.FormValue("password"), r.FormValue("newPassword")
+		password, newPassword := r.FormValue("password"), r.FormValue("new_password")
 
 		err := checkPassword(newPassword)
 		if err != nil {
@@ -337,10 +326,9 @@ func changePasswordHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		usr := new(user.User)
-		// update User
-		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			err = datastore.Get(tc, ctx.UserKey, usr)
+		var u user
+		if err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			err := datastore.Get(tc, ctx.UserKey(), &u)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					return errors.ErrUserDoesNotExist
@@ -348,68 +336,90 @@ func changePasswordHandler(R *Route) http.HandlerFunc {
 				return err
 			}
 
-			// decrypt hash
-			err = decrypt(usr.Hash, []byte(password))
-			if err != nil {
+			// check old password
+			if err = decrypt(u.Hash, []byte(password)); err != nil {
 				return errors.ErrUserPasswordIncorrect
 			}
 
 			// create new password hash
-			usr.Hash, err = crypt([]byte(newPassword))
-			if err != nil {
+			if u.Hash, err = crypt([]byte(newPassword)); err != nil {
 				return err
 			}
 
-			_, err := datastore.Put(tc, ctx.UserKey, usr)
+			_, err = datastore.Put(tc, ctx.UserKey(), &u)
 			return err
-		}, nil)
-		if err != nil {
+		}, nil); err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
 
-		usr.Id = ctx.UserKey
-		ctx.Print(w, "success")
+		ctx.Print(w, "ok")
 	}
 }
 
 // todo:
 func updateProfile(R *Route) http.HandlerFunc {
+	type InputUser struct {
+		Email      string `json:"email"`
+		Name       string `json:"name"`
+		GivenName  string `json:"given_name"`
+		FamilyName string `json:"family_name"`
+		MiddleName string `json:"middle_name"`
+		Nickname   string `json:"nickname"`
+		Picture    string `json:"picture"` // profile picture URL
+		Website    string `json:"website"` // website URL
+		Locale     string `json:"locale"`  // locale
+		// is not added to JWT and is private to user
+		DateOfBirth    time.Time       `json:"date_of_birth"`
+		PlaceOfBirth   Address         `json:"place_of_birth"`
+		Title          string          `json:"title"`
+		Address        Address         `json:"address"`
+		Address2       Address         `json:"address_2"`
+		Company        Company         `json:"company"`
+		Contact        Contact         `json:"contact"`
+		SocialProfiles []SocialProfile `json:"social_profiles"`
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		ok, ctx := R.NewContext(r).Authenticate()
-		if !ok {
+		ctx := R.NewContext(r)
+		if !ctx.IsAuthenticated {
 			ctx.PrintError(w, errors.ErrUnathorized)
 			return
 		}
-		meta := ctx.Body()
 
-		var m map[string]interface{}
-		if len(meta) > 0 {
-			json.Unmarshal(meta, &m)
-		} else {
-			ctx.PrintError(w, errors.New("body is empty"))
-			return
-		}
-
-		// do everything in a transaction
-		usr := new(user.User)
-		err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			// get user
-			err := datastore.Get(ctx, ctx.UserKey, usr)
-			if err != nil {
-				return err
-			}
-			for k, v := range m {
-				usr.SetMeta(k, v)
-			}
-			_, err = datastore.Put(ctx, ctx.UserKey, usr)
-			return err
-		}, &datastore.TransactionOptions{XG: true})
+		var inputUser InputUser
+		err := json.Unmarshal(ctx.Body(), &inputUser)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
-		usr.Id = ctx.UserKey
-		ctx.Print(w, usr)
+
+		// do everything in a transaction
+		var u user
+		if err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			// get user
+			err := datastore.Get(ctx, ctx.UserKey(), &u)
+			if err != nil {
+				return err
+			}
+
+			src := reflect.ValueOf(inputUser)
+			dst := reflect.ValueOf(u.User)
+			for i := 0; i < src.Type().NumField(); i++ {
+				srcFieldType := src.Type().Field(i)
+				srcField := src.FieldByName(srcFieldType.Name)
+				dstField := dst.FieldByName(srcFieldType.Name)
+				if dstField.IsValid() && dstField.CanSet() {
+					dstField.Set(srcField)
+				}
+			}
+			u.User = dst.Interface().(User)
+
+			_, err = datastore.Put(ctx, ctx.UserKey(), &u)
+			return err
+		}, nil); err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+		ctx.Print(w, &u.User)
 	}
 }
