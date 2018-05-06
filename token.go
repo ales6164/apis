@@ -3,31 +3,14 @@ package apis
 import (
 	"github.com/dgrijalva/jwt-go"
 	"time"
+	"github.com/ales6164/apis/middleware"
 )
 
-type Claims struct {
-	Roles               []string `json:"roles,omitempty"`
-	Name                string   `json:"name,omitempty"`
-	GivenName           string   `json:"given_name,omitempty"`
-	FamilyName          string   `json:"family_name,omitempty"`
-	MiddleName          string   `json:"middle_name,omitempty"`
-	Nickname            string   `json:"nickname,omitempty"`
-	Picture             string   `json:"picture,omitempty"`               // profile picture URL
-	Website             string   `json:"website,omitempty"`               // website URL
-	Email               string   `json:"email,omitempty"`                 // preferred email
-	EmailVerified       bool     `json:"email_verified,omitempty"`        // true if email verified
-	Locale              string   `json:"locale,omitempty"`                // locale
-	PhoneNumber         string   `json:"phone_number,omitempty"`          // preferred phone number
-	PhoneNumberVerified bool     `json:"phone_number_verified,omitempty"` // true if phone number verified
-	Nonce               string   `json:"nonce,omitempty"`                 // value used to associate client session with id token
-	jwt.StandardClaims
-}
-
 // when logging in
-func (ctx Context) authenticate(jwtID string, sessionID string, user *User, expiresAt int64) (string, error) {
+func (ctx Context) authenticate(sess *ClientSession, sessionID string, user *User, expiresAt int64) (string, error) {
 	now := time.Now()
 
-	claims := Claims{
+	claims := middleware.Claims{
 		user.Roles,
 		user.Name,
 		user.GivenName,
@@ -44,7 +27,7 @@ func (ctx Context) authenticate(jwtID string, sessionID string, user *User, expi
 		sessionID,
 		jwt.StandardClaims{
 			Audience:  "all",
-			Id:        jwtID,
+			Id:        sess.JwtID,
 			ExpiresAt: expiresAt,
 			IssuedAt:  now.Unix(),
 			Issuer:    ctx.a.options.AppName,

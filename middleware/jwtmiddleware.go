@@ -60,6 +60,24 @@ type JWTMiddleware struct {
 	Options MiddlewareOptions
 }
 
+type Claims struct {
+	Roles               []string `json:"roles,omitempty"`
+	Name                string   `json:"name,omitempty"`
+	GivenName           string   `json:"given_name,omitempty"`
+	FamilyName          string   `json:"family_name,omitempty"`
+	MiddleName          string   `json:"middle_name,omitempty"`
+	Nickname            string   `json:"nickname,omitempty"`
+	Picture             string   `json:"picture,omitempty"`               // profile picture URL
+	Website             string   `json:"website,omitempty"`               // website URL
+	Email               string   `json:"email,omitempty"`                 // preferred email
+	EmailVerified       bool     `json:"email_verified,omitempty"`        // true if email verified
+	Locale              string   `json:"locale,omitempty"`                // locale
+	PhoneNumber         string   `json:"phone_number,omitempty"`          // preferred phone number
+	PhoneNumberVerified bool     `json:"phone_number_verified,omitempty"` // true if phone number verified
+	Nonce               string   `json:"nonce,omitempty"`                 // value used to associate client session with id token
+	jwt.StandardClaims
+}
+
 func OnError(w http.ResponseWriter, r *http.Request, err string) {
 	http.Error(w, err, http.StatusUnauthorized)
 }
@@ -248,7 +266,7 @@ func (m *JWTMiddleware) CheckJWT(w http.ResponseWriter, r *http.Request) error {
 	// Now parse the token
 	parser := new(jwt.Parser)
 	parser.SkipClaimsValidation = true
-	parsedToken, err := parser.Parse(token, m.Options.ValidationKeyGetter)
+	parsedToken, err := parser.ParseWithClaims(token, &Claims{}, m.Options.ValidationKeyGetter)
 
 	// Check if there was an error in parsing...
 	if err != nil {

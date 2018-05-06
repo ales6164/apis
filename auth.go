@@ -111,6 +111,10 @@ func getUserHandler(R *Route) http.HandlerFunc {
 }*/
 
 func loginHandler(R *Route) http.HandlerFunc {
+	type AuthOut struct {
+		TokenID string `json:"token_id"`
+		User    User   `json:"user"`
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
 
@@ -135,9 +139,9 @@ func loginHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		ctx.Print(w, map[string]interface{}{
-			"token_id": signedToken,
-			"user":     u,
+		ctx.Print(w, AuthOut{
+			TokenID: signedToken,
+			User:    *u,
 		})
 	}
 }
@@ -173,17 +177,17 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 		var inputUser InputUser
 		err := json.Unmarshal(ctx.Body(), &inputUser)
 		if err != nil {
-			ctx.PrintError(w, err)
+			ctx.PrintError(w, err, "unmarshal")
 			return
 		}
 
 		if err = checkEmail(inputUser.Email); err != nil {
-			ctx.PrintError(w, err)
+			ctx.PrintError(w, err, "check email")
 			return
 		}
 
 		if err = checkPassword(inputUser.Password); err != nil {
-			ctx.PrintError(w, err)
+			ctx.PrintError(w, err, "check password")
 			return
 		}
 
@@ -192,14 +196,14 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 		// create password hash
 		hash, err := crypt([]byte(inputUser.Password))
 		if err != nil {
-			ctx.PrintError(w, err)
+			ctx.PrintError(w, err, "crypt")
 			return
 		}
 
 		userKey := datastore.NewKey(ctx, "_user", inputUser.Email, 0, nil)
 
 		// create User
-		u := &user{
+		var acc = Account{
 			Hash:  hash,
 			Email: inputUser.Email,
 			User: User{
@@ -235,21 +239,21 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					// register
-					_, err = datastore.Put(tc, userKey, u)
+					_, err = datastore.Put(tc, userKey, &acc)
 					return err
 				}
 				return err
 			}
 			return errors.ErrUserAlreadyExists
 		}, nil); err != nil {
-			ctx.PrintError(w, err)
+			ctx.PrintError(w, err, "reg put err")
 			return
 		}
 
 		//dont create a token on registration
 
 		if R.a.OnUserSignUp != nil {
-			R.a.OnUserSignUp(ctx, u.User)
+			R.a.OnUserSignUp(ctx, acc.User)
 		}
 	}
 }
@@ -284,17 +288,17 @@ func confirmEmailHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		var u user
+		var acc Account
 		err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			err := datastore.Get(tc, ctx.UserKey(), &u)
+			err := datastore.Get(tc, ctx.UserKey(), &acc)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					return errors.ErrUserDoesNotExist
 				}
 				return err
 			}
-			u.User.EmailVerified = true
-			_, err = datastore.Put(tc, ctx.UserKey(), &u)
+			acc.User.EmailVerified = true
+			_, err = datastore.Put(tc, ctx.UserKey(), &acc)
 			return err
 		}, nil)
 		if err != nil {
@@ -303,7 +307,7 @@ func confirmEmailHandler(R *Route) http.HandlerFunc {
 		}
 
 		if R.a.OnUserVerified != nil {
-			R.a.OnUserVerified(ctx, u.User)
+			R.a.OnUserVerified(ctx, acc.User)
 		}
 
 		http.Redirect(w, r, callback, http.StatusTemporaryRedirect)
@@ -326,9 +330,9 @@ func changePasswordHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		var u user
+		var acc Account
 		if err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			err := datastore.Get(tc, ctx.UserKey(), &u)
+			err := datastore.Get(tc, ctx.UserKey(), &acc)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					return errors.ErrUserDoesNotExist
@@ -337,16 +341,16 @@ func changePasswordHandler(R *Route) http.HandlerFunc {
 			}
 
 			// check old password
-			if err = decrypt(u.Hash, []byte(password)); err != nil {
+			if err = decrypt(acc.Hash, []byte(password)); err != nil {
 				return errors.ErrUserPasswordIncorrect
 			}
 
 			// create new password hash
-			if u.Hash, err = crypt([]byte(newPassword)); err != nil {
+			if acc.Hash, err = crypt([]byte(newPassword)); err != nil {
 				return err
 			}
 
-			_, err = datastore.Put(tc, ctx.UserKey(), &u)
+			_, err = datastore.Put(tc, ctx.UserKey(), &acc)
 			return err
 		}, nil); err != nil {
 			ctx.PrintError(w, err)
@@ -394,16 +398,16 @@ func updateProfile(R *Route) http.HandlerFunc {
 		}
 
 		// do everything in a transaction
-		var u user
+		var acc Account
 		if err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
 			// get user
-			err := datastore.Get(ctx, ctx.UserKey(), &u)
+			err := datastore.Get(ctx, ctx.UserKey(), &acc)
 			if err != nil {
 				return err
 			}
 
 			src := reflect.ValueOf(inputUser)
-			dst := reflect.ValueOf(u.User)
+			dst := reflect.ValueOf(acc.User)
 			for i := 0; i < src.Type().NumField(); i++ {
 				srcFieldType := src.Type().Field(i)
 				srcField := src.FieldByName(srcFieldType.Name)
@@ -412,14 +416,14 @@ func updateProfile(R *Route) http.HandlerFunc {
 					dstField.Set(srcField)
 				}
 			}
-			u.User = dst.Interface().(User)
+			acc.User = dst.Interface().(User)
 
-			_, err = datastore.Put(ctx, ctx.UserKey(), &u)
+			_, err = datastore.Put(ctx, ctx.UserKey(), &acc)
 			return err
 		}, nil); err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
-		ctx.Print(w, &u.User)
+		ctx.Print(w, &acc.User)
 	}
 }

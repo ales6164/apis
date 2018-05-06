@@ -6,11 +6,7 @@ import (
 	"github.com/ales6164/apis/errors"
 )
 
-type account struct {
-	Hash []byte `json:"-"`
-}
-
-type user struct {
+type Account struct {
 	Email string `json:"-"`
 	Hash  []byte `json:"-"`
 	User  User
@@ -93,30 +89,30 @@ type ClientSession struct {
 }
 
 func getUser(ctx Context, key *datastore.Key) (*User, error) {
-	var u user
-	if err := datastore.Get(ctx, key, &u); err != nil {
+	var acc Account
+	if err := datastore.Get(ctx, key, &acc); err != nil {
 		if err == datastore.ErrNoSuchEntity {
 			return nil, errors.ErrUserDoesNotExist
 		}
 		return nil, err
 	}
-	u.User.UserID = key
-	return &u.User, nil
+	acc.User.UserID = key
+	return &acc.User, nil
 }
 
 func login(ctx Context, email, password string) (string, *User, error) {
 	var signedToken string
-	var u user
+	var acc Account
 	key := datastore.NewKey(ctx, "_user", email, 0, nil)
-	if err := datastore.Get(ctx, key, &u); err != nil {
+	if err := datastore.Get(ctx, key, &acc); err != nil {
 		if err == datastore.ErrNoSuchEntity {
 			return signedToken, nil, errors.ErrUserDoesNotExist
 		}
 		return signedToken, nil, err
 	}
-	u.User.UserID = key
+	acc.User.UserID = key
 
-	if err := decrypt(u.Hash, []byte(password)); err != nil {
+	if err := decrypt(acc.Hash, []byte(password)); err != nil {
 		return signedToken, nil, errors.ErrUserPasswordIncorrect
 	}
 
@@ -137,6 +133,6 @@ func login(ctx Context, email, password string) (string, *User, error) {
 	}
 
 	// create a JWT token
-	signedToken, err = ctx.authenticate(sess.JwtID, sessKey.Encode(), &u.User, expiresAt.Unix())
-	return signedToken, &u.User, err
+	signedToken, err = ctx.authenticate(sess, sessKey.Encode(), &acc.User, expiresAt.Unix())
+	return signedToken, &acc.User, err
 }

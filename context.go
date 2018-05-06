@@ -16,16 +16,18 @@ import (
 	"strings"
 	"strconv"
 	"time"
+	"github.com/ales6164/apis/middleware"
 )
 
 type Context struct {
 	*Route
 	*ClientRequest
-	claims           Claims
-	ClientSession    *ClientSession
-	error            error
-	clientRequestKey *datastore.Key
-	r                *http.Request
+	claims                 middleware.Claims
+	hasActiveClientSession bool
+	ClientSession          ClientSession
+	error                  error
+	clientRequestKey       *datastore.Key
+	r                      *http.Request
 	context.Context
 	*body
 }
@@ -86,8 +88,8 @@ func (R *Route) NewContext(r *http.Request) Context {
 
 	tkn := gcontext.Get(r, "auth")
 	if tkn != nil {
-		if token, ok := tkn.(*jwt.Token); ok {
-			if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		if token, ok := tkn.(*jwt.Token); ok && token.Valid {
+			if claims, ok := token.Claims.(*middleware.Claims); ok {
 
 				// todo: decode claims.Nonce as ClientSession key and compare with datastore entry;
 				// todo: implement and check if session was blocked
@@ -98,15 +100,24 @@ func (R *Route) NewContext(r *http.Request) Context {
 				clientReq.ClientSession, ctx.error = datastore.DecodeKey(claims.Nonce)
 				ctx.check()
 
-				ctx.error = datastore.Get(ctx, clientReq.ClientSession, ctx.ClientSession)
+				ctx.error = datastore.Get(ctx, clientReq.ClientSession, &ctx.ClientSession)
+				ctx.hasActiveClientSession = ctx.error == nil
+				ctx.check()
+			} else {
+				ctx.error = errors.New("claims not of type *Claims")
 				ctx.check()
 			}
+		} else {
+			ctx.error = errors.New("token not valid")
+			ctx.check()
 		}
+	} else {
+		log.Debugf(ctx, "token is nil")
 	}
 
 	// check if session is ok
-	if ctx.ClientSession != nil {
-		ctx.IsExpired = ctx.ClientSession.ExpiresAt.After(ctx.Time)
+	if ctx.hasActiveClientSession {
+		ctx.IsExpired = ctx.ClientSession.ExpiresAt.Before(ctx.Time)
 		if !ctx.IsExpired {
 			ctx.IsBlocked = ctx.ClientSession.IsBlocked
 			ctx.IsAuthenticated = !ctx.IsBlocked
@@ -115,7 +126,7 @@ func (R *Route) NewContext(r *http.Request) Context {
 
 	// store to datastore
 	ctx.clientRequestKey = datastore.NewIncompleteKey(ctx, "_clientRequest", nil)
-	ctx.clientRequestKey, ctx.error = datastore.Put(ctx, ctx.clientRequestKey, nil)
+	ctx.clientRequestKey, ctx.error = datastore.Put(ctx, ctx.clientRequestKey, clientReq)
 	ctx.check()
 
 	return ctx
@@ -124,7 +135,7 @@ func (R *Route) NewContext(r *http.Request) Context {
 // logs error if any
 func (ctx Context) check() {
 	if ctx.error != nil {
-		log.Criticalf(ctx, "context error: %v", ctx.error)
+		log.Criticalf(ctx, "context of %v check error: %v", ctx.ClientRequest, ctx.error)
 	}
 }
 
@@ -220,9 +231,12 @@ func (ctx *Context) PrintResult(w http.ResponseWriter, result map[string]interfa
 	w.Write(bs)
 }
 
-func (ctx *Context) PrintError(w http.ResponseWriter, err error) {
-	log.Errorf(ctx, "context error: %v", err)
+func (ctx *Context) PrintError(w http.ResponseWriter, err error, descriptors ...string) {
 	ctx.ClientRequest.Error = err.Error()
+	for i, d := range descriptors {
+		ctx.ClientRequest.Error += `\n[descriptor"` + strconv.Itoa(i) + `","` + d + `"]`
+	}
+	log.Errorf(ctx, "context error: %s", ctx.ClientRequest.Error)
 	datastore.Put(ctx, ctx.clientRequestKey, ctx.ClientRequest)
 	if err == errors.ErrUnathorized {
 		w.WriteHeader(http.StatusUnauthorized)
