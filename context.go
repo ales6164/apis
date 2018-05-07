@@ -149,9 +149,18 @@ func (ctx Context) Body() []byte {
 	return ctx.body.body
 }
 
+func (ctx Context) User() *User {
+	u, _ := getUser(ctx, ctx.UserKey())
+	return u
+}
+
 func (ctx Context) UserKey() *datastore.Key {
 	key, _ := datastore.DecodeKey(ctx.claims.StandardClaims.Subject)
 	return key
+}
+
+func (ctx Context) Claims() middleware.Claims {
+	return ctx.claims
 }
 
 func (ctx Context) Roles() []string {

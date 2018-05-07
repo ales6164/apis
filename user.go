@@ -57,12 +57,13 @@ type SocialProfile struct {
 }
 
 type Address struct {
-	Address string  `json:"address,omitempty"`
-	City    string  `json:"city,omitempty"`
-	State   string  `json:"state,omitempty"`
-	Country string  `json:"country,omitempty"`
-	Lat     float64 `json:"lat,omitempty"`
-	Lng     float64 `json:"lng,omitempty"`
+	Address  string  `json:"address,omitempty"`
+	PostCode string  `json:"post_code,omitempty"`
+	City     string  `json:"city,omitempty"`
+	State    string  `json:"state,omitempty"`
+	Country  string  `json:"country,omitempty"`
+	Lat      float64 `json:"lat,omitempty"`
+	Lng      float64 `json:"lng,omitempty"`
 }
 
 type Company struct {

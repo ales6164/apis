@@ -235,6 +235,8 @@ func (R *Route) getHandler() http.HandlerFunc {
 							}
 						}
 					}
+				} else if key == "sort" {
+					//skip
 				} else {
 					for _, v := range val {
 						fields, facets = R.kind.RetrieveSearchParameter(key, v, fields, facets)

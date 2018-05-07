@@ -1,6 +1,6 @@
 package middleware
 
-import jwt "github.com/dgrijalva/jwt-go"
+import "github.com/dgrijalva/jwt-go"
 
 func AuthMiddleware(signingKey []byte) *JWTMiddleware {
 	return New(MiddlewareOptions{
