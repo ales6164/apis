@@ -12,6 +12,7 @@ import (
 	"google.golang.org/appengine/search"
 	"reflect"
 	"math"
+	"google.golang.org/appengine/log"
 )
 
 type Route struct {
@@ -165,48 +166,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 				return
 			}
 
-			// we need this to retrieve possible facets/filters
-			var itDiscovery = index.Search(ctx, q, &search.SearchOptions{
-				IDsOnly: R.kind.RetrieveByIDOnSearch,
-				Facets: []search.FacetSearchOption{
-					search.AutoFacetDiscovery(0, 0),
-				},
-			})
-
-			facetsResult, _ := itDiscovery.Facets()
-			var facsOutput = map[string][]FacetOutput{}
-			for _, f := range facetsResult {
-				for _, v := range f {
-					if _, ok := facsOutput[v.Name]; !ok {
-						facsOutput[v.Name] = []FacetOutput{}
-					}
-					if rang, ok := v.Value.(search.Range); ok {
-						var value interface{}
-						if rang.Start == math.Inf(-1) || rang.End == math.Inf(1) {
-							value = "Inf"
-						} else {
-							value = map[string]interface{}{
-								"start": rang.Start,
-								"end":   rang.End,
-							}
-						}
-						facsOutput[v.Name] = append(facsOutput[v.Name], FacetOutput{
-							Count: v.Count,
-							Value: value,
-							Name:  v.Name,
-						})
-					} else if rang, ok := v.Value.(search.Atom); ok {
-						facsOutput[v.Name] = append(facsOutput[v.Name], FacetOutput{
-							Count: v.Count,
-							Value: string(rang),
-							Name:  v.Name,
-						})
-					}
-
-				}
-			}
-
-			// build facets
+			// build facets and retrieve filters from query parameters
 			var fields []search.Field
 			var facets []search.Facet
 			for key, val := range r.URL.Query() {
@@ -255,6 +215,47 @@ func (R *Route) getHandler() http.HandlerFunc {
 				}
 			}
 
+			// we need this to retrieve possible facets/filters
+			var itDiscovery = index.Search(ctx, q, &search.SearchOptions{
+				IDsOnly: R.kind.RetrieveByIDOnSearch,
+				Facets: []search.FacetSearchOption{
+					search.AutoFacetDiscovery(0, 0),
+				},
+			})
+
+			facetsResult, _ := itDiscovery.Facets()
+			var facsOutput = map[string][]FacetOutput{}
+			for _, f := range facetsResult {
+				for _, v := range f {
+					if _, ok := facsOutput[v.Name]; !ok {
+						facsOutput[v.Name] = []FacetOutput{}
+					}
+					if rang, ok := v.Value.(search.Range); ok {
+						var value interface{}
+						if rang.Start == math.Inf(-1) || rang.End == math.Inf(1) {
+							value = "Inf"
+						} else {
+							value = map[string]interface{}{
+								"start": rang.Start,
+								"end":   rang.End,
+							}
+						}
+						facsOutput[v.Name] = append(facsOutput[v.Name], FacetOutput{
+							Count: v.Count,
+							Value: value,
+							Name:  v.Name,
+						})
+					} else if rang, ok := v.Value.(search.Atom); ok {
+						facsOutput[v.Name] = append(facsOutput[v.Name], FacetOutput{
+							Count: v.Count,
+							Value: string(rang),
+							Name:  v.Name,
+						})
+					}
+
+				}
+			}
+
 			// limit
 			var intLimit int
 			if len(limit) > 0 {
@@ -281,6 +282,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 			var results []interface{}
 			var docKeys []*datastore.Key
 			var t *search.Iterator
+			log.Debugf(ctx, "search index: %s and query: %q", R.kind.Name, q)
 			for t = index.Search(ctx, q, &search.SearchOptions{
 				IDsOnly:       R.kind.RetrieveByIDOnSearch,
 				Refinements:   facets,
