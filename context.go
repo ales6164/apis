@@ -38,12 +38,13 @@ type body struct {
 }
 
 type Device struct {
-	UserAgent  string
-	IP         string
-	Country    string
-	Region     string
-	City       string
-	CityLatLng appengine.GeoPoint
+	UserAgent      string
+	AcceptLanguage string
+	IP             string
+	Country        string
+	Region         string
+	City           string
+	CityLatLng     appengine.GeoPoint
 }
 
 type ClientRequest struct {
@@ -73,11 +74,12 @@ func (R *Route) NewContext(r *http.Request) Context {
 	clientReq.URL = r.URL.String()
 	clientReq.Method = r.Method
 	clientReq.Device = Device{
-		IP:        r.RemoteAddr,
-		UserAgent: r.UserAgent(),
-		City:      r.Header.Get("X-AppEngine-City"),
-		Country:   r.Header.Get("X-AppEngine-Country"),
-		Region:    r.Header.Get("X-AppEngine-Region"),
+		IP:             r.RemoteAddr,
+		UserAgent:      r.UserAgent(),
+		AcceptLanguage: r.Header.Get("accept-language"),
+		City:           r.Header.Get("X-AppEngine-City"),
+		Country:        r.Header.Get("X-AppEngine-Country"),
+		Region:         r.Header.Get("X-AppEngine-Region"),
 	}
 	latlng := strings.Split(r.Header.Get("X-AppEngine-CityLatLong"), ",")
 	if len(latlng) == 2 {

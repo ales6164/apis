@@ -32,6 +32,19 @@ type Route struct {
 	delete http.HandlerFunc
 }
 
+type Cursor struct {
+	Next string `json:"next,omitempty"`
+	Prev string `json:"prev,omitempty"`
+}
+
+type SearchOutput struct {
+	Count   int                      `json:"count,omitempty"`
+	Total   int                      `json:"total,omitempty"`
+	Results []interface{}            `json:"results,omitempty"`
+	Filters map[string][]FacetOutput `json:"filters,omitempty"`
+	Cursor  Cursor                   `json:"cursor,omitempty"`
+}
+
 type Listener func(ctx Context, h *kind.Holder) error
 
 const (
@@ -121,7 +134,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 			return
 		}
 
-		q, next, name, id, sort, limit, offset, ancestor := r.FormValue("q"), r.FormValue("next"), r.FormValue("name"), r.FormValue("id"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset"), r.FormValue("ancestor")
+		q, next, autoFilterDiscovery, name, id, sort, limit, offset, ancestor := r.FormValue("q"), r.FormValue("next"), r.FormValue("autoFilterDiscovery"), r.FormValue("name"), r.FormValue("id"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset"), r.FormValue("ancestor")
 
 		if err := R.trigger(BeforeRead, ctx, nil); err != nil {
 			ctx.PrintError(w, err)
@@ -216,43 +229,45 @@ func (R *Route) getHandler() http.HandlerFunc {
 			}
 
 			// we need this to retrieve possible facets/filters
-			var itDiscovery = index.Search(ctx, q, &search.SearchOptions{
-				IDsOnly: R.kind.RetrieveByIDOnSearch,
-				Facets: []search.FacetSearchOption{
-					search.AutoFacetDiscovery(0, 0),
-				},
-			})
-
-			facetsResult, _ := itDiscovery.Facets()
 			var facsOutput = map[string][]FacetOutput{}
-			for _, f := range facetsResult {
-				for _, v := range f {
-					if _, ok := facsOutput[v.Name]; !ok {
-						facsOutput[v.Name] = []FacetOutput{}
-					}
-					if rang, ok := v.Value.(search.Range); ok {
-						var value interface{}
-						if rang.Start == math.Inf(-1) || rang.End == math.Inf(1) {
-							value = "Inf"
-						} else {
-							value = map[string]interface{}{
-								"start": rang.Start,
-								"end":   rang.End,
-							}
-						}
-						facsOutput[v.Name] = append(facsOutput[v.Name], FacetOutput{
-							Count: v.Count,
-							Value: value,
-							Name:  v.Name,
-						})
-					} else if rang, ok := v.Value.(search.Atom); ok {
-						facsOutput[v.Name] = append(facsOutput[v.Name], FacetOutput{
-							Count: v.Count,
-							Value: string(rang),
-							Name:  v.Name,
-						})
-					}
+			if len(autoFilterDiscovery) > 0 {
+				var itDiscovery = index.Search(ctx, q, &search.SearchOptions{
+					IDsOnly: R.kind.RetrieveByIDOnSearch,
+					Facets: []search.FacetSearchOption{
+						search.AutoFacetDiscovery(0, 0),
+					},
+				})
 
+				facetsResult, _ := itDiscovery.Facets()
+				for _, f := range facetsResult {
+					for _, v := range f {
+						if _, ok := facsOutput[v.Name]; !ok {
+							facsOutput[v.Name] = []FacetOutput{}
+						}
+						if rang, ok := v.Value.(search.Range); ok {
+							var value interface{}
+							if rang.Start == math.Inf(-1) || rang.End == math.Inf(1) {
+								value = "Inf"
+							} else {
+								value = map[string]interface{}{
+									"start": rang.Start,
+									"end":   rang.End,
+								}
+							}
+							facsOutput[v.Name] = append(facsOutput[v.Name], FacetOutput{
+								Count: v.Count,
+								Value: value,
+								Name:  v.Name,
+							})
+						} else if rang, ok := v.Value.(search.Atom); ok {
+							facsOutput[v.Name] = append(facsOutput[v.Name], FacetOutput{
+								Count: v.Count,
+								Value: string(rang),
+								Name:  v.Name,
+							})
+						}
+
+					}
 				}
 			}
 
@@ -327,14 +342,14 @@ func (R *Route) getHandler() http.HandlerFunc {
 				}
 			}
 
-			ctx.PrintResult(w, map[string]interface{}{
-				"count":   len(results),
-				"total":   t.Count(),
-				"results": results,
-				"filters": facsOutput,
-				"cursor": map[string]interface{}{
-					"next": t.Cursor(),
-					"prev": next,
+			ctx.Print(w, SearchOutput{
+				Count:   len(results),
+				Total:   t.Count(),
+				Results: results,
+				Filters: facsOutput,
+				Cursor: Cursor{
+					Next: string(t.Cursor()),
+					Prev: next,
 				},
 			})
 

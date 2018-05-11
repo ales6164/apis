@@ -111,6 +111,10 @@ func getUserHandler(R *Route) http.HandlerFunc {
 }*/
 
 func loginHandler(R *Route) http.HandlerFunc {
+	type Login struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
 	type AuthOut struct {
 		TokenID string `json:"token_id"`
 		User    User   `json:"user"`
@@ -118,7 +122,18 @@ func loginHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
 
-		email, password := r.FormValue("email"), r.FormValue("password")
+		var email, password string
+
+		ct := r.Header.Get("content-type")
+		if strings.Contains(ct, "application/json") {
+			var login Login
+			if err := json.Unmarshal(ctx.Body(), &login); err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+		} else {
+			email, password = r.FormValue("email"), r.FormValue("password")
+		}
 
 		err := checkEmail(email)
 		if err != nil {
