@@ -13,6 +13,7 @@ type Apis struct {
 	options *Options
 	routes  []*Route
 
+
 	middleware          *middleware.JWTMiddleware
 	privateKey          []byte
 	permissions
@@ -42,6 +43,7 @@ func New(opt *Options) (*Apis, error) {
 	a := &Apis{
 		options:             opt,
 		allowedTranslations: map[string]bool{},
+		kinds:               map[*kind.Kind]*kind.Kind{},
 	}
 
 	// read private key

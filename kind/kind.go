@@ -16,6 +16,8 @@ type Kind struct {
 	*Options
 	fields      []*Field
 
+	info *Info
+
 	searchFields map[string]SearchField // map of all fields
 }
 
@@ -38,12 +40,46 @@ type Field struct {
 	Multiple   bool
 	NoIndex    bool
 
+	JsonName    string
+	StructField reflect.StructField
+
 	Kind *Kind
 }
 
 type SearchField struct {
 	Name    string
 	IsFacet bool
+}
+
+type Info struct {
+	Name        string      `json:"name"`
+	SearchIndex string      `json:"search_index"`
+	Fields      []InfoField `json:"fields"`
+}
+
+type InfoField struct {
+	Name string `json:"name"`
+	Json string `json:"json"`
+	Type string `json:"type"`
+}
+
+func (k *Kind) Info() *Info {
+	if k.info == nil {
+		info := new(Info)
+		info.Name = k.Name
+		info.SearchIndex = k.SearchType.Name()
+
+		for _, f := range k.fields {
+			infoField := InfoField{
+				Name: f.JsonName,
+				Type: f.StructField.Type.String(),
+			}
+			info.Fields = append(info.Fields, infoField)
+		}
+
+		k.info = info
+	}
+	return k.info
 }
 
 func New(t reflect.Type, opt *Options) *Kind {
@@ -64,7 +100,7 @@ func New(t reflect.Type, opt *Options) *Kind {
 	for i := 0; i < t.NumField(); i++ {
 		structField := t.Field(i)
 		field := new(Field)
-
+		field.StructField = structField
 		if val, ok := structField.Tag.Lookup("datastore"); ok {
 			for n, v := range strings.Split(val, ",") {
 				v = strings.TrimSpace(v)
@@ -81,7 +117,15 @@ func New(t reflect.Type, opt *Options) *Kind {
 				}
 			}
 		}
-
+		if val, ok := structField.Tag.Lookup("json"); ok {
+			for n, v := range strings.Split(val, ",") {
+				v = strings.TrimSpace(v)
+				switch n {
+				case 0:
+					field.JsonName = v
+				}
+			}
+		}
 		if val, ok := structField.Tag.Lookup("apis"); ok {
 			for n, v := range strings.Split(val, ",") {
 				v = strings.TrimSpace(v)
@@ -104,6 +148,10 @@ func New(t reflect.Type, opt *Options) *Kind {
 
 		if len(field.Name) == 0 {
 			field.Name = structField.Name
+		}
+
+		if len(field.JsonName) == 0 {
+			field.JsonName = field.Name
 		}
 
 		if structField.Type.Kind() == reflect.Slice {
