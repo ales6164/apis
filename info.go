@@ -2,7 +2,6 @@ package apis
 
 import (
 	"net/http"
-	"github.com/ales6164/apis/errors"
 	"github.com/ales6164/apis/kind"
 )
 
@@ -14,6 +13,7 @@ import (
 func infoHandler(R *Route) http.HandlerFunc {
 	var isInited bool
 	var kinds map[*kind.Kind]*kind.Kind
+	var infos []*kind.Info
 	var fun = func() {
 		kinds = map[*kind.Kind]*kind.Kind{}
 		for _, r := range R.a.routes {
@@ -21,24 +21,26 @@ func infoHandler(R *Route) http.HandlerFunc {
 				kinds[r.kind] = r.kind
 			}
 		}
+		for _, k := range kinds {
+			infos = append(infos, k.Info())
+		}
 		isInited = true
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
-		if !ctx.HasRole(AdminRole) {
+		/*if !ctx.HasRole(AdminRole) {
 			ctx.PrintError(w, errors.ErrUnathorized)
 			return
-		}
+		}*/
 
 		if !isInited {
 			fun()
 		}
 
 		// get all kinds
-		for _, k := range R.a.kinds {
-			k.Type.
-		}
 
-		ctx.Print(w, nil)
+		ctx.PrintResult(w, map[string]interface{}{
+			"kinds": infos,
+		})
 	}
 }

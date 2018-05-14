@@ -23,9 +23,11 @@ type StoredFile struct {
 }
 
 func FileHandler(R *apis.Route, bucketName string, basePath string, fileTypes ...string) http.HandlerFunc {
+	var fileTypeCheck bool
 	var supportedFileTypes = map[string]string{}
 	for _, t := range fileTypes {
 		supportedFileTypes[t] = t
+		fileTypeCheck = true
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if appengine.IsDevAppServer() {
@@ -55,9 +57,11 @@ func FileHandler(R *apis.Route, bucketName string, basePath string, fileTypes ..
 			return
 		}
 
-		if _, ok := supportedFileTypes[fileType]; !ok {
-			ctx.PrintError(w, errors.New("File type "+fileType+" not supported"))
-			return
+		if fileTypeCheck {
+			if _, ok := supportedFileTypes[fileType]; !ok {
+				ctx.PrintError(w, errors.New("File type "+fileType+" not supported"))
+				return
+			}
 		}
 
 		// pre-setup bucket

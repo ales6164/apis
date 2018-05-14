@@ -43,7 +43,6 @@ func New(opt *Options) (*Apis, error) {
 	a := &Apis{
 		options:             opt,
 		allowedTranslations: map[string]bool{},
-		kinds:               map[*kind.Kind]*kind.Kind{},
 	}
 
 	// read private key
@@ -111,6 +110,8 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	r.Handle("/auth/confirm", a.middleware.Handler(confirmEmailHandler(authRoute)))
 	r.Handle("/auth/password", a.middleware.Handler(changePasswordHandler(authRoute))).Methods(http.MethodPost)
 	r.Handle("/user", a.middleware.Handler(getUserHandler(authRoute))).Methods(http.MethodGet)
+
+	r.Handle("/info", a.middleware.Handler(infoHandler(authRoute))).Methods(http.MethodGet)
 
 	return &Server{r}
 }
