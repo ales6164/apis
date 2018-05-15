@@ -7,6 +7,7 @@ import (
 	"strings"
 	"github.com/ales6164/apis/errors"
 	"google.golang.org/appengine/search"
+	"net/http"
 )
 
 type Kind struct {
@@ -17,12 +18,13 @@ type Kind struct {
 	fields      []*Field
 
 	info *Info
+	ui   *UI
 
 	searchFields map[string]SearchField // map of all fields
 }
 
 type Options struct {
-	Name                 string
+	Name                 string // name used to represent kind on the backend
 	EnableSearch         bool
 	RetrieveByIDOnSearch bool
 	SearchType           reflect.Type
@@ -40,12 +42,10 @@ type Field struct {
 	Multiple   bool
 	NoIndex    bool
 
-	HiddenOnCreate bool
-	Label          string   // json field name
-	Widget         string   // json field name
-	UIOptions      []string // json field name
-	Json           string   // json field name
-	Type           string
+	IsMetaField bool
+	Label       string // json field name
+	Json        string // json field name
+	Type        string
 
 	Kind *Kind
 }
@@ -56,38 +56,125 @@ type SearchField struct {
 }
 
 type Info struct {
-	Name        string       `json:"name"`
-	SearchIndex string       `json:"search_index"`
-	Fields      []*InfoField `json:"fields"`
+	Name         string       `json:"name"`
+	Label        string       `json:"label"`
+	LabelMany    string       `json:"label_many"`
+	SearchIndex  string       `json:"search_index"`
+	Fields       []*InfoField `json:"fields"`
+	Display      []*InfoField `json:"display"`
+	RelativePath string       `json:"relative_path"`
+	HasGet       bool         `json:"get"`
+	HasPost      bool         `json:"post"`
+	HasPut       bool         `json:"put"`
+	HasDelete    bool         `json:"delete"`
 }
 
 type InfoField struct {
-	Label          string   `json:"label"`
-	Widget         string   `json:"widget"`
-	HiddenOnCreate bool     `json:"hiddenOnCreate"`
-	Options        []string `json:"options"`
-	Json           string   `json:"json"`
-	Type           string   `json:"type"`
+	Label      string          `json:"label"`
+	Name       string          `json:"name"`
+	Hidden     bool            `json:"hidden"` // only in on create window
+	Attributes []InfoFieldAttr `json:"attributes"`
+	Type       string          `json:"type"`
+	IsInput    bool            `json:"is_input"`
+	IsSelect   bool            `json:"is_select"`
+	IsTextArea bool            `json:"is_text_area"`
 }
 
+type InfoFieldAttr struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type UI struct {
+	Label        string
+	LabelMany    string
+	relativePath string
+	methods      []string
+}
+
+func (k *Kind) UI() *UI {
+	return k.ui
+}
+func (k *Kind) SetUI(ui *UI, relativePath string, methods []string) {
+	ui.relativePath = relativePath
+	ui.methods = methods
+	k.ui = ui
+}
+func (k *Kind) HasUI() bool {
+	return k.ui != nil
+}
 func (k *Kind) Info() *Info {
-	if k.info == nil {
-		info := new(Info)
+	if k.info == nil && k.HasUI() {
+		info := &Info{
+			Name:         k.Name,
+			Label:        k.ui.Label,
+			LabelMany:    k.ui.LabelMany,
+			SearchIndex:  k.SearchType.Name(),
+			RelativePath: k.ui.relativePath,
+			Display:      make([]*InfoField, 3),
+		}
+
+		for _, m := range k.ui.methods {
+			switch m {
+			case http.MethodGet:
+				info.HasGet = true
+			case http.MethodPost:
+				info.HasPost = true
+			case http.MethodPut:
+				info.HasPut = true
+			case http.MethodDelete:
+				info.HasDelete = true
+			}
+		}
 
 		k.checkFields()
 
-		info.Name = k.Name
-		info.SearchIndex = k.SearchType.Name()
-
 		for _, f := range k.fields {
 			infoField := &InfoField{
-				Label:          f.Label,
-				Json:           f.Json,
-				Widget:         f.Widget,
-				HiddenOnCreate: f.HiddenOnCreate,
-				Options:        f.UIOptions,
-				Type:           f.Type,
+				Label: f.Label,
+				Name:  f.Json,
+				Type:  f.Type,
 			}
+			switch f.Type {
+			case "*datastore.Key":
+				infoField.IsInput = true
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "text"})
+			case "time.Time":
+				infoField.IsInput = true
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "datetime-local"})
+			case "string":
+				infoField.IsInput = true
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "text"})
+			case "float64":
+				infoField.IsInput = true
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "number"})
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "any"})
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"pattern", `-?[0-9]*(\.[0-9]+)?`})
+			case "float32":
+				infoField.IsInput = true
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "number"})
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "any"})
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"pattern", `-?[0-9]*(\.[0-9]+)?`})
+			case "int64":
+				infoField.IsInput = true
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "number"})
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "1"})
+			case "int32":
+				infoField.IsInput = true
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "number"})
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "1"})
+			case "int":
+				infoField.IsInput = true
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "number"})
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "1"})
+			}
+
+			if f.IsMetaField {
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"readonly", "true"})
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"disabled", "true"})
+				infoField.Hidden = true
+			}
+
 			info.Fields = append(info.Fields, infoField)
 		}
 
@@ -193,20 +280,6 @@ func (k *Kind) checkFields() {
 				}
 			}
 		}
-		if val, ok := structField.Tag.Lookup("ui"); ok {
-			for n, v := range strings.Split(val, ",") {
-				v = strings.TrimSpace(v)
-				switch n {
-				case 0:
-					if len(v) == 0 {
-						v = "input"
-					}
-					field.Widget = v
-				default:
-					field.UIOptions = append(field.UIOptions, v)
-				}
-			}
-		}
 		if val, ok := structField.Tag.Lookup("apis"); ok {
 			for n, v := range strings.Split(val, ",") {
 				v = strings.TrimSpace(v)
@@ -223,7 +296,7 @@ func (k *Kind) checkFields() {
 							FieldName: structField.Name,
 						})
 					}
-					field.HiddenOnCreate = true
+					field.IsMetaField = true
 				}
 			}
 		}

@@ -1,18 +1,16 @@
 package apis
 
 import (
-	"net/http"
-
-	"github.com/gorilla/mux"
 	"io/ioutil"
 	"github.com/ales6164/apis/middleware"
+	"net/http"
 	"github.com/ales6164/apis/kind"
+	"github.com/gorilla/mux"
 )
 
 type Apis struct {
 	options *Options
 	routes  []*Route
-
 
 	middleware          *middleware.JWTMiddleware
 	privateKey          []byte

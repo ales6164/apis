@@ -20,6 +20,7 @@ type Route struct {
 	kind *kind.Kind
 	path string
 
+	ui        *kind.UI
 	listeners map[string]Listener
 	searchListener func(ctx Context, query string) ([]interface{}, error)
 	roles map[string]bool
@@ -89,6 +90,15 @@ func (R *Route) Roles(rs ...Role) *Route {
 	for _, r := range rs {
 		R.roles[string(r)] = true
 	}
+	return R
+}
+
+func (R *Route) UI(ui *kind.UI) *Route {
+	if R.kind.HasUI() {
+		panic(errors.New("failed to set route UI on kind that already has UI"))
+	}
+	R.ui = ui
+	R.kind.SetUI(ui, R.path, R.methods)
 	return R
 }
 

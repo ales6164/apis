@@ -14,6 +14,7 @@ func infoHandler(R *Route) http.HandlerFunc {
 	var isInited bool
 	var kinds map[*kind.Kind]*kind.Kind
 	var infos []*kind.Info
+	//var routes = map[*kind.Kind][]*Route{}
 	var fun = func() {
 		kinds = map[*kind.Kind]*kind.Kind{}
 		for _, r := range R.a.routes {
@@ -21,11 +22,22 @@ func infoHandler(R *Route) http.HandlerFunc {
 				kinds[r.kind] = r.kind
 			}
 		}
+
+		// get routes
+		/*for _, r := range R.a.routes {
+			if r.kind != nil {
+				routes[r.kind] = append(routes[r.kind], r)
+			}
+		}*/
+
 		for _, k := range kinds {
 			infos = append(infos, k.Info())
 		}
+
 		isInited = true
 	}
+	// get routes
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
 		/*if !ctx.HasRole(AdminRole) {
