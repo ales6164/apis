@@ -6,9 +6,7 @@ import (
 	"google.golang.org/appengine/datastore"
 	"strconv"
 	"strings"
-	"encoding/json"
 	"github.com/ales6164/apis/errors"
-	"bytes"
 	"google.golang.org/appengine/search"
 	"reflect"
 	"math"
@@ -153,7 +151,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 
 		if len(id) > 0 {
 			// ordinary get
-			key, err := datastore.DecodeKey(id)
+			key, err := R.kind.DecodeKey(id)
 			if err != nil {
 				ctx.PrintError(w, err)
 				return
@@ -328,7 +326,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 					return
 				}
 
-				if key, err := datastore.DecodeKey(docKey); err == nil {
+				if key, err := R.kind.DecodeKey(docKey); err == nil {
 					docKeys = append(docKeys, key)
 				}
 
@@ -509,42 +507,33 @@ func (R *Route) putHandler() http.HandlerFunc {
 			return
 		}
 
-		var data = UpdateVal{}
-		json.Unmarshal(ctx.Body(), &data)
+		id := r.URL.Query().Get("id")
+		name := r.URL.Query().Get("name")
 
-		if len(data.Id) == 0 && len(data.Name) == 0 {
+		/*var data = UpdateVal{}
+		json.Unmarshal(ctx.Body(), &data)*/
+
+		if len(id) == 0 && len(name) == 0 {
 			ctx.PrintError(w, errors.New("must provide id or name"))
 			return
 		}
 
-		var buf bytes.Buffer
-		err := json.NewEncoder(&buf).Encode(data.Value)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		if data.Value == nil {
-			ctx.PrintError(w, errors.New("must provide value"))
-			return
-		}
-
 		h := R.kind.NewHolder(ctx.UserKey())
-		err = h.Parse(buf.Bytes())
+		err := h.Parse(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
 
 		var key *datastore.Key
-		if len(data.Id) > 0 {
-			key, err = datastore.DecodeKey(data.Id)
+		if len(id) > 0 {
+			key, err = R.kind.DecodeKey(id)
 			if err != nil {
 				ctx.PrintError(w, err)
 				return
 			}
 		} else {
-			key = R.kind.NewKey(ctx, data.Name, ctx.UserKey())
+			key = R.kind.NewKey(ctx, name, ctx.UserKey())
 		}
 
 		h.SetKey(key)

@@ -42,10 +42,11 @@ type Field struct {
 	Multiple   bool
 	NoIndex    bool
 
-	IsMetaField bool
+	MetaField   string
 	Label       string // json field name
 	Json        string // json field name
 	Type        string
+	StructField reflect.StructField
 
 	Kind *Kind
 }
@@ -61,7 +62,6 @@ type Info struct {
 	LabelMany    string       `json:"label_many"`
 	SearchIndex  string       `json:"search_index"`
 	Fields       []*InfoField `json:"fields"`
-	Display      []*InfoField `json:"display"`
 	RelativePath string       `json:"relative_path"`
 	HasGet       bool         `json:"get"`
 	HasPost      bool         `json:"post"`
@@ -70,19 +70,21 @@ type Info struct {
 }
 
 type InfoField struct {
-	Label      string          `json:"label"`
-	Name       string          `json:"name"`
-	Hidden     bool            `json:"hidden"` // only in on create window
-	Attributes []InfoFieldAttr `json:"attributes"`
-	Type       string          `json:"type"`
-	IsInput    bool            `json:"is_input"`
-	IsSelect   bool            `json:"is_select"`
-	IsTextArea bool            `json:"is_text_area"`
+	Label      string          `json:"label,omitempty"`
+	Name       string          `json:"name,omitempty"`
+	Meta       string          `json:"meta,omitempty"`
+	Hidden     bool            `json:"hidden,omitempty"` // only in on create window
+	Attributes []InfoFieldAttr `json:"attributes,omitempty"`
+	Type       string          `json:"type,omitempty"`
+	IsInput    bool            `json:"is_input,omitempty"`
+	IsSelect   bool            `json:"is_select,omitempty"`
+	IsTextArea bool            `json:"is_text_area,omitempty"`
+	InputType  string          `json:"input_type,omitempty"`
 }
 
 type InfoFieldAttr struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
+	Name  string `json:"name,omitempty"`
+	Value string `json:"value,omitempty"`
 }
 
 type UI struct {
@@ -111,7 +113,6 @@ func (k *Kind) Info() *Info {
 			LabelMany:    k.ui.LabelMany,
 			SearchIndex:  k.SearchType.Name(),
 			RelativePath: k.ui.relativePath,
-			Display:      make([]*InfoField, 3),
 		}
 
 		for _, m := range k.ui.methods {
@@ -138,41 +139,52 @@ func (k *Kind) Info() *Info {
 			switch f.Type {
 			case "*datastore.Key":
 				infoField.IsInput = true
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "text"})
+				infoField.InputType = "text"
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
 			case "time.Time":
 				infoField.IsInput = true
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "datetime-local"})
+				infoField.InputType = "datetime-local"
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
 			case "string":
 				infoField.IsInput = true
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "text"})
+				infoField.InputType = "text"
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
 			case "float64":
 				infoField.IsInput = true
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "number"})
+				infoField.InputType = "number"
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
 				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "any"})
 				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"pattern", `-?[0-9]*(\.[0-9]+)?`})
 			case "float32":
 				infoField.IsInput = true
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "number"})
+				infoField.InputType = "number"
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
 				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "any"})
 				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"pattern", `-?[0-9]*(\.[0-9]+)?`})
 			case "int64":
 				infoField.IsInput = true
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "number"})
+				infoField.InputType = "number"
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
 				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "1"})
 			case "int32":
 				infoField.IsInput = true
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "number"})
+				infoField.InputType = "number"
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
 				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "1"})
 			case "int":
 				infoField.IsInput = true
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", "number"})
+				infoField.InputType = "number"
+				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
 				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "1"})
+			default:
+
 			}
 
-			if f.IsMetaField {
+			if len(f.MetaField) > 0 {
 				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"readonly", "true"})
 				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"disabled", "true"})
 				infoField.Hidden = true
+				infoField.Meta = f.MetaField
 			}
 
 			info.Fields = append(info.Fields, infoField)
@@ -245,6 +257,7 @@ func (k *Kind) checkFields() {
 	for i := 0; i < k.Type.NumField(); i++ {
 		structField := k.Type.Field(i)
 		field := new(Field)
+		field.StructField = structField
 		field.Type = structField.Type.String()
 		if val, ok := structField.Tag.Lookup("datastore"); ok {
 			for n, v := range strings.Split(val, ",") {
@@ -296,7 +309,8 @@ func (k *Kind) checkFields() {
 							FieldName: structField.Name,
 						})
 					}
-					field.IsMetaField = true
+					field.MetaField = v
+
 				}
 			}
 		}
@@ -334,6 +348,17 @@ func (k *Kind) NewIncompleteKey(c context.Context, parent *datastore.Key) *datas
 
 func (k *Kind) NewKey(c context.Context, nameId string, parent *datastore.Key) *datastore.Key {
 	return datastore.NewKey(c, k.Name, nameId, 0, parent)
+}
+
+func (k *Kind) DecodeKey(encoded string) (*datastore.Key, error) {
+	key, err := datastore.DecodeKey(encoded)
+	if err != nil {
+		return nil, err
+	}
+	if key.Kind() != k.Name {
+		return nil, errors.New("key unathorized access")
+	}
+	return key, nil
 }
 
 func (k *Kind) RetrieveSearchParameter(parameterName string, value string, fields []search.Field, facets []search.Facet) ([]search.Field, []search.Facet) {

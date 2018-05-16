@@ -97,7 +97,7 @@ func (h *Holder) Update(ctx context.Context) error {
 		}
 		h.key, err = datastore.Put(ctx, h.key, h)
 		return err
-	}, &datastore.TransactionOptions{XG: true})
+	}, nil)
 	return err
 }
 
