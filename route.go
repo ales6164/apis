@@ -10,7 +10,6 @@ import (
 	"google.golang.org/appengine/search"
 	"reflect"
 	"math"
-	"google.golang.org/appengine/log"
 )
 
 type Route struct {
@@ -305,7 +304,6 @@ func (R *Route) getHandler() http.HandlerFunc {
 			var results []interface{}
 			var docKeys []*datastore.Key
 			var t *search.Iterator
-			log.Debugf(ctx, "search index: %s and query: %q", R.kind.Name, q)
 			for t = index.Search(ctx, q, &search.SearchOptions{
 				IDsOnly:       R.kind.RetrieveByIDOnSearch,
 				Refinements:   facets,
@@ -367,16 +365,31 @@ func (R *Route) getHandler() http.HandlerFunc {
 			limitInt, _ := strconv.Atoi(limit)
 			offsetInt, _ := strconv.Atoi(offset)
 
+			//q, next, autoFilterDiscovery, name, id, sort, limit, offset, ancestor
+
+			var filters []kind.Filter
+			for key, val := range r.URL.Query() {
+				if key == "q" || key == "name" || key == "id" || key == "sort" || key == "limit" || key == "offset" || key == "ancestor" {
+					continue
+				}
+				for _, v := range val {
+					filters = append(filters, kind.Filter{
+						FilterStr: key + " =",
+						Value:     v,
+					})
+				}
+			}
+
 			var hs []*kind.Holder
 			var err error
 			if ancestor == "false" && ctx.HasRole(AdminRole) {
-				hs, err = R.kind.Query(ctx, sort, limitInt, offsetInt, nil, nil)
+				hs, err = R.kind.Query(ctx, sort, limitInt, offsetInt, filters, nil)
 				if err != nil {
 					ctx.PrintError(w, err)
 					return
 				}
 			} else {
-				hs, err = R.kind.Query(ctx, sort, limitInt, offsetInt, nil, ctx.UserKey())
+				hs, err = R.kind.Query(ctx, sort, limitInt, offsetInt, filters, ctx.UserKey())
 				if err != nil {
 					ctx.PrintError(w, err)
 					return

@@ -46,6 +46,10 @@ func (h *Holder) Value() interface{} {
 	return h.value
 }
 
+func (h *Holder) SetValue(v interface{}) {
+	h.value = v
+}
+
 func (h *Holder) Parse(body []byte) error {
 	h.hasInputData = true
 	h.value = h.Kind.New()
@@ -76,7 +80,14 @@ func (h *Holder) Load(ps []datastore.Property) error {
 		if err := datastore.LoadStruct(n, ps); err != nil {
 			return err
 		}
-		return mergo.Merge(h.value, n)
+
+		if err := mergo.Merge(n, h.value, mergo.WithOverride, mergo.WithTransformers(timeTransformer{})); err != nil {
+			return err
+		}
+
+		h.value = n
+
+		return nil
 	}
 
 	return datastore.LoadStruct(h.value, ps)
@@ -104,4 +115,24 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 		}
 	}
 	return datastore.SaveStruct(h.value)
+}
+
+
+// mergo transformer
+type timeTransformer struct {
+}
+func (t timeTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
+	if typ == reflect.TypeOf(time.Time{}) {
+		return func(dst, src reflect.Value) error {
+			if dst.CanSet() {
+				isZero := dst.MethodByName("IsZero")
+				result := isZero.Call([]reflect.Value{})
+				if result[0].Bool() {
+					dst.Set(src)
+				}
+			}
+			return nil
+		}
+	}
+	return nil
 }
