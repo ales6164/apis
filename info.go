@@ -13,7 +13,7 @@ import (
 func infoHandler(R *Route) http.HandlerFunc {
 	var isInited bool
 	var kinds map[*kind.Kind]*kind.Kind
-	var infos []*kind.Info
+	var infos []*kind.KindInfo
 	//var routes = map[*kind.Kind][]*Route{}
 	var fun = func() {
 		kinds = map[*kind.Kind]*kind.Kind{}

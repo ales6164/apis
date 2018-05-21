@@ -7,7 +7,6 @@ import (
 	"strings"
 	"github.com/ales6164/apis/errors"
 	"google.golang.org/appengine/search"
-	"net/http"
 )
 
 type Kind struct {
@@ -17,7 +16,7 @@ type Kind struct {
 	*Options
 	fields      []*Field
 
-	info *Info
+	info *KindInfo
 	ui   *UI
 
 	searchFields map[string]SearchField // map of all fields
@@ -54,145 +53,6 @@ type Field struct {
 type SearchField struct {
 	Name    string
 	IsFacet bool
-}
-
-type Info struct {
-	Name         string       `json:"name"`
-	Label        string       `json:"label"`
-	LabelMany    string       `json:"label_many"`
-	SearchIndex  string       `json:"search_index"`
-	Fields       []*InfoField `json:"fields"`
-	RelativePath string       `json:"relative_path"`
-	HasGet       bool         `json:"get"`
-	HasPost      bool         `json:"post"`
-	HasPut       bool         `json:"put"`
-	HasDelete    bool         `json:"delete"`
-}
-
-type InfoField struct {
-	Label      string          `json:"label,omitempty"`
-	Name       string          `json:"name,omitempty"`
-	Meta       string          `json:"meta,omitempty"`
-	Hidden     bool            `json:"hidden,omitempty"` // only in on create window
-	Attributes []InfoFieldAttr `json:"attributes,omitempty"`
-	Type       string          `json:"type,omitempty"`
-	IsInput    bool            `json:"is_input,omitempty"`
-	IsSelect   bool            `json:"is_select,omitempty"`
-	IsTextArea bool            `json:"is_text_area,omitempty"`
-	InputType  string          `json:"input_type,omitempty"`
-}
-
-type InfoFieldAttr struct {
-	Name  string `json:"name,omitempty"`
-	Value string `json:"value,omitempty"`
-}
-
-type UI struct {
-	Label        string
-	LabelMany    string
-	relativePath string
-	methods      []string
-}
-
-func (k *Kind) UI() *UI {
-	return k.ui
-}
-func (k *Kind) SetUI(ui *UI, relativePath string, methods []string) {
-	ui.relativePath = relativePath
-	ui.methods = methods
-	k.ui = ui
-}
-func (k *Kind) HasUI() bool {
-	return k.ui != nil
-}
-func (k *Kind) Info() *Info {
-	if k.info == nil && k.HasUI() {
-		info := &Info{
-			Name:         k.Name,
-			Label:        k.ui.Label,
-			LabelMany:    k.ui.LabelMany,
-			SearchIndex:  k.SearchType.Name(),
-			RelativePath: k.ui.relativePath,
-		}
-
-		for _, m := range k.ui.methods {
-			switch m {
-			case http.MethodGet:
-				info.HasGet = true
-			case http.MethodPost:
-				info.HasPost = true
-			case http.MethodPut:
-				info.HasPut = true
-			case http.MethodDelete:
-				info.HasDelete = true
-			}
-		}
-
-		k.checkFields()
-
-		for _, f := range k.fields {
-			infoField := &InfoField{
-				Label: f.Label,
-				Name:  f.Json,
-				Type:  f.Type,
-			}
-			switch f.Type {
-			case "*datastore.Key":
-				infoField.IsInput = true
-				infoField.InputType = "text"
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
-			case "time.Time":
-				infoField.IsInput = true
-				infoField.InputType = "datetime-local"
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
-			case "string":
-				infoField.IsInput = true
-				infoField.InputType = "text"
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
-			case "float64":
-				infoField.IsInput = true
-				infoField.InputType = "number"
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "any"})
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"pattern", `-?[0-9]*(\.[0-9]+)?`})
-			case "float32":
-				infoField.IsInput = true
-				infoField.InputType = "number"
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "any"})
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"pattern", `-?[0-9]*(\.[0-9]+)?`})
-			case "int64":
-				infoField.IsInput = true
-				infoField.InputType = "number"
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "1"})
-			case "int32":
-				infoField.IsInput = true
-				infoField.InputType = "number"
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "1"})
-			case "int":
-				infoField.IsInput = true
-				infoField.InputType = "number"
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"type", infoField.InputType})
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"step", "1"})
-			default:
-
-			}
-
-			if len(f.MetaField) > 0 {
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"readonly", "true"})
-				infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"disabled", "true"})
-				infoField.Hidden = true
-				infoField.Meta = f.MetaField
-			}
-
-			info.Fields = append(info.Fields, infoField)
-		}
-
-		k.info = info
-	}
-	return k.info
 }
 
 func New(t reflect.Type, opt *Options) *Kind {
