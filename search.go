@@ -6,7 +6,55 @@ import (
 	"reflect"
 	"strings"
 	"github.com/ales6164/apis/errors"
+	"github.com/ales6164/apis/kind"
 )
+
+func saveToIndex(ctx context.Context, kind *kind.Kind, value interface{}) error {
+	index, err := OpenIndex(kind.Name)
+	if err != nil {
+		return err
+	}
+
+	v := reflect.ValueOf(value).Elem()
+
+	var searchType reflect.Type
+	if kind.SearchType == nil {
+		searchType = kind.Type
+	} else {
+		searchType = kind.SearchType
+	}
+
+	doc := reflect.New(searchType)
+
+	for i := 0; i < searchType.NumField(); i++ {
+		docFieldName := searchType.Field(i).Name
+
+		valField := v.FieldByName(docFieldName)
+		if !valField.IsValid() {
+			continue
+		}
+
+		docField := doc.Elem().FieldByName(docFieldName)
+		if docField.CanSet() {
+			if docField.Kind() == reflect.Slice {
+				// make slice to get value type
+				sliceValTyp := reflect.MakeSlice(docField.Type(), 1, 1).Index(0).Type()
+				if valField.Kind() == reflect.Slice {
+					for j := 0; j < valField.Len(); j++ {
+						docField.Set(reflect.Append(docField, valField.Index(j).Convert(sliceValTyp)))
+					}
+				}
+			} else {
+				docField.Set(valField.Convert(docField.Type()))
+			}
+		}
+	}
+
+	if _, err := index.Put(ctx, h.Id(), doc.Interface()); err != nil {
+		ctx.PrintError(w, err)
+		return
+	}
+}
 
 func Load(d interface{}, fields []search.Field, meta *search.DocumentMetadata) error {
 	ps := reflect.ValueOf(d).Elem()

@@ -5,35 +5,6 @@ import (
 	"net/http"
 )
 
-type Info struct {
-	Name         string       `json:"name"`
-	Label        string       `json:"label"`
-	LabelMany    string       `json:"label_many"`
-	SearchIndex  string       `json:"search_index"`
-	Fields       []*InfoField `json:"fields"`
-	RelativePath string       `json:"relative_path"`
-	HasGet       bool         `json:"get"`
-	HasPost      bool         `json:"post"`
-	HasPut       bool         `json:"put"`
-	HasDelete    bool         `json:"delete"`
-}
-
-type InfoField struct {
-	Label      string          `json:"label,omitempty"`
-	Name       string          `json:"name,omitempty"`
-	Meta       string          `json:"meta,omitempty"`
-	Hidden     bool            `json:"hidden,omitempty"` // only in on create window
-	Attributes []InfoFieldAttr `json:"attributes,omitempty"`
-	Type       string          `json:"type,omitempty"`
-	IsInput    bool            `json:"is_input,omitempty"`
-	IsSlice    bool            `json:"is_slice,omitempty"`
-	IsStruct   bool            `json:"is_struct,omitempty"`
-	IsSelect   bool            `json:"is_select,omitempty"`
-	IsTextArea bool            `json:"is_text_area,omitempty"`
-	InputType  string          `json:"input_type,omitempty"`
-	Struct     interface{}     `json:"struct,omitempty"`
-}
-
 type InfoFieldAttr struct {
 	Name  string `json:"name,omitempty"`
 	Value string `json:"value,omitempty"`
@@ -59,30 +30,23 @@ func (k *Kind) HasUI() bool {
 }
 func (k *Kind) Info() *KindInfo {
 	if k.info == nil && k.HasUI() {
-		info := &Info{
-			Name:         k.Name,
-			Label:        k.ui.Label,
-			LabelMany:    k.ui.LabelMany,
-			SearchIndex:  k.SearchType.Name(),
-			RelativePath: k.ui.relativePath,
-		}
-
+		fieldInfo := informizeType(k.Type)
+		fieldInfo.Label = k.ui.Label
+		fieldInfo.LabelMany = k.ui.Label
+		fieldInfo.SearchIndex = k.SearchType.Name()
+		fieldInfo.RelativePath = k.ui.relativePath
 		for _, m := range k.ui.methods {
 			switch m {
 			case http.MethodGet:
-				info.HasGet = true
+				fieldInfo.HasGet = true
 			case http.MethodPost:
-				info.HasPost = true
+				fieldInfo.HasPost = true
 			case http.MethodPut:
-				info.HasPut = true
+				fieldInfo.HasPut = true
 			case http.MethodDelete:
-				info.HasDelete = true
+				fieldInfo.HasDelete = true
 			}
 		}
-
-		//k.checkFields()
-
-		fieldInfo := informizeType(k.Type)
 
 		k.info = fieldInfo
 	}
@@ -93,6 +57,16 @@ type KindInfo struct {
 	Name   string       `json:"name,omitempty"`
 	Type   string       `json:"type,omitempty"`
 	Fields []*FieldInfo `json:"fields,omitempty"`
+
+	IsNested     bool   `json:"is_nested,omitempty"`
+	Label        string `json:"label,omitempty"`
+	LabelMany    string `json:"label_many,omitempty"`
+	SearchIndex  string `json:"search_index,omitempty"`
+	RelativePath string `json:"relative_path,omitempty"`
+	HasGet       bool   `json:"get,omitempty"`
+	HasPost      bool   `json:"post,omitempty"`
+	HasPut       bool   `json:"put,omitempty"`
+	HasDelete    bool   `json:"delete,omitempty"`
 }
 
 type FieldInfo struct {
@@ -127,6 +101,13 @@ func informizeType(t reflect.Type) *KindInfo {
 		fieldInfo.Type = f.Type.String()
 		fieldInfo.Label = f.Tag.Get("label")
 		fieldInfo.Name = f.Tag.Get("json")
+
+		if m, ok := f.Tag.Lookup("apis"); ok {
+			fieldInfo.Meta = m
+			fieldInfo.Hidden = true
+			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"readonly", "true"})
+			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"disabled", "true"})
+		}
 
 		switch fieldInfo.Type {
 		case "*datastore.Key":
@@ -173,18 +154,15 @@ func informizeType(t reflect.Type) *KindInfo {
 			case reflect.Slice, reflect.Array:
 				fieldInfo.IsSlice = true
 				fieldInfo.Kind = informizeType(f.Type.Elem())
+				fieldInfo.Kind.Label = f.Tag.Get("label")
+				fieldInfo.Kind.IsNested = true
 			case reflect.Struct:
 				fieldInfo.IsStruct = true
 				fieldInfo.Kind = informizeType(f.Type)
+				fieldInfo.Kind.Label = f.Tag.Get("label")
+				fieldInfo.Kind.IsNested = true
 			}
 		}
-		/*
-					if len(f.MetaField) > 0 {
-						infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"readonly", "true"})
-						infoField.Attributes = append(infoField.Attributes, InfoFieldAttr{"disabled", "true"})
-						infoField.Hidden = true
-						infoField.Meta = f.MetaField
-					}*/
 
 		kindInfo.Fields = append(kindInfo.Fields, fieldInfo)
 

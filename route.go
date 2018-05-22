@@ -453,47 +453,7 @@ func (R *Route) postHandler() http.HandlerFunc {
 
 		if R.kind.EnableSearch {
 			// put to search
-			index, err := OpenIndex(R.kind.Name)
-			if err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
 
-			v := reflect.ValueOf(h.Value()).Elem()
-
-			doc := reflect.New(R.kind.SearchType)
-
-			for i := 0; i < R.kind.SearchType.NumField(); i++ {
-				docFieldName := R.kind.SearchType.Field(i).Name
-
-				valField := v.FieldByName(docFieldName)
-				if !valField.IsValid() {
-					continue
-				}
-
-				docField := doc.Elem().FieldByName(docFieldName)
-				if docField.CanSet() {
-					if docField.Kind() == reflect.Slice {
-
-						// make slice to get value type
-						sliceValTyp := reflect.MakeSlice(docField.Type(), 1, 1).Index(0).Type()
-
-						if valField.Kind() == reflect.Slice {
-							for j := 0; j < valField.Len(); j++ {
-								docField.Set(reflect.Append(docField, valField.Index(j).Convert(sliceValTyp)))
-							}
-						}
-					} else {
-						docField.Set(valField.Convert(docField.Type()))
-					}
-
-				}
-			}
-
-			if _, err := index.Put(ctx, h.Id(), doc.Interface()); err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
 		}
 
 		ctx.Print(w, h.Value())
