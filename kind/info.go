@@ -97,10 +97,19 @@ func informizeType(t reflect.Type) *KindInfo {
 		f := t.Field(i)
 
 		fieldInfo := new(FieldInfo)
-
 		fieldInfo.Type = f.Type.String()
-		fieldInfo.Label = f.Tag.Get("label")
-		fieldInfo.Name = f.Tag.Get("json")
+
+		if m, ok := f.Tag.Lookup("json"); ok {
+			fieldInfo.Name = m
+		} else {
+			fieldInfo.Name = f.Name
+		}
+
+		if m, ok := f.Tag.Lookup("label"); ok {
+			fieldInfo.Label = m
+		} else {
+			fieldInfo.Label = fieldInfo.Name
+		}
 
 		if m, ok := f.Tag.Lookup("apis"); ok {
 			fieldInfo.Meta = m
@@ -154,12 +163,20 @@ func informizeType(t reflect.Type) *KindInfo {
 			case reflect.Slice, reflect.Array:
 				fieldInfo.IsSlice = true
 				fieldInfo.Kind = informizeType(f.Type.Elem())
-				fieldInfo.Kind.Label = f.Tag.Get("label")
+				if m, ok := f.Tag.Lookup("label"); ok {
+					fieldInfo.Kind.Label = m
+				} else {
+					fieldInfo.Kind.Label = fieldInfo.Name
+				}
 				fieldInfo.Kind.IsNested = true
 			case reflect.Struct:
 				fieldInfo.IsStruct = true
 				fieldInfo.Kind = informizeType(f.Type)
-				fieldInfo.Kind.Label = f.Tag.Get("label")
+				if m, ok := f.Tag.Lookup("label"); ok {
+					fieldInfo.Kind.Label = m
+				} else {
+					fieldInfo.Kind.Label = fieldInfo.Name
+				}
 				fieldInfo.Kind.IsNested = true
 			}
 		}

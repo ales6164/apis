@@ -9,7 +9,7 @@ import (
 	"github.com/ales6164/apis/kind"
 )
 
-func saveToIndex(ctx context.Context, kind *kind.Kind, value interface{}) error {
+func saveToIndex(ctx context.Context, kind *kind.Kind, id string, value interface{}) error {
 	index, err := OpenIndex(kind.Name)
 	if err != nil {
 		return err
@@ -27,7 +27,24 @@ func saveToIndex(ctx context.Context, kind *kind.Kind, value interface{}) error 
 	doc := reflect.New(searchType)
 
 	for i := 0; i < searchType.NumField(); i++ {
-		docFieldName := searchType.Field(i).Name
+		typeField := searchType.Field(i)
+		docFieldName := typeField.Name
+
+		var convType reflect.Type
+		var hasConvType bool
+		if v, ok := typeField.Tag.Lookup("search"); ok {
+			vspl := strings.Split(v, ",")
+			if len(vspl) >= 3 {
+				switch vspl[3] {
+				case "atom":
+					convType = reflect.TypeOf(search.Atom(""))
+					hasConvType = true
+				case "string":
+					convType = reflect.TypeOf("")
+					hasConvType = true
+				}
+			}
+		}
 
 		valField := v.FieldByName(docFieldName)
 		if !valField.IsValid() {
@@ -41,19 +58,29 @@ func saveToIndex(ctx context.Context, kind *kind.Kind, value interface{}) error 
 				sliceValTyp := reflect.MakeSlice(docField.Type(), 1, 1).Index(0).Type()
 				if valField.Kind() == reflect.Slice {
 					for j := 0; j < valField.Len(); j++ {
-						docField.Set(reflect.Append(docField, valField.Index(j).Convert(sliceValTyp)))
+						if hasConvType {
+							docField.Set(reflect.Append(docField, valField.Index(j).Convert(convType)))
+						} else {
+							docField.Set(reflect.Append(docField, valField.Index(j).Convert(sliceValTyp)))
+						}
+
 					}
 				}
 			} else {
-				docField.Set(valField.Convert(docField.Type()))
+				if hasConvType {
+					docField.Set(valField.Convert(convType))
+				} else {
+					docField.Set(valField.Convert(docField.Type()))
+				}
 			}
 		}
 	}
 
-	if _, err := index.Put(ctx, h.Id(), doc.Interface()); err != nil {
-		ctx.PrintError(w, err)
-		return
+	if _, err := index.Put(ctx, id, doc.Interface()); err != nil {
+		return err
 	}
+
+	return nil
 }
 
 func Load(d interface{}, fields []search.Field, meta *search.DocumentMetadata) error {
