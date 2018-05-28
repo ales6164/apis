@@ -3,6 +3,7 @@ package kind
 import (
 	"reflect"
 	"net/http"
+	"strings"
 )
 
 type InfoFieldAttr struct {
@@ -30,25 +31,30 @@ func (k *Kind) HasUI() bool {
 }
 func (k *Kind) Info() *KindInfo {
 	if k.info == nil && k.HasUI() {
-		fieldInfo := informizeType(k.Type)
-		fieldInfo.Label = k.ui.Label
-		fieldInfo.LabelMany = k.ui.Label
-		fieldInfo.SearchIndex = k.SearchType.Name()
-		fieldInfo.RelativePath = k.ui.relativePath
+
+		kindInfo := new(KindInfo)
+		kindInfo.typ = k.Type
+		kindInfo.Type = kindInfo.typ.String()
+		kindInfo.Name = kindInfo.typ.Name()
+		kindInfo.Label = k.ui.Label
+		kindInfo.LabelMany = k.ui.Label
+		kindInfo = informizeType(kindInfo, nil)
+		kindInfo.SearchIndex = k.SearchType.Name()
+		kindInfo.RelativePath = k.ui.relativePath
 		for _, m := range k.ui.methods {
 			switch m {
 			case http.MethodGet:
-				fieldInfo.HasGet = true
+				kindInfo.HasGet = true
 			case http.MethodPost:
-				fieldInfo.HasPost = true
+				kindInfo.HasPost = true
 			case http.MethodPut:
-				fieldInfo.HasPut = true
+				kindInfo.HasPut = true
 			case http.MethodDelete:
-				fieldInfo.HasDelete = true
+				kindInfo.HasDelete = true
 			}
 		}
 
-		k.info = fieldInfo
+		k.info = kindInfo
 	}
 	return k.info
 }
@@ -57,6 +63,8 @@ type KindInfo struct {
 	Name   string       `json:"name,omitempty"`
 	Type   string       `json:"type,omitempty"`
 	Fields []*FieldInfo `json:"fields,omitempty"`
+
+	typ reflect.Type
 
 	IsNested     bool   `json:"is_nested,omitempty"`
 	Label        string `json:"label,omitempty"`
@@ -70,8 +78,9 @@ type KindInfo struct {
 }
 
 type FieldInfo struct {
-	Label string `json:"label,omitempty"`
-	Name  string `json:"name,omitempty"`
+	Label string         `json:"label,omitempty"`
+	Name  string         `json:"name,omitempty"`
+	Table InfoFieldTable `json:"table,omitempty"`
 
 	Meta       string          `json:"meta,omitempty"`
 	Hidden     bool            `json:"hidden,omitempty"` // only in on create window
@@ -87,17 +96,19 @@ type FieldInfo struct {
 	Kind *KindInfo `json:"kind,omitempty"`
 }
 
-func informizeType(t reflect.Type) *KindInfo {
-	kindInfo := new(KindInfo)
+type InfoFieldTable struct {
+	Display bool `json:"display,omitempty"`
+	NoSort  bool `json:"no_sort,omitempty"`
+}
 
-	kindInfo.Type = t.String()
-	kindInfo.Name = t.Name()
+func informizeType(kindInfo *KindInfo, parentKind *KindInfo) *KindInfo {
 
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
+	for i := 0; i < kindInfo.typ.NumField(); i++ {
+		f := kindInfo.typ.Field(i)
 
 		fieldInfo := new(FieldInfo)
 		fieldInfo.Type = f.Type.String()
+		fieldInfo.Table = InfoFieldTable{}
 
 		if m, ok := f.Tag.Lookup("json"); ok {
 			fieldInfo.Name = m
@@ -109,6 +120,29 @@ func informizeType(t reflect.Type) *KindInfo {
 			fieldInfo.Label = m
 		} else {
 			fieldInfo.Label = fieldInfo.Name
+		}
+
+		if parentKind != nil {
+			fieldInfo.Label = kindInfo.Label + "." + fieldInfo.Label
+		}
+
+		if m, ok := f.Tag.Lookup("table"); ok {
+			ms := strings.Split(m, ",")
+		tableLoop:
+			for i, msv := range ms {
+				msv = strings.TrimSpace(msv)
+				switch i {
+				case 0:
+					if msv == "-" {
+						fieldInfo.Table.Display = false
+						break tableLoop
+					}
+				case 1:
+					fieldInfo.Table.NoSort = msv == "nosort"
+				}
+			}
+		} else {
+			fieldInfo.Table.Display = true
 		}
 
 		if m, ok := f.Tag.Lookup("apis"); ok {
@@ -162,21 +196,29 @@ func informizeType(t reflect.Type) *KindInfo {
 			switch f.Type.Kind() {
 			case reflect.Slice, reflect.Array:
 				fieldInfo.IsSlice = true
-				fieldInfo.Kind = informizeType(f.Type.Elem())
+				fieldInfo.Kind = new(KindInfo)
+				fieldInfo.Kind.typ = f.Type.Elem()
+				fieldInfo.Kind.Type = fieldInfo.Kind.typ.String()
+				fieldInfo.Kind.Name = fieldInfo.Kind.typ.Name()
 				if m, ok := f.Tag.Lookup("label"); ok {
 					fieldInfo.Kind.Label = m
 				} else {
 					fieldInfo.Kind.Label = fieldInfo.Name
 				}
+				fieldInfo.Kind = informizeType(fieldInfo.Kind, kindInfo)
 				fieldInfo.Kind.IsNested = true
 			case reflect.Struct:
 				fieldInfo.IsStruct = true
-				fieldInfo.Kind = informizeType(f.Type)
+				fieldInfo.Kind = new(KindInfo)
+				fieldInfo.Kind.typ = f.Type
+				fieldInfo.Kind.Type = fieldInfo.Kind.typ.String()
+				fieldInfo.Kind.Name = fieldInfo.Kind.typ.Name()
 				if m, ok := f.Tag.Lookup("label"); ok {
 					fieldInfo.Kind.Label = m
 				} else {
 					fieldInfo.Kind.Label = fieldInfo.Name
 				}
+				fieldInfo.Kind = informizeType(fieldInfo.Kind, kindInfo)
 				fieldInfo.Kind.IsNested = true
 			}
 		}
