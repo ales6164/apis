@@ -156,6 +156,7 @@ func (k *Kind) checkFields() {
 		if val, ok := structField.Tag.Lookup("apis"); ok {
 			for n, v := range strings.Split(val, ",") {
 				v = strings.TrimSpace(v)
+				v = strings.ToLower(v)
 				switch n {
 				case 0:
 					if v == "id" {

@@ -101,13 +101,13 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 		field := v.FieldByName(meta.FieldName)
 		if field.CanSet() {
 			switch meta.Type {
-			case "updatedAt":
+			case "updatedat":
 				field.Set(now)
-			case "createdAt":
+			case "createdat":
 				if !h.hasLoadedData {
 					field.Set(now)
 				}
-			case "createdBy":
+			case "createdby":
 				if !h.hasLoadedData {
 					field.Set(reflect.ValueOf(h.user))
 				}

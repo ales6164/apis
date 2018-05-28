@@ -36,7 +36,7 @@ func infoHandler(R *Route) http.HandlerFunc {
 
 		isInited = true
 	}
-	// get routes
+
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)

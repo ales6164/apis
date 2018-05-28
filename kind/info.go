@@ -33,12 +33,13 @@ func (k *Kind) Info() *KindInfo {
 	if k.info == nil && k.HasUI() {
 
 		kindInfo := new(KindInfo)
+		kindInfo.Meta = new(MetaInfo)
 		kindInfo.typ = k.Type
 		kindInfo.Type = kindInfo.typ.String()
 		kindInfo.Name = kindInfo.typ.Name()
 		kindInfo.Label = k.ui.Label
 		kindInfo.LabelMany = k.ui.Label
-		kindInfo = informizeType(kindInfo, nil)
+		kindInfo = kindInfo.informizeType(kindInfo, nil)
 		kindInfo.SearchIndex = k.SearchType.Name()
 		kindInfo.RelativePath = k.ui.relativePath
 		for _, m := range k.ui.methods {
@@ -60,9 +61,11 @@ func (k *Kind) Info() *KindInfo {
 }
 
 type KindInfo struct {
-	Name   string       `json:"name,omitempty"`
-	Type   string       `json:"type,omitempty"`
-	Fields []*FieldInfo `json:"fields,omitempty"`
+	Name         string       `json:"name,omitempty"`
+	Type         string       `json:"type,omitempty"`
+	Fields       []*FieldInfo `json:"fields,omitempty"`
+	Meta         *MetaInfo    `json:"meta,omitempty"`
+	TableColumns []*FieldInfo `json:"table_columns,omitempty"`
 
 	typ reflect.Type
 
@@ -77,10 +80,14 @@ type KindInfo struct {
 	HasDelete    bool   `json:"delete,omitempty"`
 }
 
+type MetaInfo struct {
+	UpdatedAtField *FieldInfo `json:"updated_at_field,omitempty"`
+}
+
 type FieldInfo struct {
-	Label string         `json:"label,omitempty"`
-	Name  string         `json:"name,omitempty"`
-	Table InfoFieldTable `json:"table,omitempty"`
+	Label string          `json:"label,omitempty"`
+	Name  string          `json:"name,omitempty"`
+	Table *InfoFieldTable `json:"table,omitempty"`
 
 	Meta       string          `json:"meta,omitempty"`
 	Hidden     bool            `json:"hidden,omitempty"` // only in on create window
@@ -101,14 +108,14 @@ type InfoFieldTable struct {
 	NoSort  bool `json:"no_sort,omitempty"`
 }
 
-func informizeType(kindInfo *KindInfo, parentKind *KindInfo) *KindInfo {
-
+func (mainKind *KindInfo) informizeType(kindInfo *KindInfo, parentField *FieldInfo) *KindInfo {
 	for i := 0; i < kindInfo.typ.NumField(); i++ {
 		f := kindInfo.typ.Field(i)
 
 		fieldInfo := new(FieldInfo)
 		fieldInfo.Type = f.Type.String()
-		fieldInfo.Table = InfoFieldTable{}
+
+		calcTable := parentField == nil || parentField.Table != nil && parentField.Table.Display
 
 		if m, ok := f.Tag.Lookup("json"); ok {
 			fieldInfo.Name = m
@@ -122,27 +129,32 @@ func informizeType(kindInfo *KindInfo, parentKind *KindInfo) *KindInfo {
 			fieldInfo.Label = fieldInfo.Name
 		}
 
-		if parentKind != nil {
+		if parentField != nil {
 			fieldInfo.Label = kindInfo.Label + "." + fieldInfo.Label
 		}
 
-		if m, ok := f.Tag.Lookup("table"); ok {
-			ms := strings.Split(m, ",")
-		tableLoop:
-			for i, msv := range ms {
-				msv = strings.TrimSpace(msv)
-				switch i {
-				case 0:
-					if msv == "-" {
-						fieldInfo.Table.Display = false
-						break tableLoop
+		if calcTable {
+			if m, ok := f.Tag.Lookup("table"); ok {
+				ms := strings.Split(m, ",")
+			tableLoop:
+				for i, msv := range ms {
+					msv = strings.TrimSpace(msv)
+					switch i {
+					case 0:
+						if msv == "-" {
+							break tableLoop
+						} else {
+							fieldInfo.Table = new(InfoFieldTable)
+							fieldInfo.Table.Display = true
+						}
+					case 1:
+						fieldInfo.Table.NoSort = msv == "nosort"
 					}
-				case 1:
-					fieldInfo.Table.NoSort = msv == "nosort"
 				}
+			} else {
+				fieldInfo.Table = new(InfoFieldTable)
+				fieldInfo.Table.Display = true
 			}
-		} else {
-			fieldInfo.Table.Display = true
 		}
 
 		if m, ok := f.Tag.Lookup("apis"); ok {
@@ -150,6 +162,21 @@ func informizeType(kindInfo *KindInfo, parentKind *KindInfo) *KindInfo {
 			fieldInfo.Hidden = true
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"readonly", "true"})
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"disabled", "true"})
+
+			for n, v := range strings.Split(m, ",") {
+				v = strings.TrimSpace(v)
+				v = strings.ToLower(v)
+				switch n {
+				case 0:
+					if v == "updatedat" {
+						mainKind.Meta.UpdatedAtField = fieldInfo
+					}
+				}
+			}
+		}
+
+		if len(fieldInfo.Meta) == 0 && fieldInfo.Table != nil {
+			mainKind.TableColumns = append(mainKind.TableColumns, fieldInfo)
 		}
 
 		switch fieldInfo.Type {
@@ -205,7 +232,7 @@ func informizeType(kindInfo *KindInfo, parentKind *KindInfo) *KindInfo {
 				} else {
 					fieldInfo.Kind.Label = fieldInfo.Name
 				}
-				fieldInfo.Kind = informizeType(fieldInfo.Kind, kindInfo)
+				fieldInfo.Kind = mainKind.informizeType(fieldInfo.Kind, fieldInfo)
 				fieldInfo.Kind.IsNested = true
 			case reflect.Struct:
 				fieldInfo.IsStruct = true
@@ -218,7 +245,7 @@ func informizeType(kindInfo *KindInfo, parentKind *KindInfo) *KindInfo {
 				} else {
 					fieldInfo.Kind.Label = fieldInfo.Name
 				}
-				fieldInfo.Kind = informizeType(fieldInfo.Kind, kindInfo)
+				fieldInfo.Kind = mainKind.informizeType(fieldInfo.Kind, fieldInfo)
 				fieldInfo.Kind.IsNested = true
 			}
 		}

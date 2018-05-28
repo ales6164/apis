@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"github.com/ales6164/apis/kind"
 	"github.com/gorilla/mux"
+	"reflect"
 )
 
 type Apis struct {
@@ -108,8 +109,27 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	r.Handle("/auth/confirm", a.middleware.Handler(confirmEmailHandler(authRoute)))
 	r.Handle("/auth/password", a.middleware.Handler(changePasswordHandler(authRoute))).Methods(http.MethodPost)
 	r.Handle("/user", a.middleware.Handler(getUserHandler(authRoute))).Methods(http.MethodGet)
-
 	r.Handle("/info", a.middleware.Handler(infoHandler(authRoute))).Methods(http.MethodGet)
+
+	// MEDIA
+	mediaRoute := &Route{
+		kind:    MediaKind,
+		a:       a,
+		path:    "/media",
+		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+	}
+	// GET MEDIA
+	r.Handle(mediaRoute.path, a.middleware.Handler(mediaRoute.getHandler())).Methods(http.MethodGet)
+	// UPLOAD
+	r.Handle(mediaRoute.path, a.middleware.Handler(uploadHandler(mediaRoute, pathPrefix))).Methods(http.MethodPost)
+	r.Handle("/media/{blobKey}", a.middleware.Handler(serveHandler(mediaRoute))).Methods(http.MethodGet)
 
 	return &Server{r}
 }
+
+var MediaKind = kind.New(reflect.TypeOf(StoredFile{}), &kind.Options{
+	SearchType:           reflect.TypeOf(StoredFileDoc{}),
+	EnableSearch:         true,
+	Name:                 "media",
+	RetrieveByIDOnSearch: true,
+})
