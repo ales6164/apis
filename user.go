@@ -23,6 +23,10 @@ type User struct {
 	CreatedAt           time.Time      `json:"created_at,omitempty"`
 	UpdatedAt           time.Time      `json:"updated_at,omitempty"`
 
+	Profile Profile `json:"profile,omitempty"`
+}
+
+type Profile struct {
 	// can be changed by user
 	Name       string `json:"name,omitempty"`
 	GivenName  string `json:"given_name,omitempty"`
@@ -34,14 +38,15 @@ type User struct {
 	Locale     string `json:"locale,omitempty"`  // locale
 
 	// is not added to JWT and is private to user
-	DateOfBirth    time.Time       `json:"date_of_birth,omitempty"`
-	PlaceOfBirth   Address         `json:"place_of_birth,omitempty"`
-	Title          string          `json:"title,omitempty"`
-	Address        Address         `json:"address,omitempty"`
-	Address2       Address         `json:"address_2,omitempty"`
-	Company        Company         `json:"company,omitempty"`
-	Contact        Contact         `json:"contact,omitempty"`
-	SocialProfiles []SocialProfile `json:"social_profiles,omitempty"`
+	DeliveryAddresses []DeliveryAddress `json:"delivery_addresses,omitempty"`
+	DateOfBirth       time.Time         `json:"date_of_birth,omitempty"`
+	PlaceOfBirth      Address           `json:"place_of_birth,omitempty"`
+	Title             string            `json:"title,omitempty"`
+	Address           Address           `json:"address,omitempty"`
+	Address2          Address           `json:"address_2,omitempty"`
+	Company           Company           `json:"company,omitempty"`
+	Contact           Contact           `json:"contact,omitempty"`
+	SocialProfiles    []SocialProfile   `json:"social_profiles,omitempty"`
 }
 
 type Identity struct {
@@ -54,6 +59,18 @@ type Identity struct {
 type SocialProfile struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+}
+
+type DeliveryAddress struct {
+	Name       string `json:"name,omitempty"`
+	GivenName  string `json:"given_name,omitempty"`
+	FamilyName string `json:"family_name,omitempty"`
+	MiddleName string `json:"middle_name,omitempty"`
+	Address    string `json:"address,omitempty"`
+	PostCode   string `json:"post_code,omitempty"`
+	City       string `json:"city,omitempty"`
+	State      string `json:"state,omitempty"`
+	Country    string `json:"country,omitempty"`
 }
 
 type Address struct {
@@ -71,7 +88,6 @@ type Company struct {
 	VatNumber      string          `json:"vat_number,omitempty"`
 	Address        Address         `json:"address,omitempty"`
 	Contact        Contact         `json:"contact,omitempty"`
-	SocialProfiles []SocialProfile `json:"social_profiles,omitempty"`
 }
 
 type Contact struct {

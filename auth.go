@@ -177,14 +177,15 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 		Locale     string `json:"locale"`  // locale
 
 		// is not added to JWT and is private to user
-		DateOfBirth    time.Time       `json:"date_of_birth"`
-		PlaceOfBirth   Address         `json:"place_of_birth"`
-		Title          string          `json:"title"`
-		Address        Address         `json:"address"`
-		Address2       Address         `json:"address_2"`
-		Company        Company         `json:"company"`
-		Contact        Contact         `json:"contact"`
-		SocialProfiles []SocialProfile `json:"social_profiles"`
+		DeliveryAddresses []DeliveryAddress `json:"delivery_addresses"`
+		DateOfBirth       time.Time         `json:"date_of_birth"`
+		PlaceOfBirth      Address           `json:"place_of_birth"`
+		Title             string            `json:"title"`
+		Address           Address           `json:"address"`
+		Address2          Address           `json:"address_2"`
+		Company           Company           `json:"company"`
+		Contact           Contact           `json:"contact"`
+		SocialProfiles    []SocialProfile   `json:"social_profiles"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
@@ -230,22 +231,25 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 				false,
 				ctx.Time,
 				ctx.Time,
-				inputUser.Name,
-				inputUser.GivenName,
-				inputUser.FamilyName,
-				inputUser.MiddleName,
-				inputUser.Nickname,
-				inputUser.Picture,
-				inputUser.Website,
-				inputUser.Locale,
-				inputUser.DateOfBirth,
-				inputUser.PlaceOfBirth,
-				inputUser.Title,
-				inputUser.Address,
-				inputUser.Address2,
-				inputUser.Company,
-				inputUser.Contact,
-				inputUser.SocialProfiles,
+				Profile{
+					inputUser.Name,
+					inputUser.GivenName,
+					inputUser.FamilyName,
+					inputUser.MiddleName,
+					inputUser.Nickname,
+					inputUser.Picture,
+					inputUser.Website,
+					inputUser.Locale,
+					inputUser.DeliveryAddresses,
+					inputUser.DateOfBirth,
+					inputUser.PlaceOfBirth,
+					inputUser.Title,
+					inputUser.Address,
+					inputUser.Address2,
+					inputUser.Company,
+					inputUser.Contact,
+					inputUser.SocialProfiles,
+				},
 			},
 		}
 

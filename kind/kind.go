@@ -27,6 +27,7 @@ type Options struct {
 	EnableSearch         bool
 	RetrieveByIDOnSearch bool
 	SearchType           reflect.Type
+	IndexName            string
 }
 
 type MetaField struct {
@@ -107,6 +108,10 @@ func New(t reflect.Type, opt *Options) *Kind {
 
 		k.searchFields[field.Name] = field
 
+	}
+
+	if len(k.IndexName) == 0 {
+		k.IndexName = k.Name
 	}
 
 	return k

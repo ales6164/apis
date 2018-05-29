@@ -180,7 +180,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 			ctx.Print(w, h.Value())
 			return
 		} else if R.kind.EnableSearch {
-			index, err := OpenIndex(R.kind.Name)
+			index, err := OpenIndex(R.kind.IndexName)
 			if err != nil {
 				ctx.PrintError(w, err)
 				return
