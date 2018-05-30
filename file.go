@@ -13,6 +13,8 @@ import (
 	"google.golang.org/appengine/search"
 	"io/ioutil"
 	"cloud.google.com/go/storage"
+	"github.com/ales6164/apis/kind"
+	"reflect"
 )
 
 type StoredFile struct {
@@ -39,14 +41,33 @@ type StoredFileDoc struct {
 	Size        float64
 }
 
+var MediaKind = kind.New(reflect.TypeOf(StoredFile{}), &kind.Options{
+	SearchType:           reflect.TypeOf(StoredFileDoc{}),
+	IndexName:            "_file",
+	EnableSearch:         true,
+	Name:                 "_file",
+	RetrieveByIDOnSearch: true,
+})
+
 //
 type Image struct {
 	Orig string `json:"orig,omitempty"`
 }
 
-func getMediaHandler(R *Route) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-
+func initMedia(a *Apis, r *mux.Router) {
+	// MEDIA
+	if len(a.options.StorageBucket) > 0 {
+		mediaRoute := &Route{
+			kind:    MediaKind,
+			a:       a,
+			path:    "/apis/media",
+			methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+		}
+		// GET MEDIA
+		r.Handle(mediaRoute.path, a.middleware.Handler(mediaRoute.getHandler())).Methods(http.MethodGet)
+		// UPLOAD
+		r.Handle(mediaRoute.path, a.middleware.Handler(uploadHandler(mediaRoute))).Methods(http.MethodPost)
+		/*r.Handle("/media/{blobKey}", a.middleware.Handler(serveHandler(mediaRoute))).Methods(http.MethodGet)*/
 	}
 }
 
@@ -56,7 +77,7 @@ func serveHandler(R *Route) http.HandlerFunc {
 	}
 }
 
-func uploadHandler(R *Route, pathPrefix string) http.HandlerFunc {
+func uploadHandler(R *Route) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		if appengine.IsDevAppServer() {

@@ -20,10 +20,12 @@ type User struct {
 	EmailVerified       bool           `json:"email_verified,omitempty"`        // true if email verified
 	PhoneNumber         string         `json:"phone_number,omitempty"`          // preferred phone number
 	PhoneNumberVerified bool           `json:"phone_number_verified,omitempty"` // true if phone number verified
+	AgreedToTOS         bool           `json:"phone_number_verified,omitempty"` // true if phone number verified
+	AgreedToPrivacy     bool           `json:"phone_number_verified,omitempty"` // true if phone number verified
 	CreatedAt           time.Time      `json:"created_at,omitempty"`
 	UpdatedAt           time.Time      `json:"updated_at,omitempty"`
-
-	Profile Profile `json:"profile,omitempty"`
+	IsPublic            bool           `json:"is_public,omitempty"` // this is only relevant for chat atm - public profiles can be contacted
+	Profile             Profile        `json:"profile,omitempty"`
 }
 
 type Profile struct {
@@ -84,10 +86,10 @@ type Address struct {
 }
 
 type Company struct {
-	Name           string          `json:"name,omitempty"`
-	VatNumber      string          `json:"vat_number,omitempty"`
-	Address        Address         `json:"address,omitempty"`
-	Contact        Contact         `json:"contact,omitempty"`
+	Name      string  `json:"name,omitempty"`
+	VatNumber string  `json:"vat_number,omitempty"`
+	Address   Address `json:"address,omitempty"`
+	Contact   Contact `json:"contact,omitempty"`
 }
 
 type Contact struct {

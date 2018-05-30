@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"github.com/ales6164/apis/kind"
 	"github.com/gorilla/mux"
-	"reflect"
 )
 
 type Apis struct {
@@ -25,8 +24,9 @@ type Apis struct {
 
 type Options struct {
 	AppName                  string
-	StorageBucket            string
-	PrivateKeyPath           string // for password hashing
+	StorageBucket            string      // required for file upload and media library
+	Chat                     ChatOptions // required for built in chat service
+	PrivateKeyPath           string      // for password hashing
 	AuthorizedOrigins        []string
 	AuthorizedRedirectURIs   []string
 	AllowUserRegistration    bool
@@ -110,30 +110,11 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	r.Handle("/auth/confirm", a.middleware.Handler(confirmEmailHandler(authRoute)))
 	r.Handle("/auth/password", a.middleware.Handler(changePasswordHandler(authRoute))).Methods(http.MethodPost)
 	r.Handle("/user", a.middleware.Handler(getUserHandler(authRoute))).Methods(http.MethodGet)
-	r.Handle("/info", a.middleware.Handler(infoHandler(authRoute))).Methods(http.MethodGet)
 
-	// MEDIA
-	if len(a.options.StorageBucket) > 0 {
-		mediaRoute := &Route{
-			kind:    MediaKind,
-			a:       a,
-			path:    "/media",
-			methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
-		}
-		// GET MEDIA
-		r.Handle(mediaRoute.path, a.middleware.Handler(mediaRoute.getHandler())).Methods(http.MethodGet)
-		// UPLOAD
-		r.Handle(mediaRoute.path, a.middleware.Handler(uploadHandler(mediaRoute, pathPrefix))).Methods(http.MethodPost)
-		r.Handle("/media/{blobKey}", a.middleware.Handler(serveHandler(mediaRoute))).Methods(http.MethodGet)
-	}
+	r.Handle("/apis", a.middleware.Handler(infoHandler(authRoute))).Methods(http.MethodGet)
+
+	initMedia(a, r)
+	initAgreement(a, r)
 
 	return &Server{r}
 }
-
-var MediaKind = kind.New(reflect.TypeOf(StoredFile{}), &kind.Options{
-	SearchType:           reflect.TypeOf(StoredFileDoc{}),
-	IndexName:            "_file",
-	EnableSearch:         true,
-	Name:                 "_file",
-	RetrieveByIDOnSearch: true,
-})
