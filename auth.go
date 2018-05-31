@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"golang.org/x/net/context"
 	"time"
-	"reflect"
 )
 
 var (
@@ -166,26 +165,27 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 		Password string `json:"password"`
 		Email    string `json:"email"`
 
+		Locale string `json:"locale,omitempty"` // locale
+
 		// can be changed by user
-		Name       string `json:"name"`
-		GivenName  string `json:"given_name"`
-		FamilyName string `json:"family_name"`
-		MiddleName string `json:"middle_name"`
-		Nickname   string `json:"nickname"`
-		Picture    string `json:"picture"` // profile picture URL
-		Website    string `json:"website"` // website URL
-		Locale     string `json:"locale"`  // locale
+		Name       string `json:"name,omitempty"`
+		GivenName  string `json:"given_name,omitempty"`
+		FamilyName string `json:"family_name,omitempty"`
+		MiddleName string `json:"middle_name,omitempty"`
+		Nickname   string `json:"nickname,omitempty"`
+		Picture    string `json:"picture,omitempty"` // profile picture URL
+		Website    string `json:"website,omitempty"` // website URL
 
 		// is not added to JWT and is private to user
-		DeliveryAddresses []DeliveryAddress `json:"delivery_addresses"`
-		DateOfBirth       time.Time         `json:"date_of_birth"`
-		PlaceOfBirth      Address           `json:"place_of_birth"`
-		Title             string            `json:"title"`
-		Address           Address           `json:"address"`
-		Address2          Address           `json:"address_2"`
-		Company           Company           `json:"company"`
-		Contact           Contact           `json:"contact"`
-		SocialProfiles    []SocialProfile   `json:"social_profiles"`
+		DeliveryAddresses []DeliveryAddress `json:"delivery_addresses,omitempty"`
+		DateOfBirth       time.Time         `json:"date_of_birth,omitempty"`
+		PlaceOfBirth      Address           `json:"place_of_birth,omitempty"`
+		Title             string            `json:"title,omitempty"`
+		Address           Address           `json:"address,omitempty"`
+		Address2          Address           `json:"address_2,omitempty"`
+		Company           Company           `json:"company,omitempty"`
+		Contact           Contact           `json:"contact,omitempty"`
+		SocialProfiles    []SocialProfile   `json:"social_profiles,omitempty"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
@@ -223,33 +223,35 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 			Hash:  hash,
 			Email: inputUser.Email,
 			User: User{
-				userKey,
-				[]string{string(role)},
-				inputUser.Email,
-				false,
-				"",
-				false,
-				ctx.Time,
-				ctx.Time,
-				Profile{
-					inputUser.Name,
-					inputUser.GivenName,
-					inputUser.FamilyName,
-					inputUser.MiddleName,
-					inputUser.Nickname,
-					inputUser.Picture,
-					inputUser.Website,
-					inputUser.Locale,
-					inputUser.DeliveryAddresses,
-					inputUser.DateOfBirth,
-					inputUser.PlaceOfBirth,
-					inputUser.Title,
-					inputUser.Address,
-					inputUser.Address2,
-					inputUser.Company,
-					inputUser.Contact,
-					inputUser.SocialProfiles,
+				UserID:              userKey,
+				Roles:               []string{string(role)},
+				Email:               inputUser.Email,
+				EmailVerified:       false,
+				PhoneNumber:         "",
+				PhoneNumberVerified: false,
+				CreatedAt:           ctx.Time,
+				UpdatedAt:           ctx.Time,
+				Locale:              inputUser.Locale,
+				Profile: Profile{
+					Name:       inputUser.Name,
+					GivenName:  inputUser.GivenName,
+					FamilyName: inputUser.FamilyName,
+					MiddleName: inputUser.MiddleName,
+					Nickname:   inputUser.Nickname,
+					Picture:    inputUser.Picture,
+					Website:    inputUser.Website,
+
+					DeliveryAddresses: inputUser.DeliveryAddresses,
+					DateOfBirth:       inputUser.DateOfBirth,
+					PlaceOfBirth:      inputUser.PlaceOfBirth,
+					Title:             inputUser.Title,
+					Address:           inputUser.Address,
+					Address2:          inputUser.Address2,
+					Company:           inputUser.Company,
+					Contact:           inputUser.Contact,
+					SocialProfiles:    inputUser.SocialProfiles,
 				},
+				IsPublic: false,
 			},
 		}
 
@@ -272,7 +274,12 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 		//dont create a token on registration
 
 		if R.a.OnUserSignUp != nil {
-			R.a.OnUserSignUp(ctx, acc.User)
+			signedToken, err := createSession(ctx, userKey, &acc.User)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+			R.a.OnUserSignUp(ctx, acc.User, signedToken)
 		}
 	}
 }
@@ -326,7 +333,12 @@ func confirmEmailHandler(R *Route) http.HandlerFunc {
 		}
 
 		if R.a.OnUserVerified != nil {
-			R.a.OnUserVerified(ctx, acc.User)
+			signedToken, err := createSession(ctx, ctx.UserKey(), &acc.User)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+			R.a.OnUserVerified(ctx, acc.User, signedToken)
 		}
 
 		http.Redirect(w, r, callback, http.StatusTemporaryRedirect)
@@ -380,27 +392,11 @@ func changePasswordHandler(R *Route) http.HandlerFunc {
 	}
 }
 
-// todo:
-func updateProfile(R *Route) http.HandlerFunc {
+// update locale nad user profile
+func updateUserHandler(R *Route) http.HandlerFunc {
 	type InputUser struct {
-		Email      string `json:"email"`
-		Name       string `json:"name"`
-		GivenName  string `json:"given_name"`
-		FamilyName string `json:"family_name"`
-		MiddleName string `json:"middle_name"`
-		Nickname   string `json:"nickname"`
-		Picture    string `json:"picture"` // profile picture URL
-		Website    string `json:"website"` // website URL
-		Locale     string `json:"locale"`  // locale
-		// is not added to JWT and is private to user
-		DateOfBirth    time.Time       `json:"date_of_birth"`
-		PlaceOfBirth   Address         `json:"place_of_birth"`
-		Title          string          `json:"title"`
-		Address        Address         `json:"address"`
-		Address2       Address         `json:"address_2"`
-		Company        Company         `json:"company"`
-		Contact        Contact         `json:"contact"`
-		SocialProfiles []SocialProfile `json:"social_profiles"`
+		Locale  string  `json:"locale,omitempty"` // locale
+		Profile Profile `json:"profile,omitempty"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
@@ -425,17 +421,9 @@ func updateProfile(R *Route) http.HandlerFunc {
 				return err
 			}
 
-			src := reflect.ValueOf(inputUser)
-			dst := reflect.ValueOf(acc.User)
-			for i := 0; i < src.Type().NumField(); i++ {
-				srcFieldType := src.Type().Field(i)
-				srcField := src.FieldByName(srcFieldType.Name)
-				dstField := dst.FieldByName(srcFieldType.Name)
-				if dstField.IsValid() && dstField.CanSet() {
-					dstField.Set(srcField)
-				}
-			}
-			acc.User = dst.Interface().(User)
+			acc.User.UpdatedAt = time.Now()
+			acc.User.Profile = inputUser.Profile
+			acc.User.Locale = inputUser.Locale
 
 			_, err = datastore.Put(ctx, ctx.UserKey(), &acc)
 			return err

@@ -17,9 +17,9 @@ type Apis struct {
 	permissions
 	allowedTranslations map[string]bool
 
-	OnUserSignUp func(ctx Context, user User)
+	OnUserSignUp func(ctx Context, user User, token string)
 	//OnUserSignIn func(ctx context.Context, user User)
-	OnUserVerified func(ctx Context, user User)
+	OnUserVerified func(ctx Context, user User, token string)
 }
 
 type Options struct {
@@ -109,7 +109,10 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	}
 	r.Handle("/auth/confirm", a.middleware.Handler(confirmEmailHandler(authRoute)))
 	r.Handle("/auth/password", a.middleware.Handler(changePasswordHandler(authRoute))).Methods(http.MethodPost)
+
+	// USER
 	r.Handle("/user", a.middleware.Handler(getUserHandler(authRoute))).Methods(http.MethodGet)
+	r.Handle("/user", a.middleware.Handler(updateUserHandler(authRoute))).Methods(http.MethodPut)
 
 	r.Handle("/apis", a.middleware.Handler(infoHandler(authRoute))).Methods(http.MethodGet)
 

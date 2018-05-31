@@ -16,15 +16,14 @@ type User struct {
 	// these cant be updated by user
 	UserID              *datastore.Key `datastore:"-" json:"user_id,omitempty"`
 	Roles               []string       `json:"roles,omitempty"`
-	Email               string         `json:"email,omitempty"`                 // preferred email
+	Email               string         `json:"email,omitempty"`                 // login email
 	EmailVerified       bool           `json:"email_verified,omitempty"`        // true if email verified
-	PhoneNumber         string         `json:"phone_number,omitempty"`          // preferred phone number
+	PhoneNumber         string         `json:"phone_number,omitempty"`          // login phone number
 	PhoneNumberVerified bool           `json:"phone_number_verified,omitempty"` // true if phone number verified
-	AgreedToTOS         bool           `json:"phone_number_verified,omitempty"` // true if phone number verified
-	AgreedToPrivacy     bool           `json:"phone_number_verified,omitempty"` // true if phone number verified
 	CreatedAt           time.Time      `json:"created_at,omitempty"`
 	UpdatedAt           time.Time      `json:"updated_at,omitempty"`
 	IsPublic            bool           `json:"is_public,omitempty"` // this is only relevant for chat atm - public profiles can be contacted
+	Locale              string         `json:"locale,omitempty"`    // locale
 	Profile             Profile        `json:"profile,omitempty"`
 }
 
@@ -37,7 +36,6 @@ type Profile struct {
 	Nickname   string `json:"nickname,omitempty"`
 	Picture    string `json:"picture,omitempty"` // profile picture URL
 	Website    string `json:"website,omitempty"` // website URL
-	Locale     string `json:"locale,omitempty"`  // locale
 
 	// is not added to JWT and is private to user
 	DeliveryAddresses []DeliveryAddress `json:"delivery_addresses,omitempty"`
@@ -121,9 +119,9 @@ func getUser(ctx Context, key *datastore.Key) (*User, error) {
 
 func login(ctx Context, email, password string) (string, *User, error) {
 	var signedToken string
-	var acc Account
+	acc := new(Account)
 	key := datastore.NewKey(ctx, "_user", email, 0, nil)
-	if err := datastore.Get(ctx, key, &acc); err != nil {
+	if err := datastore.Get(ctx, key, acc); err != nil {
 		if err == datastore.ErrNoSuchEntity {
 			return signedToken, nil, errors.ErrUserDoesNotExist
 		}
@@ -135,9 +133,15 @@ func login(ctx Context, email, password string) (string, *User, error) {
 		return signedToken, nil, errors.ErrUserPasswordIncorrect
 	}
 
+	signedToken, err := createSession(ctx, key, &acc.User)
+
+	return signedToken, &acc.User, err
+}
+
+func createSession(ctx Context, key *datastore.Key, user *User) (string, error) {
+	var signedToken string
 	now := time.Now()
 	expiresAt := now.Add(time.Hour * time.Duration(72))
-
 	// create a new session
 	sess := new(ClientSession)
 	sess.CreatedAt = now
@@ -148,10 +152,9 @@ func login(ctx Context, email, password string) (string, *User, error) {
 	sessKey := datastore.NewIncompleteKey(ctx, "_clientSession", nil)
 	sessKey, err := datastore.Put(ctx, sessKey, sess)
 	if err != nil {
-		return signedToken, nil, err
+		return signedToken, err
 	}
 
 	// create a JWT token
-	signedToken, err = ctx.authenticate(sess, sessKey.Encode(), &acc.User, expiresAt.Unix())
-	return signedToken, &acc.User, err
+	return ctx.authenticate(sess, sessKey.Encode(), user, expiresAt.Unix())
 }
