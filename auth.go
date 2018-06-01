@@ -51,20 +51,13 @@ func checkPassword(v string) error {
 func getUserHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
-		if !ctx.HasRole(AdminRole) {
+		if !ctx.IsAuthenticated {
 			ctx.PrintError(w, errors.ErrUnathorized)
 			return
 		}
 
-		id := r.FormValue("id")
-		key, err := datastore.DecodeKey(id)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
 		// get user
-		u, err := getUser(ctx, key)
+		u, err := getUser(ctx, ctx.UserKey())
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
