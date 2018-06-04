@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"github.com/ales6164/apis/kind"
 	"github.com/gorilla/mux"
+	"path"
 )
 
 type Apis struct {
@@ -89,6 +90,9 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 			switch method {
 			case http.MethodGet:
 				r.Handle(route.path, a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
+				if route.kind.EnableSearch {
+					r.Handle(path.Join(route.path, "search"), a.middleware.Handler(route.searchHandler())).Methods(http.MethodGet)
+				}
 			case http.MethodPost:
 				r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 			case http.MethodPut:
