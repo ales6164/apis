@@ -67,6 +67,25 @@ func getUserHandler(R *Route) http.HandlerFunc {
 	}
 }
 
+func getPublicUsersHandler(R *Route) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := R.NewContext(r)
+		if !ctx.IsAuthenticated {
+			ctx.PrintError(w, errors.ErrUnathorized)
+			return
+		}
+
+		// get user
+		u, err := getPublicUsers(ctx)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		ctx.Print(w, u)
+	}
+}
+
 /*func getUsersHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := R.NewContext(r).Authenticate()

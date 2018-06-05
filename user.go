@@ -47,6 +47,7 @@ type Profile struct {
 	Company           Company           `json:"company,omitempty"`
 	Contact           Contact           `json:"contact,omitempty"`
 	SocialProfiles    []SocialProfile   `json:"social_profiles,omitempty"`
+	Slogan            string            `json:"slogan,omitempty"`
 }
 
 type Identity struct {
@@ -115,6 +116,25 @@ func getUser(ctx Context, key *datastore.Key) (*User, error) {
 	}
 	acc.User.UserID = key
 	return &acc.User, nil
+}
+
+func getPublicUsers(ctx Context) ([]*User, error) {
+	var hs []*User
+	q := datastore.NewQuery("_user").Filter("IsPublic =", true)
+	t := q.Run(ctx)
+	for {
+		var h = new(Account)
+		key, err := t.Next(h)
+		if err == datastore.Done {
+			break
+		}
+		if err != nil {
+			return hs, err
+		}
+		h.User.UserID = key
+		hs = append(hs, &h.User)
+	}
+	return hs, nil
 }
 
 func login(ctx Context, email, password string) (string, *User, error) {

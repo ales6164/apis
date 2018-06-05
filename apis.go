@@ -24,10 +24,10 @@ type Apis struct {
 }
 
 type Options struct {
-	AppName                  string
-	StorageBucket            string      // required for file upload and media library
-	Chat                     ChatOptions // required for built in chat service
-	PrivateKeyPath           string      // for password hashing
+	AppName       string
+	StorageBucket string // required for file upload and media library
+	/*Chat                     ChatOptions*/ // required for built in chat service
+	PrivateKeyPath           string          // for password hashing
 	AuthorizedOrigins        []string
 	AuthorizedRedirectURIs   []string
 	AllowUserRegistration    bool
@@ -115,6 +115,7 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	r.Handle("/auth/password", a.middleware.Handler(changePasswordHandler(authRoute))).Methods(http.MethodPost)
 
 	// USER
+	r.Handle("/users", a.middleware.Handler(getPublicUsersHandler(authRoute))).Methods(http.MethodGet)
 	r.Handle("/user", a.middleware.Handler(getUserHandler(authRoute))).Methods(http.MethodGet)
 	r.Handle("/user", a.middleware.Handler(updateUserHandler(authRoute))).Methods(http.MethodPut)
 
@@ -122,6 +123,7 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 
 	initMedia(a, r)
 	initAgreement(a, r)
+	initChat(a, r)
 
 	return &Server{r}
 }
