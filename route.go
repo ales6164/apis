@@ -10,6 +10,7 @@ import (
 	"google.golang.org/appengine/search"
 	"reflect"
 	"math"
+	"regexp"
 )
 
 type Route struct {
@@ -58,6 +59,8 @@ const (
 
 	Search = "search"
 )
+
+var queryFilters = regexp.MustCompile(`(?m)filters\[(?P<num>[^\]]+)\]\[(?P<nam>[^\]]+)\]`)
 
 // adds event listener
 func (R *Route) On(event string, listener Listener) *Route {
@@ -127,6 +130,17 @@ type FacetOutput struct {
 	Name  string      `json:"name"`
 }
 
+func getParams(url string) (paramsMap map[string]string) {
+	match := queryFilters.FindStringSubmatch(url)
+	paramsMap = make(map[string]string)
+	for i, name := range queryFilters.SubexpNames() {
+		if i > 0 && i <= len(match) {
+			paramsMap[name] = match[i]
+		}
+	}
+	return
+}
+
 func (R *Route) getHandler() http.HandlerFunc {
 	if R.get != nil {
 		return R.get
@@ -193,18 +207,28 @@ func (R *Route) getHandler() http.HandlerFunc {
 			limitInt, _ := strconv.Atoi(limit)
 			offsetInt, _ := strconv.Atoi(offset)
 
-			//q, next, autoFilterDiscovery, name, id, sort, limit, offset, ancestor
-
 			var filters []kind.Filter
+			var filterMap = map[string]map[string]string{}
 			for key, val := range r.URL.Query() {
-				if key == "name" || key == "id" || key == "sort" || key == "limit" || key == "offset" || key == "ancestor" || key == "key" {
-					continue
-				}
-				for _, v := range val {
-					filters = append(filters, kind.Filter{
-						FilterStr: key + " =",
-						Value:     v,
-					})
+				if strings.Split(key, "[")[0] == "filters" {
+					fm := getParams(key)
+					if len(fm["num"]) > 0 && len(fm["nam"]) > 0 {
+						if m, ok := filterMap[fm["num"]]; ok {
+							m[fm["nam"]] = val[0]
+							var filterStr = m["filterStr"]
+							var value = m["value"]
+							if len(filterStr) > 0 && len(value) > 0 {
+								filters = append(filters, kind.Filter{
+									FilterStr: filterStr,
+									Value:     value,
+								})
+							}
+						} else {
+							filterMap[fm["num"]] = map[string]string{
+								fm["nam"]: val[0],
+							}
+						}
+					}
 				}
 			}
 
@@ -490,14 +514,14 @@ func (R *Route) postHandler() http.HandlerFunc {
 			return
 		}
 
+		if R.kind.EnableSearch {
+			// put to search
+			saveToIndex(ctx, R.kind, h.GetKey().Encode(), h.Value())
+		}
+
 		if err := R.trigger(AfterCreate, ctx, h); err != nil {
 			ctx.PrintError(w, err)
 			return
-		}
-
-		if R.kind.EnableSearch {
-			// put to search
-
 		}
 
 		ctx.Print(w, h.Value())
@@ -570,6 +594,11 @@ func (R *Route) putHandler() http.HandlerFunc {
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
+		}
+
+		if R.kind.EnableSearch {
+			// put to search
+			saveToIndex(ctx, R.kind, h.GetKey().Encode(), h.Value())
 		}
 
 		if err := R.trigger(AfterUpdate, ctx, h); err != nil {
