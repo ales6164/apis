@@ -17,6 +17,7 @@ type Apis struct {
 	privateKey          []byte
 	permissions
 	allowedTranslations map[string]bool
+	kinds               map[string]*kind.Kind
 
 	OnUserSignUp func(ctx Context, user User, token string)
 	//OnUserSignIn func(ctx context.Context, user User)
@@ -44,6 +45,7 @@ func New(opt *Options) (*Apis, error) {
 	a := &Apis{
 		options:             opt,
 		allowedTranslations: map[string]bool{},
+		kinds:               map[string]*kind.Kind{},
 	}
 
 	// read private key
@@ -70,17 +72,23 @@ func New(opt *Options) (*Apis, error) {
 	return a, nil
 }
 
-func (a *Apis) Handle(p string, kind *kind.Kind) *Route {
+func (a *Apis) Handle(kind *kind.Kind) *Route {
 	r := &Route{
 		kind:    kind,
 		a:       a,
-		path:    p,
+		path:    "/" + path.Join("kind", kind.Name),
 		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 	}
-
+	a.kinds[kind.Name] = kind
 	a.routes = append(a.routes, r)
 	return r
 }
+
+// /kind/order?name=some-key-string-id GET - query
+// /kind/order/:id GET - get single
+// /kind/order/:id PUT - put single
+/// ...
+// /search/order GET - search
 
 func (a *Apis) Handler(pathPrefix string) http.Handler {
 	r := mux.NewRouter().PathPrefix(pathPrefix).Subrouter()
@@ -89,16 +97,14 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 		for _, method := range route.methods {
 			switch method {
 			case http.MethodGet:
-				r.Handle(route.path, a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
-				if route.kind.EnableSearch {
-					r.Handle(path.Join(route.path, "search"), a.middleware.Handler(route.searchHandler())).Methods(http.MethodGet)
-				}
+				r.Handle(route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
+				r.Handle(route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
 			case http.MethodPost:
 				r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 			case http.MethodPut:
-				r.Handle(route.path, a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
+				r.Handle(route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
 			case http.MethodDelete:
-				r.Handle(route.path, a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
+				r.Handle(route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
 			}
 		}
 	}
@@ -120,6 +126,9 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	r.Handle("/user", a.middleware.Handler(updateUserHandler(authRoute))).Methods(http.MethodPut)
 
 	r.Handle("/apis", a.middleware.Handler(infoHandler(authRoute))).Methods(http.MethodGet)
+
+	// SEARCH
+	r.Handle("/search/{kind}", a.middleware.Handler(a.searchHandler())).Methods(http.MethodGet)
 
 	initMedia(a, r)
 	initAgreement(a, r)

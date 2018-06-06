@@ -27,7 +27,6 @@ type Options struct {
 	EnableSearch         bool
 	RetrieveByIDOnSearch bool
 	SearchType           reflect.Type
-	IndexName            string
 }
 
 type MetaField struct {

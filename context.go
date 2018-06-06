@@ -62,6 +62,9 @@ type ClientRequest struct {
 // authenticated request is necessary - not yet
 // logs every request
 func (R *Route) NewContext(r *http.Request) Context {
+	return R.a.newContext(r, R)
+}
+func (a *Apis) newContext(r *http.Request, R *Route) Context {
 	clientReq := new(ClientRequest)
 	ctx := Context{
 		ClientRequest: clientReq,
