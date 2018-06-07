@@ -109,10 +109,6 @@ func New(t reflect.Type, opt *Options) *Kind {
 
 	}
 
-	if len(k.IndexName) == 0 {
-		k.IndexName = k.Name
-	}
-
 	return k
 }
 

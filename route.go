@@ -206,7 +206,7 @@ func (R *Route) queryHandler() http.HandlerFunc {
 			return
 		}
 
-		name, sort, limit, offset, ancestor := r.FormValue("name"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset"), r.FormValue("ancestor")
+		name, single, sort, limit, offset, ancestor := r.FormValue("name"), r.FormValue("single"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset"), r.FormValue("ancestor")
 
 		if len(name) > 0 {
 			// ordinary get
@@ -293,11 +293,15 @@ func (R *Route) queryHandler() http.HandlerFunc {
 			for _, h := range hs {
 				out = append(out, h.Value())
 			}
-			ctx.PrintResult(w, map[string]interface{}{
-				"count":   len(out),
-				"results": out,
-			})
-			return
+
+			if single == "true" {
+				ctx.Print(w, out[0])
+			} else {
+				ctx.PrintResult(w, map[string]interface{}{
+					"count":   len(out),
+					"results": out,
+				})
+			}
 		}
 	}
 }

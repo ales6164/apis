@@ -43,7 +43,6 @@ type StoredFileDoc struct {
 
 var MediaKind = kind.New(reflect.TypeOf(StoredFile{}), &kind.Options{
 	SearchType:           reflect.TypeOf(StoredFileDoc{}),
-	IndexName:            "_file",
 	EnableSearch:         true,
 	Name:                 "_file",
 	RetrieveByIDOnSearch: true,

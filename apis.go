@@ -7,6 +7,7 @@ import (
 	"github.com/ales6164/apis/kind"
 	"github.com/gorilla/mux"
 	"path"
+	"strings"
 )
 
 type Apis struct {
@@ -84,14 +85,24 @@ func (a *Apis) Handle(kind *kind.Kind) *Route {
 	return r
 }
 
-// /kind/order?name=some-key-string-id GET - query
-// /kind/order/:id GET - get single
-// /kind/order/:id PUT - put single
+// /kind/:order?name=some-key-string-id GET - query
+// /kind/:order/:id GET - get single
+// /kind/:order/:id PUT - put single
+// /kind/:order/:id
 /// ...
 // /search/order GET - search
 
 func (a *Apis) Handler(pathPrefix string) http.Handler {
 	r := mux.NewRouter().PathPrefix(pathPrefix).Subrouter()
+
+	// {sort:(?:asc|desc|new)}
+	// lang path
+	var lang string
+	var hasLang bool
+	if len(a.options.HasTranslationsFor) > 0 {
+		lang = "/{lang:(?:" + strings.Join(a.options.HasTranslationsFor, "|") + ")}" // /{lang:(?:sl|en|gb)}
+		hasLang = true
+	}
 
 	for _, route := range a.routes {
 		for _, method := range route.methods {
@@ -99,12 +110,25 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 			case http.MethodGet:
 				r.Handle(route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
 				r.Handle(route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
+				if hasLang {
+					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
+					r.Handle(lang+route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
+				}
 			case http.MethodPost:
 				r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+				if hasLang {
+					r.Handle(lang+route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+				}
 			case http.MethodPut:
 				r.Handle(route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
+				if hasLang {
+					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
+				}
 			case http.MethodDelete:
 				r.Handle(route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
+				if hasLang {
+					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
+				}
 			}
 		}
 	}
