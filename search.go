@@ -15,8 +15,12 @@ import (
 )
 
 func (a *Apis) searchHandler() http.HandlerFunc {
+	R := &Route{
+		a:       a,
+		methods: []string{},
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := a.newContext(r, nil)
+		ctx := a.newContext(r, R)
 
 		kindName := mux.Vars(r)["kind"]
 		k := a.kinds[kindName]

@@ -25,6 +25,7 @@ type ChatGroup struct {
 	UpdatedAt time.Time        `apis:"updatedAt" json:"updatedAt"`
 	UpdatedBy *datastore.Key   `apis:"updatedBy" json:"updatedBy"`
 	Name      string           `json:"name"`
+	Message   Message          `datastore:",noindex" json:"message"`
 	Users     []*datastore.Key `json:"users"`
 }
 
@@ -239,6 +240,22 @@ func createChatGroupMessageHandler(R *Route) http.HandlerFunc {
 			ctx.PrintError(w, err, "add error")
 			return
 		}
+
+		// set basic user to value
+		u := ctx.User()
+		value.User = BasicUser{
+			Name:    strings.Join([]string{u.Profile.Name, u.Profile.GivenName, u.Profile.FamilyName}, " "),
+			Picture: u.Profile.Picture,
+			Id:      u.UserID,
+		}
+
+		// update chat group
+		gh := ChatGroupKind.NewHolder(nil)
+		gh.Get(ctx, key)
+		group := gh.Value().(*ChatGroup)
+		group.Message = *value
+		gh.SetValue(group)
+		gh.Update(ctx)
 
 		ctx.Print(w, h.Value())
 	}
