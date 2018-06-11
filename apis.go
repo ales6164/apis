@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/mux"
 	"path"
 	"strings"
+	"github.com/ales6164/apis/module"
 )
 
 type Apis struct {
@@ -19,6 +20,7 @@ type Apis struct {
 	permissions
 	allowedTranslations map[string]bool
 	kinds               map[string]*kind.Kind
+	modules             []module.Module
 
 	OnUserSignUp func(ctx Context, user User, token string)
 	//OnUserSignIn func(ctx context.Context, user User)
@@ -83,6 +85,13 @@ func (a *Apis) Handle(kind *kind.Kind) *Route {
 	a.kinds[kind.Name] = kind
 	a.routes = append(a.routes, r)
 	return r
+}
+
+func (a *Apis) Module(module module.Module) {
+	if err := module.Init(); err != nil {
+		panic(module.Name() + ": " + err.Error())
+	}
+	a.modules = append(a.modules, module)
 }
 
 // /kind/:order?name=some-key-string-id GET - query
@@ -157,6 +166,12 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	initMedia(a, r)
 	initAgreement(a, r)
 	initChat(a, r)
+
+	// modules
+	for _, m := range a.modules {
+		modulePath := path.Join(pathPrefix, "module", m.Name())
+		r.PathPrefix(modulePath).Handler(m.Router(modulePath))
+	}
 
 	return &Server{r}
 }
