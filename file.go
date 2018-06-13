@@ -101,7 +101,7 @@ func uploadHandler(R *Route) http.HandlerFunc {
 		}
 
 		// generate file name
-		fileName := RandStringBytesMaskImprSrc(32)
+		fileName := RandStringBytesMaskImprSrc(LetterBytes, 32)
 
 		// save file to storage bucket
 		client, err := storage.NewClient(ctx)

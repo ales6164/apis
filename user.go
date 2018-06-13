@@ -167,7 +167,7 @@ func createSession(ctx Context, key *datastore.Key, user *User) (string, error) 
 	sess.CreatedAt = now
 	sess.ExpiresAt = expiresAt
 	sess.User = key
-	sess.JwtID = RandStringBytesMaskImprSrc(16)
+	sess.JwtID = RandStringBytesMaskImprSrc(LetterBytes, 16)
 
 	sessKey := datastore.NewIncompleteKey(ctx, "_clientSession", nil)
 	sessKey, err := datastore.Put(ctx, sessKey, sess)
