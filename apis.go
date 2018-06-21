@@ -15,8 +15,8 @@ type Apis struct {
 	options *Options
 	routes  []*Route
 
-	middleware          *middleware.JWTMiddleware
-	privateKey          []byte
+	middleware *middleware.JWTMiddleware
+	privateKey []byte
 	permissions
 	allowedTranslations map[string]bool
 	kinds               map[string]*kind.Kind
@@ -83,6 +83,16 @@ func (a *Apis) Handle(kind *kind.Kind) *Route {
 		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 	}
 	a.kinds[kind.Name] = kind
+	a.routes = append(a.routes, r)
+	return r
+}
+
+func (a *Apis) KindlesRoute(p string) *Route {
+	r := &Route{
+		a:       a,
+		path:    p,
+		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+	}
 	a.routes = append(a.routes, r)
 	return r
 }

@@ -75,13 +75,16 @@ type DeliveryAddress struct {
 }
 
 type Address struct {
-	Address  string  `json:"address,omitempty"`
-	PostCode string  `json:"post_code,omitempty"`
-	City     string  `json:"city,omitempty"`
-	State    string  `json:"state,omitempty"`
-	Country  string  `json:"country,omitempty"`
-	Lat      float64 `json:"lat,omitempty"`
-	Lng      float64 `json:"lng,omitempty"`
+	Name      string  `json:"name,omitempty"`
+	Company   string  `json:"company,omitempty"`
+	VatNumber string  `json:"vat_number,omitempty"`
+	Address   string  `json:"address,omitempty"`
+	PostCode  string  `json:"post_code,omitempty"`
+	City      string  `json:"city,omitempty"`
+	State     string  `json:"state,omitempty"`
+	Country   string  `json:"country,omitempty"`
+	Lat       float64 `json:"lat,omitempty"`
+	Lng       float64 `json:"lng,omitempty"`
 }
 
 type Company struct {
