@@ -22,15 +22,16 @@ type paypal interface {
 }
 
 type PayPal struct {
-	router           *mux.Router
-	SandboxMode      bool
-	AppHostname      string
-	Client           string
-	Key              string
-	SandboxClient    string
-	SandboxKey       string
-	apiUrl           string
-	credentials      *credentials
+	router        *mux.Router
+	SandboxMode   bool
+	AppHostname   string
+	Client        string
+	Key           string
+	SandboxClient string
+	SandboxKey    string
+	apiUrl        string
+	credentials   *credentials
+	modulePath    string
 	module.Module
 	paypal
 	OnPaymentCreated func(ctx context.Context, paymentId string, payerId string, token string) (redirectUrl string)
@@ -68,7 +69,16 @@ func (p *PayPal) Name() string {
 	return "paypal"
 }
 
+func (p *PayPal) ReturnUrl() string {
+	return "https://" + p.AppHostname + p.modulePath + "/return"
+}
+
+func (p *PayPal) CancelUrl() string {
+	return "https://" + p.AppHostname + p.modulePath + "/cancel"
+}
+
 func (p *PayPal) Router(modulePath string) *mux.Router {
+	p.modulePath = modulePath
 	if p.router == nil {
 		p.router = mux.NewRouter()
 		// add callbacks
