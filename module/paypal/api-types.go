@@ -17,11 +17,13 @@ type Payment struct {
 	RedirectUrls RedirectUrls  `json:"redirect_urls,omitempty"`
 
 	// ERROR
-	Name            string         `json:"name,omitempty"`
-	Details         []ErrorDetails `json:"details,omitempty"`
-	Message         string         `json:"message,omitempty"`
-	InformationLink string         `json:"information_link,omitempty"`
-	DebugId         string         `json:"debug_id,omitempty"`
+	Error            string         `json:"error,omitempty"`
+	ErrorDescription string         `json:"error_description,omitempty"`
+	Name             string         `json:"name,omitempty"`
+	Details          []ErrorDetails `json:"details,omitempty"`
+	Message          string         `json:"message,omitempty"`
+	InformationLink  string         `json:"information_link,omitempty"`
+	DebugId          string         `json:"debug_id,omitempty"`
 }
 
 type Payer struct {

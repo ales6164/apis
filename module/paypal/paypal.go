@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strings"
 	"strconv"
+	"google.golang.org/appengine/log"
 )
 
 type paypal interface {
@@ -34,7 +35,8 @@ type PayPal struct {
 	modulePath    string
 	module.Module
 	paypal
-	OnPaymentCreated func(ctx context.Context, paymentId string, payerId string, token string) (redirectUrl string)
+	OnPaymentCreated  func(ctx context.Context, paymentId string, payerId string, token string) (redirectUrl string, err error)
+	OnPaymentCanceled func(ctx context.Context, token string) (redirectUrl string, err error)
 }
 
 type credentials struct {
@@ -144,24 +146,37 @@ func (p *PayPal) Router(modulePath string) *mux.Router {
 		p.router.HandleFunc(modulePath+"/return", func(writer http.ResponseWriter, request *http.Request) {
 			if p.OnPaymentCreated != nil {
 				query := request.URL.Query()
-				redirectUrl := p.OnPaymentCreated(appengine.NewContext(request), query.Get("paymentId"), query.Get("token"), query.Get("PayerID"))
+				redirectUrl, err := p.OnPaymentCreated(appengine.NewContext(request), query.Get("paymentId"), query.Get("PayerID"), query.Get("token"))
+				if err != nil {
+					http.Error(writer, err.Error(), http.StatusInternalServerError)
+					return
+				}
 				if len(redirectUrl) > 0 {
 					http.Redirect(writer, request, redirectUrl, http.StatusSeeOther)
 				}
 			}
 		})
 		p.router.HandleFunc(modulePath+"/cancel", func(writer http.ResponseWriter, request *http.Request) {
-			buf := new(bytes.Buffer)
-			buf.ReadFrom(request.Body)
-			writer.Write(buf.Bytes())
+			if p.OnPaymentCreated != nil {
+				query := request.URL.Query()
+				redirectUrl, err := p.OnPaymentCanceled(appengine.NewContext(request), query.Get("token"))
+				if err != nil {
+					http.Error(writer, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				if len(redirectUrl) > 0 {
+					http.Redirect(writer, request, redirectUrl, http.StatusSeeOther)
+				}
+			}
 		})
 	}
 	return p.router
 }
 
 func (p *PayPal) auth(ctx context.Context) error {
-	// authorize if no credentials or if token expires in the next 60 seconds
-	if p.credentials == nil || time.Now().Add(time.Second * time.Duration(60)).After(p.credentials.expiresAt) {
+	// authorize if no credentials or if token expires in the next 60 minutes
+	// 60 minutes is in the worst case also therefore the longest approved payment can be on hold before executed
+	if p.credentials == nil || time.Now().Add(time.Minute * time.Duration(60)).After(p.credentials.expiresAt) {
 		// get new credentials
 
 		data := url.Values{}
@@ -222,23 +237,25 @@ func (p *PayPal) CreatePayment(ctx context.Context, payment *Payment) (*Payment,
 	if err != nil {
 		return nil, err
 	}
-	//return buf, nil
 	responsePayment := new(Payment)
 	err = json.Unmarshal(buf.Bytes(), responsePayment)
-	if err != nil {
-		return nil, err
-	}
-	return responsePayment, nil
+	return responsePayment, err
 }
 
 func (p *PayPal) ExecutePayment(ctx context.Context, paymentId string, payerId string, token string) (*Payment, error) {
+	if err := p.auth(ctx); err != nil {
+		return nil, err
+	}
 	body := map[string]string{
 		"payer_id": payerId,
 	}
-	bsBody, _ := json.Marshal(body)
+	bsBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
 	req, _ := http.NewRequest(http.MethodPost, p.apiUrl+"payments/payment/"+paymentId+"/execute", bytes.NewReader(bsBody))
 	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Authorization", "Bearer "+token)
+	req.Header.Add("Authorization", "Bearer "+p.credentials.AccessToken)
 
 	client := urlfetch.Client(ctx)
 	resp, err := client.Do(req)
@@ -250,11 +267,8 @@ func (p *PayPal) ExecutePayment(ctx context.Context, paymentId string, payerId s
 	if err != nil {
 		return nil, err
 	}
-	//return buf, nil
+	log.Errorf(ctx, "%s", buf.String())
 	responsePayment := new(Payment)
 	err = json.Unmarshal(buf.Bytes(), responsePayment)
-	if err != nil {
-		return nil, err
-	}
-	return responsePayment, nil
+	return responsePayment, err
 }
