@@ -75,14 +75,21 @@ func getPublicUsersHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		// get user
-		u, err := getPublicUsers(ctx)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
+		if ctx.HasRole(AdminRole) {
+			u, err := getUsers(ctx)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+			ctx.Print(w, u)
+		} else {
+			u, err := getPublicUsers(ctx)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+			ctx.Print(w, u)
 		}
-
-		ctx.Print(w, u)
 	}
 }
 

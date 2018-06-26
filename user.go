@@ -121,6 +121,26 @@ func getUser(ctx Context, key *datastore.Key) (*User, error) {
 	return &acc.User, nil
 }
 
+
+func getUsers(ctx Context) ([]*User, error) {
+	var hs []*User
+	q := datastore.NewQuery("_user")
+	t := q.Run(ctx)
+	for {
+		var h = new(Account)
+		key, err := t.Next(h)
+		if err == datastore.Done {
+			break
+		}
+		if err != nil {
+			return hs, err
+		}
+		h.User.UserID = key
+		hs = append(hs, &h.User)
+	}
+	return hs, nil
+}
+
 func getPublicUsers(ctx Context) ([]*User, error) {
 	var hs []*User
 	q := datastore.NewQuery("_user").Filter("IsPublic =", true)
