@@ -166,6 +166,8 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	// USER
 	r.Handle("/users", a.middleware.Handler(getPublicUsersHandler(authRoute))).Methods(http.MethodGet)
 	r.Handle("/user", a.middleware.Handler(getUserHandler(authRoute))).Methods(http.MethodGet)
+	r.Handle("/user/{id}", a.middleware.Handler(getUserByIdHandler(authRoute))).Methods(http.MethodGet)
+	r.Handle("/user/{id}", a.middleware.Handler(updateUserByIdHandler(authRoute))).Methods(http.MethodPut)
 	r.Handle("/user", a.middleware.Handler(updateUserHandler(authRoute))).Methods(http.MethodPut)
 
 	r.Handle("/apis", a.middleware.Handler(infoHandler(authRoute))).Methods(http.MethodGet)

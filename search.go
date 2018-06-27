@@ -279,6 +279,8 @@ func saveToIndex(ctx context.Context, kind *kind.Kind, id string, value interfac
 					for j := 0; j < valField.Len(); j++ {
 						if hasConvType {
 							docField.Set(reflect.Append(docField, valField.Index(j).Convert(convType)))
+						} else if docField.Type() == valField.Type() {
+							docField.Set(reflect.Append(docField, valField.Index(j)))
 						} else {
 							docField.Set(reflect.Append(docField, valField.Index(j).Convert(sliceValTyp)))
 						}
@@ -288,6 +290,8 @@ func saveToIndex(ctx context.Context, kind *kind.Kind, id string, value interfac
 			} else {
 				if hasConvType {
 					docField.Set(valField.Convert(convType))
+				} else if docField.Type() == valField.Type() {
+					docField.Set(valField)
 				} else {
 					docField.Set(valField.Convert(docField.Type()))
 				}
