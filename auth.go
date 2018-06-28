@@ -468,6 +468,13 @@ func updateUserHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
+		var inputAccount = &Account{
+			User: User{
+				Locale:  inputUser.Locale,
+				Profile: inputUser.Profile,
+			},
+		}
+
 		// do everything in a transaction
 		var acc Account
 		if err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
@@ -477,9 +484,11 @@ func updateUserHandler(R *Route) http.HandlerFunc {
 				return err
 			}
 
+			if err := mergo.Merge(acc, inputAccount, mergo.WithOverride, mergo.WithTransformers(timeTransformer{})); err != nil {
+				return err
+			}
+
 			acc.User.UpdatedAt = time.Now()
-			acc.User.Profile = inputUser.Profile
-			acc.User.Locale = inputUser.Locale
 
 			_, err = datastore.Put(ctx, ctx.UserKey(), &acc)
 			return err
