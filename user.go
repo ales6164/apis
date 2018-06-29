@@ -4,6 +4,15 @@ import (
 	"google.golang.org/appengine/datastore"
 	"time"
 	"github.com/ales6164/apis/errors"
+	"github.com/ales6164/apis/kind"
+	"reflect"
+	"github.com/gorilla/mux"
+	"net/http"
+	"google.golang.org/appengine/search"
+	"encoding/json"
+	"github.com/imdario/mergo"
+	"golang.org/x/net/context"
+	"strings"
 )
 
 type Account struct {
@@ -25,6 +34,15 @@ type User struct {
 	IsPublic            bool           `json:"is_public,omitempty"` // this is only relevant for chat atm - public profiles can be contacted
 	Locale              string         `json:"locale,omitempty"`    // locale
 	Profile             Profile        `json:"profile,omitempty"`
+}
+
+type UserDoc struct {
+	UserID    search.Atom `json:"user_id,omitempty"`
+	Roles     string      `json:"roles,omitempty"`
+	Email     search.Atom `json:"email,omitempty"`
+	CreatedAt time.Time   `json:"created_at,omitempty"`
+	UpdatedAt time.Time   `json:"updated_at,omitempty"`
+	Locale    search.Atom `json:"locale,omitempty"`
 }
 
 type Profile struct {
@@ -109,95 +127,162 @@ type ClientSession struct {
 	User      *datastore.Key
 }
 
-func getUser(ctx Context, key *datastore.Key) (*User, error) {
-	var acc Account
-	if err := datastore.Get(ctx, key, &acc); err != nil {
-		if err == datastore.ErrNoSuchEntity {
-			return nil, errors.ErrUserDoesNotExist
-		}
+var UserKind = kind.New(reflect.TypeOf(User{}), &kind.Options{
+	Name:         "_user",
+	EnableSearch: true,
+	SearchType:   reflect.TypeOf(UserDoc{}),
+})
+
+type InputUser struct {
+	Locale  string   `json:"locale,omitempty"` // locale
+	Roles   []string `json:"roles,omitempty"`  // locale
+	Profile Profile  `json:"profile,omitempty"`
+}
+
+func getUser(ctx context.Context, key *datastore.Key) (*User, error) {
+	var acc = new(Account)
+	if err := datastore.Get(ctx, key, acc); err != nil {
 		return nil, err
 	}
 	acc.User.UserID = key
 	return &acc.User, nil
 }
 
+func initUser(a *Apis, r *mux.Router) {
+	userRoute := &Route{
+		kind:    UserKind,
+		a:       a,
+		path:    "/user",
+		methods: []string{http.MethodGet, http.MethodPut /*, http.MethodDelete*/ },
+	}
 
-func getUsers(ctx Context) ([]*User, error) {
-	var hs []*User
-	q := datastore.NewQuery("_user")
-	t := q.Run(ctx)
-	for {
-		var h = new(Account)
-		key, err := t.Next(h)
-		if err == datastore.Done {
-			break
+	userRoute.Get(func(w http.ResponseWriter, r *http.Request) {
+		ctx := userRoute.NewContext(r)
+		if !ctx.IsAuthenticated {
+			ctx.PrintError(w, errors.ErrUnathorized)
+			return
 		}
+		_, isPrivateOnly := ctx.HasPermission(userRoute.kind, READ)
+		var userKey *datastore.Key
+		var userId = mux.Vars(r)["id"]
+		if len(userId) > 0 {
+			var err error
+			if isPrivateOnly {
+				ctx.PrintError(w, errors.ErrForbidden)
+				return
+			}
+			userKey, err = UserKind.DecodeKey(userId)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+		} else {
+			userKey = ctx.UserKey()
+		}
+		user, err := getUser(ctx, userKey)
 		if err != nil {
-			return hs, err
+			ctx.PrintError(w, err)
+			return
 		}
-		h.User.UserID = key
-		hs = append(hs, &h.User)
-	}
-	return hs, nil
+		ctx.Print(w, user)
+	})
+	userRoute.Put(func(w http.ResponseWriter, r *http.Request) {
+		ctx := userRoute.NewContext(r)
+		if !ctx.IsAuthenticated {
+			ctx.PrintError(w, errors.ErrUnathorized)
+			return
+		}
+
+		_, isPrivateOnly := ctx.HasPermission(userRoute.kind, READ)
+
+		var userKey *datastore.Key
+		var userId = mux.Vars(r)["id"]
+		if len(userId) > 0 {
+			var err error
+			if isPrivateOnly {
+				ctx.PrintError(w, errors.ErrForbidden)
+				return
+			}
+			userKey, err = UserKind.DecodeKey(userId)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+		} else {
+			userKey = ctx.UserKey()
+		}
+		var inputUser = new(InputUser)
+		if err := json.Unmarshal(ctx.Body(), inputUser); err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+		var inputAccount = &Account{
+			User: User{
+				Locale:  inputUser.Locale,
+				Roles:   inputUser.Roles,
+				Profile: inputUser.Profile,
+			},
+		}
+		var acc = new(Account)
+		if err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			err := datastore.Get(ctx, userKey, acc)
+			if err != nil {
+				return err
+			}
+			if err := mergo.Merge(acc, inputAccount, mergo.WithOverride, mergo.WithTransformers(timeTransformer{})); err != nil {
+				return err
+			}
+			acc.User.UpdatedAt = time.Now()
+			_, err = datastore.Put(ctx, userKey, acc)
+			return err
+		}, nil); err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		acc.User.UserID = userKey
+
+		if userRoute.kind.EnableSearch {
+			if err := saveToIndex(ctx, userRoute.kind, userKey.Encode(), &UserDoc{
+				UserID:    search.Atom(userKey.Encode()),
+				Roles:     strings.Join(acc.User.Roles, ","),
+				Locale:    search.Atom(acc.User.Locale),
+				Email:     search.Atom(acc.User.Email),
+				CreatedAt: acc.User.CreatedAt,
+				UpdatedAt: acc.User.UpdatedAt,
+			}); err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+		}
+
+		ctx.Print(w, acc.User)
+	})
+
+	r.Handle("/user", a.middleware.Handler(userRoute.getHandler())).Methods(http.MethodGet)
+	r.Handle("/user/{id}", a.middleware.Handler(userRoute.getHandler())).Methods(http.MethodGet)
+
+	r.Handle("/user", a.middleware.Handler(userRoute.putHandler())).Methods(http.MethodPut)
+	r.Handle("/user/{id}", a.middleware.Handler(userRoute.putHandler())).Methods(http.MethodPut)
+
+	// SEARCH
+	a.kinds[UserKind.Name] = UserKind
 }
 
-func getPublicUsers(ctx Context) ([]*User, error) {
-	var hs []*User
-	q := datastore.NewQuery("_user").Filter("IsPublic =", true)
-	t := q.Run(ctx)
-	for {
-		var h = new(Account)
-		key, err := t.Next(h)
-		if err == datastore.Done {
-			break
+type timeTransformer struct{}
+
+func (t timeTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
+	if typ == reflect.TypeOf(time.Time{}) {
+		return func(dst, src reflect.Value) error {
+			if dst.CanSet() {
+				isZero := dst.MethodByName("IsZero")
+				result := isZero.Call([]reflect.Value{})
+				if result[0].Bool() {
+					dst.Set(src)
+				}
+			}
+			return nil
 		}
-		if err != nil {
-			return hs, err
-		}
-		h.User.UserID = key
-		hs = append(hs, &h.User)
 	}
-	return hs, nil
-}
-
-func login(ctx Context, email, password string) (string, *User, error) {
-	var signedToken string
-	acc := new(Account)
-	key := datastore.NewKey(ctx, "_user", email, 0, nil)
-	if err := datastore.Get(ctx, key, acc); err != nil {
-		if err == datastore.ErrNoSuchEntity {
-			return signedToken, nil, errors.ErrUserDoesNotExist
-		}
-		return signedToken, nil, err
-	}
-	acc.User.UserID = key
-
-	if err := decrypt(acc.Hash, []byte(password)); err != nil {
-		return signedToken, nil, errors.ErrUserPasswordIncorrect
-	}
-
-	signedToken, err := createSession(ctx, key, &acc.User)
-
-	return signedToken, &acc.User, err
-}
-
-func createSession(ctx Context, key *datastore.Key, user *User) (string, error) {
-	var signedToken string
-	now := time.Now()
-	expiresAt := now.Add(time.Hour * time.Duration(72))
-	// create a new session
-	sess := new(ClientSession)
-	sess.CreatedAt = now
-	sess.ExpiresAt = expiresAt
-	sess.User = key
-	sess.JwtID = RandStringBytesMaskImprSrc(LetterBytes, 16)
-
-	sessKey := datastore.NewIncompleteKey(ctx, "_clientSession", nil)
-	sessKey, err := datastore.Put(ctx, sessKey, sess)
-	if err != nil {
-		return signedToken, err
-	}
-
-	// create a JWT token
-	return ctx.authenticate(sess, sessKey.Encode(), user, expiresAt.Unix())
+	return nil
 }

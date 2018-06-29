@@ -9,9 +9,7 @@ import (
 	"encoding/json"
 	"golang.org/x/net/context"
 	"time"
-	"github.com/gorilla/mux"
-	"github.com/imdario/mergo"
-	"reflect"
+	"google.golang.org/appengine/search"
 )
 
 var (
@@ -51,119 +49,48 @@ func checkPassword(v string) error {
 	return nil
 }
 
-func getUserHandler(R *Route) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := R.NewContext(r)
-		if !ctx.IsAuthenticated {
-			ctx.PrintError(w, errors.ErrUnathorized)
-			return
-		}
 
-		// get user
-		u, err := getUser(ctx, ctx.UserKey())
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
+func login(ctx Context, email, password string) (string, *User, error) {
+	var signedToken string
+	acc := new(Account)
+	key := datastore.NewKey(ctx, "_user", email, 0, nil)
+	if err := datastore.Get(ctx, key, acc); err != nil {
+		if err == datastore.ErrNoSuchEntity {
+			return signedToken, nil, errors.ErrUserDoesNotExist
 		}
-
-		ctx.Print(w, u)
+		return signedToken, nil, err
 	}
+	acc.User.UserID = key
+
+	if err := decrypt(acc.Hash, []byte(password)); err != nil {
+		return signedToken, nil, errors.ErrUserPasswordIncorrect
+	}
+
+	signedToken, err := createSession(ctx, key, &acc.User)
+
+	return signedToken, &acc.User, err
 }
 
-func getUserByIdHandler(R *Route) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := R.NewContext(r)
-		if !ctx.IsAuthenticated {
-			ctx.PrintError(w, errors.ErrUnathorized)
-			return
-		}
-		if !ctx.HasRole(AdminRole) {
-			ctx.PrintError(w, errors.ErrForbidden)
-			return
-		}
+func createSession(ctx Context, key *datastore.Key, user *User) (string, error) {
+	var signedToken string
+	now := time.Now()
+	expiresAt := now.Add(time.Hour * time.Duration(72))
+	// create a new session
+	sess := new(ClientSession)
+	sess.CreatedAt = now
+	sess.ExpiresAt = expiresAt
+	sess.User = key
+	sess.JwtID = RandStringBytesMaskImprSrc(LetterBytes, 16)
 
-		vars := mux.Vars(r)
-		key, err := datastore.DecodeKey(vars["id"])
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		u, err := getUser(ctx, key)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-		ctx.Print(w, u)
+	sessKey := datastore.NewIncompleteKey(ctx, "_clientSession", nil)
+	sessKey, err := datastore.Put(ctx, sessKey, sess)
+	if err != nil {
+		return signedToken, err
 	}
+
+	// create a JWT token
+	return ctx.authenticate(sess, sessKey.Encode(), user, expiresAt.Unix())
 }
-
-func getPublicUsersHandler(R *Route) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := R.NewContext(r)
-		if !ctx.IsAuthenticated {
-			ctx.PrintError(w, errors.ErrUnathorized)
-			return
-		}
-
-		if ctx.HasRole(AdminRole) {
-			u, err := getUsers(ctx)
-			if err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
-			ctx.PrintResult(w, map[string]interface{}{
-				"count":   len(u),
-				"results": u,
-			})
-		} else {
-			u, err := getPublicUsers(ctx)
-			if err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
-			ctx.PrintResult(w, map[string]interface{}{
-				"count":   len(u),
-				"results": u,
-			})
-		}
-	}
-}
-
-/*func getUsersHandler(R *Route) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ok, ctx := R.NewContext(r).Authenticate()
-		if !ok {
-			ctx.PrintError(w, errors.ErrUnathorized)
-			return
-		}
-		if ctx.Role != AdminRole {
-			ctx.PrintError(w, errors.ErrUnathorized)
-			return
-		}
-
-		var hs []*user.User
-		var err error
-
-		q := datastore.NewQuery("_user")
-
-		t := q.Run(ctx)
-		for {
-			var h = new(User)
-			h.Id, err = t.Next(h)
-			if err == datastore.Done {
-				break
-			}
-			if err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
-			hs = append(hs, h)
-		}
-
-		ctx.Print(w, hs)
-	}
-}*/
 
 func loginHandler(R *Route) http.HandlerFunc {
 	type Login struct {
@@ -327,7 +254,19 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 			return
 		}
 
-		//dont create a token on registration
+		if UserKind.EnableSearch {
+			if err := saveToIndex(ctx, UserKind, userKey.Encode(), &UserDoc{
+				UserID:    search.Atom(userKey.Encode()),
+				Roles:     strings.Join(acc.User.Roles, ","),
+				Locale:    search.Atom(acc.User.Locale),
+				Email:     search.Atom(acc.User.Email),
+				CreatedAt: acc.User.CreatedAt,
+				UpdatedAt: acc.User.UpdatedAt,
+			}); err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+		}
 
 		if R.a.OnUserSignUp != nil {
 			signedToken, err := createSession(ctx, userKey, &acc.User)
@@ -446,140 +385,4 @@ func changePasswordHandler(R *Route) http.HandlerFunc {
 
 		ctx.Print(w, "ok")
 	}
-}
-
-// update locale and user profile
-func updateUserHandler(R *Route) http.HandlerFunc {
-	type InputUser struct {
-		Locale  string  `json:"locale,omitempty"` // locale
-		Profile Profile `json:"profile,omitempty"`
-	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := R.NewContext(r)
-		if !ctx.IsAuthenticated {
-			ctx.PrintError(w, errors.ErrUnathorized)
-			return
-		}
-
-		var inputUser InputUser
-		err := json.Unmarshal(ctx.Body(), &inputUser)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		var inputAccount = &Account{
-			User: User{
-				Locale:  inputUser.Locale,
-				Profile: inputUser.Profile,
-			},
-		}
-
-		// do everything in a transaction
-		var acc Account
-		if err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			// get user
-			err := datastore.Get(ctx, ctx.UserKey(), &acc)
-			if err != nil {
-				return err
-			}
-
-			if err := mergo.Merge(acc, inputAccount, mergo.WithOverride, mergo.WithTransformers(timeTransformer{})); err != nil {
-				return err
-			}
-
-			acc.User.UpdatedAt = time.Now()
-
-			_, err = datastore.Put(ctx, ctx.UserKey(), &acc)
-			return err
-		}, nil); err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-		ctx.Print(w, &acc.User)
-	}
-}
-
-// admin update
-func updateUserByIdHandler(R *Route) http.HandlerFunc {
-	type InputUser struct {
-		Locale  string   `json:"locale,omitempty"` // locale
-		Roles   []string `json:"roles,omitempty"`  // locale
-		Profile Profile  `json:"profile,omitempty"`
-	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := R.NewContext(r)
-		if !ctx.IsAuthenticated {
-			ctx.PrintError(w, errors.ErrUnathorized)
-			return
-		}
-		if !ctx.HasRole(AdminRole) {
-			ctx.PrintError(w, errors.ErrForbidden)
-			return
-		}
-
-		vars := mux.Vars(r)
-		key, err := datastore.DecodeKey(vars["id"])
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		var inputUser InputUser
-		err = json.Unmarshal(ctx.Body(), &inputUser)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		var inputAccount = &Account{
-			User: User{
-				Locale:  inputUser.Locale,
-				Roles:   inputUser.Roles,
-				Profile: inputUser.Profile,
-			},
-		}
-
-		// do everything in a transaction
-		var acc = new(Account)
-		if err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			// get user
-			err := datastore.Get(ctx, key, acc)
-			if err != nil {
-				return err
-			}
-
-			if err := mergo.Merge(acc, inputAccount, mergo.WithOverride, mergo.WithTransformers(timeTransformer{})); err != nil {
-				return err
-			}
-
-			acc.User.UpdatedAt = time.Now()
-
-			_, err = datastore.Put(ctx, key, acc)
-			return err
-		}, nil); err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-		ctx.Print(w, &acc.User)
-	}
-}
-
-type timeTransformer struct {
-}
-
-func (t timeTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
-	if typ == reflect.TypeOf(time.Time{}) {
-		return func(dst, src reflect.Value) error {
-			if dst.CanSet() {
-				isZero := dst.MethodByName("IsZero")
-				result := isZero.Call([]reflect.Value{})
-				if result[0].Bool() {
-					dst.Set(src)
-				}
-			}
-			return nil
-		}
-	}
-	return nil
 }

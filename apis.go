@@ -163,18 +163,13 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	r.Handle("/auth/confirm", a.middleware.Handler(confirmEmailHandler(authRoute)))
 	r.Handle("/auth/password", a.middleware.Handler(changePasswordHandler(authRoute))).Methods(http.MethodPost)
 
-	// USER
-	r.Handle("/users", a.middleware.Handler(getPublicUsersHandler(authRoute))).Methods(http.MethodGet)
-	r.Handle("/user", a.middleware.Handler(getUserHandler(authRoute))).Methods(http.MethodGet)
-	r.Handle("/user/{id}", a.middleware.Handler(getUserByIdHandler(authRoute))).Methods(http.MethodGet)
-	r.Handle("/user/{id}", a.middleware.Handler(updateUserByIdHandler(authRoute))).Methods(http.MethodPut)
-	r.Handle("/user", a.middleware.Handler(updateUserHandler(authRoute))).Methods(http.MethodPut)
-
+	// INFO
 	r.Handle("/apis", a.middleware.Handler(infoHandler(authRoute))).Methods(http.MethodGet)
 
 	// SEARCH
 	r.Handle("/search/{kind}", a.middleware.Handler(a.searchHandler())).Methods(http.MethodGet)
 
+	initUser(a, r)
 	initMedia(a, r)
 	initAgreement(a, r)
 	initChat(a, r)

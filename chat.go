@@ -19,14 +19,21 @@ type ChatOptions struct {
 }
 
 type ChatGroup struct {
-	Id        *datastore.Key   `apis:"id" datastore:"-" json:"id"`
-	CreatedAt time.Time        `apis:"createdAt" json:"createdAt"`
-	CreatedBy *datastore.Key   `apis:"createdBy" json:"createdBy"`
-	UpdatedAt time.Time        `apis:"updatedAt" json:"updatedAt"`
-	UpdatedBy *datastore.Key   `apis:"updatedBy" json:"updatedBy"`
-	Name      string           `json:"name"`
-	Message   Message          `datastore:",noindex" json:"message"`
-	Users     []*datastore.Key `json:"users"`
+	Id        *datastore.Key    `apis:"id" datastore:"-" json:"id"`
+	CreatedAt time.Time         `apis:"createdAt" json:"createdAt"`
+	CreatedBy *datastore.Key    `apis:"createdBy" json:"createdBy"`
+	UpdatedAt time.Time         `apis:"updatedAt" json:"updatedAt"`
+	UpdatedBy *datastore.Key    `apis:"updatedBy" json:"updatedBy"`
+	Users     []ChatGroupMember `json:"users"`
+	GroupName string            `json:"groupName"`
+}
+
+type ChatGroupMember struct {
+	UserKey   *datastore.Key `json:"-"`
+	CreatedAt time.Time      `datastore:",noindex" json:"createdAt"`
+	UpdatedAt time.Time      `datastore:",noindex" json:"updatedAt"`
+	Role      string         `datastore:",noindex" json:"role"`
+	User      *User          `datastore:"-" json:"user"`
 }
 
 type Message struct {
@@ -36,9 +43,8 @@ type Message struct {
 	UpdatedAt time.Time      `apis:"updatedAt" json:"updatedAt"`
 	UpdatedBy *datastore.Key `apis:"updatedBy" json:"updatedBy"`
 	Group     *datastore.Key `json:"group"`
-	Message   string         `datastore:",noindex" json:"message"`
-	Read      bool           `json:"read"`
-	User      BasicUser      `datastore:"-" json:"user"`
+	Author    *User          `datastore:"-" json:"author"`
+	Body      string         `datastore:",noindex" json:"body"`
 }
 
 // todo: user access - some roles have access to users some dont - make that
@@ -69,33 +75,11 @@ func getChatGroupsHandler(R *Route) http.HandlerFunc {
 
 		var out []*ChatGroup
 		for _, h := range hs {
-			value := h.Value().(*ChatGroup)
+			chatGroup := h.Value().(*ChatGroup)
 
-			if len(value.Name) == 0 {
-				// populate with generated name
-				var usrsToF []*datastore.Key
-				for _, k := range value.Users {
-					if !k.Equal(ctx.UserKey()) {
-						usrsToF = append(usrsToF, k)
-					}
-				}
 
-				var usrs = make([]*Account, len(usrsToF))
-				err := datastore.GetMulti(ctx, usrsToF, usrs)
-				if err != nil {
-					ctx.PrintError(w, err)
-					return
-				}
 
-				for i, u := range usrs {
-					if i > 0 {
-						value.Name += ", "
-					}
-					value.Name += strings.Join([]string{u.User.Profile.Name, u.User.Profile.GivenName, u.User.Profile.FamilyName}, " ")
-				}
-			}
-
-			out = append(out, value)
+			out = append(out, chatGroup)
 		}
 		ctx.PrintResult(w, map[string]interface{}{
 			"count":   len(out),
@@ -131,12 +115,6 @@ func createChatGroupHandler(R *Route) http.HandlerFunc {
 
 		ctx.Print(w, h.Value())
 	}
-}
-
-type BasicUser struct {
-	Id      *datastore.Key `json:"id"`
-	Name    string         `json:"name"`
-	Picture string         `json:"picture"`
 }
 
 func getChatGroupMessagesHandler(R *Route) http.HandlerFunc {

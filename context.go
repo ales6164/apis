@@ -197,10 +197,11 @@ func (ctx Context) HasRole(role Role) bool {
 
 // AdminRole has all permissions
 // searches if user has permission - also goes through all roles to find if also has access to global scope (not private)
-func (ctx Context) HasPermission(k *kind.Kind, scope Scope) (bool, bool) {
+func (ctx Context) HasPermission(k *kind.Kind, scope Scope) (ok bool, isPrivateOnly bool) {
 	roles := ctx.Roles()
 	hasPermission := false
-	isPrivate := true
+	ok = false
+	isPrivateOnly = true
 	for _, role := range roles {
 		if val1, ok := ctx.a.permissions[role]; ok {
 			if val2, ok := val1[scope]; ok {
@@ -208,24 +209,24 @@ func (ctx Context) HasPermission(k *kind.Kind, scope Scope) (bool, bool) {
 					if ctx.roles != nil {
 						if _, ok := ctx.roles[role]; ok {
 							hasPermission = true
-							isPrivate = val3
+							isPrivateOnly = val3
 						}
 					} else {
 						hasPermission = true
-						isPrivate = val3
+						isPrivateOnly = val3
 					}
 				}
 			}
 		}
 		if role == string(AdminRole) {
 			hasPermission = true
-			isPrivate = false
+			isPrivateOnly = false
 		}
-		if hasPermission && !isPrivate {
+		if hasPermission && !isPrivateOnly {
 			break
 		}
 	}
-	return hasPermission, isPrivate
+	return hasPermission, isPrivateOnly
 }
 
 /**
