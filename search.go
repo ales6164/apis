@@ -218,7 +218,7 @@ func (a *Apis) searchHandler() http.HandlerFunc {
 			}
 		}
 
-		ctx.Print(w, SearchOutput{
+		ctx.Print(w, &SearchOutput{
 			Count:   len(results),
 			Total:   t.Count(),
 			Results: results,
@@ -253,7 +253,7 @@ func saveToIndex(ctx context.Context, kind *kind.Kind, id string, value interfac
 		var hasConvType bool
 		if v, ok := typeField.Tag.Lookup("search"); ok {
 			vspl := strings.Split(v, ",")
-			if len(vspl) >= 2 {
+			if len(vspl) > 2 {
 				switch vspl[2] {
 				case "atom":
 					convType = reflect.TypeOf(search.Atom(""))

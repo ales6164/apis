@@ -49,7 +49,6 @@ func checkPassword(v string) error {
 	return nil
 }
 
-
 func login(ctx Context, email, password string) (string, *User, error) {
 	var signedToken string
 	acc := new(Account)
@@ -255,13 +254,20 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 		}
 
 		if UserKind.EnableSearch {
+			var visibility string
+			if acc.User.IsPublic {
+				visibility = "public"
+			} else {
+				visibility = "private"
+			}
 			if err := saveToIndex(ctx, UserKind, userKey.Encode(), &UserDoc{
-				UserID:    search.Atom(userKey.Encode()),
-				Roles:     strings.Join(acc.User.Roles, ","),
-				Locale:    search.Atom(acc.User.Locale),
-				Email:     search.Atom(acc.User.Email),
-				CreatedAt: acc.User.CreatedAt,
-				UpdatedAt: acc.User.UpdatedAt,
+				UserID:     search.Atom(userKey.Encode()),
+				Roles:      strings.Join(acc.User.Roles, ","),
+				Locale:     search.Atom(acc.User.Locale),
+				Email:      search.Atom(acc.User.Email),
+				CreatedAt:  acc.User.CreatedAt,
+				UpdatedAt:  acc.User.UpdatedAt,
+				Visibility: search.Atom(visibility),
 			}); err != nil {
 				ctx.PrintError(w, err)
 				return

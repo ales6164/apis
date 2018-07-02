@@ -15,8 +15,8 @@ type Apis struct {
 	options *Options
 	routes  []*Route
 
-	middleware *middleware.JWTMiddleware
-	privateKey []byte
+	middleware          *middleware.JWTMiddleware
+	privateKey          []byte
 	permissions
 	allowedTranslations map[string]bool
 	kinds               map[string]*kind.Kind

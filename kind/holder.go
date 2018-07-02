@@ -61,10 +61,8 @@ func (h *Holder) Bytes() ([]byte, error) {
 }
 
 func (h *Holder) SetKey(k *datastore.Key) {
-	if k != nil {
-		h.key = k
-		h.hasKey = true
-	}
+	h.key = k
+	h.hasKey = k != nil
 }
 
 func (h *Holder) GetKey() *datastore.Key {
@@ -117,10 +115,10 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 	return datastore.SaveStruct(h.value)
 }
 
-
 // mergo transformer
 type timeTransformer struct {
 }
+
 func (t timeTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
 	if typ == reflect.TypeOf(time.Time{}) {
 		return func(dst, src reflect.Value) error {

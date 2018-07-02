@@ -13,6 +13,7 @@ import (
 	"github.com/imdario/mergo"
 	"golang.org/x/net/context"
 	"strings"
+	"strconv"
 )
 
 type Account struct {
@@ -37,12 +38,14 @@ type User struct {
 }
 
 type UserDoc struct {
-	UserID    search.Atom `json:"user_id,omitempty"`
-	Roles     string      `json:"roles,omitempty"`
-	Email     search.Atom `json:"email,omitempty"`
-	CreatedAt time.Time   `json:"created_at,omitempty"`
-	UpdatedAt time.Time   `json:"updated_at,omitempty"`
-	Locale    search.Atom `json:"locale,omitempty"`
+	UserID     search.Atom `json:"user_id,omitempty"`
+	Roles      string      `json:"roles,omitempty"`
+	Email      search.Atom `json:"email,omitempty"`
+	Keywords   string      `json:"keywords,omitempty"`
+	CreatedAt  time.Time   `json:"created_at,omitempty"`
+	UpdatedAt  time.Time   `json:"updated_at,omitempty"`
+	Locale     search.Atom `json:"locale,omitempty"`
+	Visibility search.Atom `json:"visibility,omitempty"`
 }
 
 type Profile struct {
@@ -131,6 +134,10 @@ var UserKind = kind.New(reflect.TypeOf(User{}), &kind.Options{
 	Name:         "_user",
 	EnableSearch: true,
 	SearchType:   reflect.TypeOf(UserDoc{}),
+})
+
+var accountKind = kind.New(reflect.TypeOf(Account{}), &kind.Options{
+	Name: "_user",
 })
 
 type InputUser struct {
@@ -243,13 +250,20 @@ func initUser(a *Apis, r *mux.Router) {
 		acc.User.UserID = userKey
 
 		if userRoute.kind.EnableSearch {
+			var visibility string
+			if acc.User.IsPublic {
+				visibility = "public"
+			} else {
+				visibility = "private"
+			}
 			if err := saveToIndex(ctx, userRoute.kind, userKey.Encode(), &UserDoc{
-				UserID:    search.Atom(userKey.Encode()),
-				Roles:     strings.Join(acc.User.Roles, ","),
-				Locale:    search.Atom(acc.User.Locale),
-				Email:     search.Atom(acc.User.Email),
-				CreatedAt: acc.User.CreatedAt,
-				UpdatedAt: acc.User.UpdatedAt,
+				UserID:     search.Atom(userKey.Encode()),
+				Roles:      strings.Join(acc.User.Roles, ","),
+				Locale:     search.Atom(acc.User.Locale),
+				Email:      search.Atom(acc.User.Email),
+				CreatedAt:  acc.User.CreatedAt,
+				UpdatedAt:  acc.User.UpdatedAt,
+				Visibility: search.Atom(visibility),
 			}); err != nil {
 				ctx.PrintError(w, err)
 				return
@@ -265,8 +279,211 @@ func initUser(a *Apis, r *mux.Router) {
 	r.Handle("/user", a.middleware.Handler(userRoute.putHandler())).Methods(http.MethodPut)
 	r.Handle("/user/{id}", a.middleware.Handler(userRoute.putHandler())).Methods(http.MethodPut)
 
+	r.Handle("/fix-users", a.middleware.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := userRoute.NewContext(r)
+		if ok := ctx.HasRole(AdminRole); !ok {
+			ctx.PrintError(w, errors.ErrForbidden)
+			return
+		}
+
+		var hs []*Account
+		q := datastore.NewQuery(UserKind.Name)
+		t := q.Run(ctx)
+		for {
+			var h = new(Account)
+			key, err := t.Next(h)
+			h.User.UserID = key
+			if err == datastore.Done {
+				break
+			}
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+			hs = append(hs, h)
+		}
+
+		for _, acc := range hs {
+			var visibility string
+			if acc.User.IsPublic {
+				visibility = "public"
+			} else {
+				visibility = "private"
+			}
+			err := saveToIndex(ctx, UserKind, acc.User.UserID.Encode(), &UserDoc{
+				UserID:     search.Atom(acc.User.UserID.Encode()),
+				Roles:      strings.Join(acc.User.Roles, ","),
+				Keywords:   strings.Join([]string{acc.User.Profile.Name, acc.User.Profile.MiddleName, acc.User.Profile.FamilyName, acc.User.Profile.GivenName, acc.User.Profile.Nickname}, ","),
+				Locale:     search.Atom(acc.User.Locale),
+				Email:      search.Atom(acc.User.Email),
+				CreatedAt:  acc.User.CreatedAt,
+				UpdatedAt:  acc.User.UpdatedAt,
+				Visibility: search.Atom(visibility),
+			})
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+		}
+		ctx.Print(w, "success")
+	}))).Methods(http.MethodGet)
+
 	// SEARCH
-	a.kinds[UserKind.Name] = UserKind
+	r.Handle("/users", a.middleware.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := userRoute.NewContext(r)
+		var ok, isPrivate bool
+		if ok, isPrivate = ctx.HasPermission(UserKind, QUERY); !ok {
+			ctx.PrintError(w, errors.ErrForbidden)
+			return
+		}
+
+		q, next, sort, limit, offset := r.FormValue("q"), r.FormValue("next"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset")
+
+		index, err := OpenIndex(UserKind.Name)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		// build facets and retrieve filters from query parameters
+		var fields []search.Field
+		var facets []search.Facet
+		for key, val := range r.URL.Query() {
+			if key == "filter" {
+				for _, v := range val {
+					filter := strings.Split(v, ":")
+					if len(filter) == 2 {
+						// todo: currently only supports facet type search.Atom
+						facets = append(facets, search.Facet{Name: filter[0], Value: search.Atom(filter[1])})
+					}
+				}
+			} else if key == "range" {
+				for _, v := range val {
+					filter := strings.Split(v, ":")
+					if len(filter) == 2 {
+
+						rangeStr := strings.Split(filter[1], "-")
+						if len(rangeStr) == 2 {
+							rangeStart, _ := strconv.ParseFloat(rangeStr[0], 64)
+							rangeEnd, _ := strconv.ParseFloat(rangeStr[1], 64)
+
+							facets = append(facets, search.Facet{Name: filter[0], Value: search.Range{
+								Start: rangeStart,
+								End:   rangeEnd,
+							}})
+						}
+					}
+				}
+			} else if key == "sort" {
+				//skip
+			} else if key == "key" {
+				// used for auth
+				//skip
+			} else {
+				for _, v := range val {
+					fields, facets = UserKind.RetrieveSearchParameter(key, v, fields, facets)
+				}
+			}
+		}
+
+		if isPrivate {
+			fields = append(fields, search.Field{Name: "Visibility", Value: "public"})
+		}
+
+		// build []search.Field to a query string and append
+		if len(fields) > 0 {
+			for _, f := range fields {
+				if len(q) > 0 {
+					q += " AND " + f.Name + ":" + f.Value.(string)
+				} else {
+					q += f.Name + ":" + f.Value.(string)
+				}
+			}
+		}
+
+		// limit
+		var intLimit int
+		if len(limit) > 0 {
+			intLimit, _ = strconv.Atoi(limit)
+		}
+		// offset
+		var intOffset int
+		if len(offset) > 0 {
+			intOffset, _ = strconv.Atoi(offset)
+		}
+
+		// sorting
+		var sortExpr []search.SortExpression
+		if len(sort) > 0 {
+			var desc bool
+			if sort[:1] == "-" {
+				sort = sort[1:]
+				desc = true
+			}
+			sortExpr = append(sortExpr, search.SortExpression{Expr: sort, Reverse: !desc})
+		}
+
+		// real search
+		var results []interface{}
+		var docKeys []*datastore.Key
+		var t *search.Iterator
+		for t = index.Search(ctx, q, &search.SearchOptions{
+			IDsOnly:       UserKind.RetrieveByIDOnSearch,
+			Cursor:        search.Cursor(next),
+			CountAccuracy: 1000,
+			Offset:        intOffset,
+			Limit:         intLimit,
+			Sort: &search.SortOptions{
+				Expressions: sortExpr,
+			}}); ; {
+			var doc = reflect.New(UserKind.SearchType).Interface()
+			docKey, err := t.Next(doc)
+			if err == search.Done {
+				break
+			}
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+
+			if key, err := UserKind.DecodeKey(docKey); err == nil {
+				docKeys = append(docKeys, key)
+				results = append(results, doc)
+			}
+		}
+
+		// fetch real entries from datastore
+		if len(docKeys) == len(results) {
+			hs, err := kind.GetMulti(ctx, accountKind, docKeys...)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+			for k, h := range hs {
+				acc := h.Value().(*Account)
+				acc.User.UserID = h.GetKey()
+				results[k] = &acc.User
+			}
+		} else {
+			ctx.PrintError(w, errors.New("results mismatch"))
+			return
+		}
+
+		var cursor *Cursor
+		if len(t.Cursor()) > 0 || len(next) > 0 {
+			cursor = &Cursor{
+				Next: string(t.Cursor()),
+				Prev: next,
+			}
+		}
+
+		ctx.Print(w, &SearchOutput{
+			Count:   len(results),
+			Total:   t.Count(),
+			Results: results,
+			Cursor:  cursor,
+		})
+	}))).Methods(http.MethodGet)
 }
 
 type timeTransformer struct{}

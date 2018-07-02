@@ -8,32 +8,18 @@ import (
 	"github.com/ales6164/apis/kind"
 	"reflect"
 	"github.com/ales6164/apis/errors"
-	"strings"
-	"strconv"
+	"google.golang.org/appengine"
 )
 
-type ChatOptions struct {
-	Enabled            bool
-	MessagePermissions Permissions
-	GroupPermissions   Permissions
-}
-
 type ChatGroup struct {
-	Id        *datastore.Key    `apis:"id" datastore:"-" json:"id"`
-	CreatedAt time.Time         `apis:"createdAt" json:"createdAt"`
-	CreatedBy *datastore.Key    `apis:"createdBy" json:"createdBy"`
-	UpdatedAt time.Time         `apis:"updatedAt" json:"updatedAt"`
-	UpdatedBy *datastore.Key    `apis:"updatedBy" json:"updatedBy"`
-	Users     []ChatGroupMember `json:"users"`
-	GroupName string            `json:"groupName"`
-}
-
-type ChatGroupMember struct {
-	UserKey   *datastore.Key `json:"-"`
-	CreatedAt time.Time      `datastore:",noindex" json:"createdAt"`
-	UpdatedAt time.Time      `datastore:",noindex" json:"updatedAt"`
-	Role      string         `datastore:",noindex" json:"role"`
-	User      *User          `datastore:"-" json:"user"`
+	Id        *datastore.Key   `apis:"id" datastore:"-" json:"id"`
+	CreatedAt time.Time        `apis:"createdAt" json:"createdAt"`
+	CreatedBy *datastore.Key   `apis:"createdBy" json:"createdBy"`
+	UpdatedAt time.Time        `apis:"updatedAt" json:"updatedAt"`
+	UpdatedBy *datastore.Key   `apis:"updatedBy" json:"updatedBy"`
+	Users     []string         `json:"users"`
+	UserKeys  []*datastore.Key `json:"-"`
+	GroupName string           `json:"groupName"`
 }
 
 type Message struct {
@@ -42,19 +28,14 @@ type Message struct {
 	CreatedBy *datastore.Key `apis:"createdBy" json:"createdBy"`
 	UpdatedAt time.Time      `apis:"updatedAt" json:"updatedAt"`
 	UpdatedBy *datastore.Key `apis:"updatedBy" json:"updatedBy"`
-	Group     *datastore.Key `json:"group"`
-	Author    *User          `datastore:"-" json:"author"`
 	Body      string         `datastore:",noindex" json:"body"`
 }
 
-// todo: user access - some roles have access to users some dont - make that
-// todo: add special field to users that makes them avaialable for chat to others ... and such
-
-var ChatGroupKind = kind.New(reflect.TypeOf(ChatGroup{}), &kind.Options{
+var ChatKind = kind.New(reflect.TypeOf(ChatGroup{}), &kind.Options{
 	Name: "_chatGroup",
 })
 
-var MessageKind = kind.New(reflect.TypeOf(Message{}), &kind.Options{
+var messageKind = kind.New(reflect.TypeOf(Message{}), &kind.Options{
 	Name: "_chatMessage",
 })
 
@@ -62,122 +43,63 @@ func getChatGroupsHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
 
-		if ok, _ := ctx.HasPermission(R.kind, READ); !ok {
+		if ok, _ := ctx.HasPermission(ChatKind, READ); !ok {
 			ctx.PrintError(w, errors.ErrForbidden)
 			return
 		}
 
-		hs, err := R.kind.Query(ctx, "-UpdatedAt", 20, 0, []kind.Filter{{FilterStr: "Users =", Value: ctx.UserKey()}}, nil)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		var out []*ChatGroup
-		for _, h := range hs {
-			chatGroup := h.Value().(*ChatGroup)
-
-
-
-			out = append(out, chatGroup)
-		}
-		ctx.PrintResult(w, map[string]interface{}{
-			"count":   len(out),
-			"results": out,
-		})
-	}
-}
-
-func createChatGroupHandler(R *Route) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := R.NewContext(r)
-		if ok, _ := ctx.HasPermission(R.kind, CREATE); !ok {
-			ctx.PrintError(w, errors.ErrForbidden)
-			return
-		}
-
-		h := R.kind.NewHolder(ctx.UserKey())
-		err := h.Parse(ctx.Body())
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		val := h.Value().(*ChatGroup)
-		val.Users = append(val.Users, ctx.UserKey())
-		h.SetValue(val)
-
-		err = h.Add(ctx)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		ctx.Print(w, h.Value())
-	}
-}
-
-func getChatGroupMessagesHandler(R *Route) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := R.NewContext(r)
-
-		if ok, _ := ctx.HasPermission(R.kind, READ); !ok {
-			ctx.PrintError(w, errors.ErrForbidden)
-			return
-		}
-
-		id, offset := r.FormValue("id"), r.FormValue("offset")
-		groupKey, err := datastore.DecodeKey(id)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		offsetInt, _ := strconv.Atoi(offset)
-
-		// get chat group
-		var chatGroup = new(ChatGroup)
-		err = datastore.Get(ctx, groupKey, chatGroup)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		// get chat group users
-		var users = map[string]BasicUser{}
-		var chatGroupUsers = make([]*Account, len(chatGroup.Users))
-		err = datastore.GetMulti(ctx, chatGroup.Users, chatGroupUsers)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-		for i, u := range chatGroupUsers {
-			users[u.Email] = BasicUser{
-				Name:    strings.Join([]string{u.User.Profile.Name, u.User.Profile.GivenName, u.User.Profile.FamilyName}, " "),
-				Picture: u.User.Profile.Picture,
-				Id:      chatGroup.Users[i],
+		id := mux.Vars(r)["group"]
+		if len(id) > 0 {
+			// get messages for the group
+			chatGroupKey, err := R.kind.DecodeKey(id)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
 			}
-		}
 
-		// get messages
-		hs, err := R.kind.Query(ctx, "-CreatedAt", 20, offsetInt, []kind.Filter{{FilterStr: "Group =", Value: groupKey}}, nil)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		var out []*Message
-		for _, h := range hs {
-			value := h.Value().(*Message)
-			if uk, ok := users[value.CreatedBy.StringID()]; ok {
-				value.User = uk
+			if !chatGroupKey.Parent().Equal(ctx.UserKey()) {
+				ctx.PrintError(w, errors.ErrForbidden)
+				return
 			}
-			out = append(out, value)
+
+			cgCtx, err := appengine.Namespace(ctx, "chatGroup_"+chatGroupKey.StringID())
+			if err != nil {
+				ctx.PrintError(w, err, "ns error")
+				return
+			}
+
+			hs, err := messageKind.Query(cgCtx, "-CreatedAt", 0, 0, nil, nil)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+
+			var out []*Message
+			for _, h := range hs {
+				out = append(out, h.Value().(*Message))
+			}
+			ctx.PrintResult(w, map[string]interface{}{
+				"count":   len(out),
+				"results": out,
+			})
+		} else {
+			// get groups
+			hs, err := R.kind.Query(ctx, "-UpdatedAt", 0, 0, nil, ctx.UserKey())
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+
+			var out []*ChatGroup
+			for _, h := range hs {
+				chatGroup := h.Value().(*ChatGroup)
+				out = append(out, chatGroup)
+			}
+			ctx.PrintResult(w, map[string]interface{}{
+				"count":   len(out),
+				"results": out,
+			})
 		}
-		ctx.PrintResult(w, map[string]interface{}{
-			"count":   len(out),
-			"results": out,
-		})
 	}
 }
 
@@ -185,55 +107,60 @@ func createChatGroupMessageHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
 
-		if ok, _ := ctx.HasPermission(R.kind, CREATE); !ok {
+		if ok, _ := ctx.HasPermission(ChatKind, CREATE); !ok {
 			ctx.PrintError(w, errors.ErrForbidden)
 			return
 		}
 
-		id := r.URL.Query().Get("id")
-
+		id := mux.Vars(r)["group"]
 		if len(id) == 0 {
 			ctx.PrintError(w, errors.New("must provide id or name"))
 			return
 		}
 
-		key, err := datastore.DecodeKey(id)
+		decodedGroupKey, err := ChatKind.DecodeKey(id)
 		if err != nil {
 			ctx.PrintError(w, err, "decoding error")
 			return
 		}
 
-		h := R.kind.NewHolder(ctx.UserKey())
+		if !decodedGroupKey.Parent().Equal(ctx.UserKey()) {
+			ctx.PrintError(w, errors.ErrForbidden)
+			return
+		}
+
+		// check if user has access to user group
+		chatGroupHolder := ChatKind.NewHolder(ctx.UserKey())
+		if err := chatGroupHolder.Get(ctx, decodedGroupKey); err != nil {
+			ctx.PrintError(w, err, "parsing error")
+			return
+		}
+
+		h := messageKind.NewHolder(ctx.UserKey())
 		err = h.Parse(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err, "parsing error")
 			return
 		}
-		value := h.Value().(*Message)
-		value.Group = key
-		h.SetValue(value)
 
-		err = h.Add(ctx)
+		cgCtx, err := appengine.Namespace(ctx, "chatGroup_"+decodedGroupKey.StringID())
+		if err != nil {
+			ctx.PrintError(w, err, "ns error")
+			return
+		}
+		h.SetKey(h.Kind.NewIncompleteKey(cgCtx, nil))
+		err = h.Add(cgCtx)
 		if err != nil {
 			ctx.PrintError(w, err, "add error")
 			return
 		}
 
-		// set basic user to value
-		u := ctx.User()
-		value.User = BasicUser{
-			Name:    strings.Join([]string{u.Profile.Name, u.Profile.GivenName, u.Profile.FamilyName}, " "),
-			Picture: u.Profile.Picture,
-			Id:      u.UserID,
-		}
-
 		// update chat group
-		gh := ChatGroupKind.NewHolder(nil)
-		gh.Get(ctx, key)
-		group := gh.Value().(*ChatGroup)
-		group.Message = *value
-		gh.SetValue(group)
-		gh.Update(ctx)
+		err = chatGroupHolder.Update(ctx)
+		if err != nil {
+			ctx.PrintError(w, err, "updating chat groupł error")
+			return
+		}
 
 		ctx.Print(w, h.Value())
 	}
@@ -241,27 +168,55 @@ func createChatGroupMessageHandler(R *Route) http.HandlerFunc {
 
 func initChat(a *Apis, r *mux.Router) {
 	chatGroupRoute := &Route{
-		kind:    ChatGroupKind,
+		kind:    ChatKind,
 		a:       a,
-		path:    "/chat/group",
+		path:    "/chat",
 		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 	}
 	messageRoute := &Route{
-		kind:    MessageKind,
+		kind:    messageKind,
 		a:       a,
-		path:    "/chat/message",
+		path:    "/chat",
 		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 	}
 
-	r.Handle(chatGroupRoute.path, a.middleware.Handler(getChatGroupsHandler(chatGroupRoute))).Methods(http.MethodGet)
-	r.Handle(chatGroupRoute.path, a.middleware.Handler(createChatGroupHandler(chatGroupRoute))).Methods(http.MethodPost)
-	//r.Handle(chatGroupRoute.path, a.middleware.Handler(chatGroupRoute.putHandler())).Methods(http.MethodPut)
-	//r.Handle(chatGroupRoute.path, a.middleware.Handler(chatGroupRoute.deleteHandler())).Methods(http.MethodDelete)
+	r.Handle("/chat", a.middleware.Handler(getChatGroupsHandler(chatGroupRoute))).Methods(http.MethodGet)
+	r.Handle("/chat/{group}", a.middleware.Handler(getChatGroupsHandler(chatGroupRoute))).Methods(http.MethodGet)
+	r.Handle("/chat", a.middleware.Handler(chatGroupRoute.postHandler())).Methods(http.MethodPost)
+	r.Handle("/chat/{group}", a.middleware.Handler(createChatGroupMessageHandler(messageRoute))).Methods(http.MethodPost)
 
-	r.Handle(messageRoute.path, a.middleware.Handler(getChatGroupMessagesHandler(messageRoute))).Methods(http.MethodGet)
-	r.Handle(messageRoute.path, a.middleware.Handler(createChatGroupMessageHandler(messageRoute))).Methods(http.MethodPost)
-	/*r.Handle(messageRoute.path, a.middleware.Handler(messageRoute.putHandler())).Methods(http.MethodPut)
-	r.Handle(messageRoute.path, a.middleware.Handler(messageRoute.deleteHandler())).Methods(http.MethodDelete)*/
+	chatGroupRoute.On(BeforeCreate, func(ctx Context, h *kind.Holder) error {
+		chatId := RandStringBytesMaskImprSrc(LetterBytes, 16)
+		chatGroup := h.Value().(*ChatGroup)
+		var hasSelf bool
+		for _, u := range chatGroup.Users {
+			decodedUserKey, err := datastore.DecodeKey(u)
+			if err != nil {
+				return err
+			}
+			chatGroup.UserKeys = append(chatGroup.UserKeys, decodedUserKey)
+			if decodedUserKey.Equal(ctx.UserKey()) {
+				hasSelf = true
+			}
+		}
+		if !hasSelf {
+			chatGroup.Users = append(chatGroup.Users, ctx.UserKey().Encode())
+			chatGroup.UserKeys = append(chatGroup.UserKeys, ctx.UserKey())
+			h.SetValue(chatGroup)
+		}
+		for _, u := range chatGroup.UserKeys {
+			if !u.Equal(ctx.UserKey()) {
+				h.SetKey(ChatKind.NewKey(ctx, chatId, u))
+				err := h.Add(ctx)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		h.SetKey(ChatKind.NewKey(ctx, chatId, ctx.UserKey()))
+		return nil
+	})
 }
 
 // CHAT GROUP HANDLERS
