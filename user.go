@@ -169,7 +169,7 @@ func initUser(a *Apis, r *mux.Router) {
 			ctx.PrintError(w, errors.ErrUnathorized)
 			return
 		}
-		_, isPrivateOnly := ctx.HasPermission(userRoute.kind, READ)
+		_, isPrivateOnly := ctx.HasPermission(userRoute.kind, GET)
 		var userKey *datastore.Key
 		var userId = mux.Vars(r)["id"]
 		if len(userId) > 0 {
@@ -200,7 +200,7 @@ func initUser(a *Apis, r *mux.Router) {
 			return
 		}
 
-		_, isPrivateOnly := ctx.HasPermission(userRoute.kind, READ)
+		_, isPrivateOnly := ctx.HasPermission(userRoute.kind, GET)
 
 		var userKey *datastore.Key
 		var userId = mux.Vars(r)["id"]

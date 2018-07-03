@@ -38,13 +38,13 @@ func initAgreement(a *Apis, r *mux.Router) {
 	agreementRoute := &Route{
 		kind:    AgreementKind,
 		a:       a,
-		path:    "/apis/agreement",
+		path:    "/agreement",
 		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 	}
 	contractRoute := &Route{
 		kind:    ContractKind,
 		a:       a,
-		path:    "/apis/contract",
+		path:    "/contract",
 		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 	}
 

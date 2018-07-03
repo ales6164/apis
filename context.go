@@ -204,8 +204,8 @@ func (ctx Context) HasPermission(k *kind.Kind, scope Scope) (ok bool, isPrivateO
 	isPrivateOnly = true
 	for _, role := range roles {
 		if val1, ok := ctx.a.permissions[role]; ok {
-			if val2, ok := val1[scope]; ok {
-				if val3, ok := val2[k]; ok {
+			if val2, ok := val1[k]; ok {
+				if val3, ok := val2[scope]; ok {
 					if ctx.roles != nil {
 						if _, ok := ctx.roles[role]; ok {
 							hasPermission = true

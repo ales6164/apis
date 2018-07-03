@@ -4,6 +4,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"math/rand"
 	"time"
+	"github.com/ales6164/apis/kind"
+	"golang.org/x/net/context"
+	"google.golang.org/appengine/datastore"
 )
 
 const COST = 12
@@ -51,4 +54,17 @@ func clear(b []byte) {
 	for i := 0; i < len(b); i++ {
 		b[i] = 0
 	}
+}
+
+
+// purges datastore and search of all entries
+func ClearAllEntries(ctx context.Context, kind *kind.Kind) error {
+	keys, _ := datastore.NewQuery(kind.Name).KeysOnly().GetAll(ctx, nil)
+	if len(keys) > 0 {
+		err := datastore.DeleteMulti(ctx, keys)
+		if err != nil {
+			return err
+		}
+	}
+	return ClearIndex(ctx, kind.Name)
 }

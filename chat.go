@@ -43,7 +43,7 @@ func getChatGroupsHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
 
-		if ok, _ := ctx.HasPermission(ChatKind, READ); !ok {
+		if ok, _ := ctx.HasPermission(ChatKind, GET); !ok {
 			ctx.PrintError(w, errors.ErrForbidden)
 			return
 		}

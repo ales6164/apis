@@ -99,6 +99,8 @@ type FieldInfo struct {
 	IsSelect   bool            `json:"is_select,omitempty"`
 	IsTextArea bool            `json:"is_text_area,omitempty"`
 	InputType  string          `json:"input_type,omitempty"`
+	TagStart   string          `json:"tagStart,omitempty"`
+	TagEnd     string          `json:"tagEnd,omitempty"`
 
 	Kind *KindInfo `json:"kind,omitempty"`
 }
@@ -106,6 +108,16 @@ type FieldInfo struct {
 type InfoFieldTable struct {
 	Display bool `json:"display,omitempty"`
 	NoSort  bool `json:"no_sort,omitempty"`
+}
+
+func (fi *FieldInfo) generateTag(name string) {
+	// name label type
+	fi.TagStart = "<" + name + " type=" + fi.InputType + " name=" + fi.Name + " label='" + fi.Label + "'"
+	for _, attr := range fi.Attributes {
+		fi.TagStart += " " + attr.Name + "='" + attr.Value + "'"
+	}
+	fi.TagStart += ">"
+	fi.TagEnd = "</" + name + ">"
 }
 
 func (mainKind *KindInfo) informizeType(kindInfo *KindInfo, parentField *FieldInfo) *KindInfo {
@@ -118,7 +130,7 @@ func (mainKind *KindInfo) informizeType(kindInfo *KindInfo, parentField *FieldIn
 		calcTable := parentField == nil || parentField.Table != nil && parentField.Table.Display
 
 		if m, ok := f.Tag.Lookup("json"); ok {
-			fieldInfo.Name = m
+			fieldInfo.Name = strings.TrimSpace(strings.Split(m, ",")[0])
 		} else {
 			fieldInfo.Name = f.Name
 		}
@@ -180,45 +192,33 @@ func (mainKind *KindInfo) informizeType(kindInfo *KindInfo, parentField *FieldIn
 		}
 
 		switch fieldInfo.Type {
-		case "*datastore.Key":
+		case "string", "*datastore.Key":
 			fieldInfo.IsInput = true
 			fieldInfo.InputType = "text"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"type", fieldInfo.InputType})
+			fieldInfo.generateTag("entry-field-textfield")
 		case "time.Time":
 			fieldInfo.IsInput = true
 			fieldInfo.InputType = "datetime-local"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"type", fieldInfo.InputType})
-		case "string":
+			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "date"})
+			fieldInfo.generateTag("entry-field-textfield")
+		case "bool":
 			fieldInfo.IsInput = true
-			fieldInfo.InputType = "text"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"type", fieldInfo.InputType})
-		case "float64":
+			fieldInfo.InputType = "checkbox"
+			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "bool"})
+			fieldInfo.generateTag("entry-field-toggle")
+		case "float64", "float32":
 			fieldInfo.IsInput = true
 			fieldInfo.InputType = "number"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"type", fieldInfo.InputType})
+			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "double"})
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"step", "any"})
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"pattern", `-?[0-9]*(\.[0-9]+)?`})
-		case "float32":
+			fieldInfo.generateTag("entry-field-textfield")
+		case "int64", "int", "int32":
 			fieldInfo.IsInput = true
 			fieldInfo.InputType = "number"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"type", fieldInfo.InputType})
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"step", "any"})
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"pattern", `-?[0-9]*(\.[0-9]+)?`})
-		case "int64":
-			fieldInfo.IsInput = true
-			fieldInfo.InputType = "number"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"type", fieldInfo.InputType})
+			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "number"})
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"step", "1"})
-		case "int32":
-			fieldInfo.IsInput = true
-			fieldInfo.InputType = "number"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"type", fieldInfo.InputType})
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"step", "1"})
-		case "int":
-			fieldInfo.IsInput = true
-			fieldInfo.InputType = "number"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"type", fieldInfo.InputType})
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"step", "1"})
+			fieldInfo.generateTag("entry-field-textfield")
 		default:
 			switch f.Type.Kind() {
 			case reflect.Slice, reflect.Array:

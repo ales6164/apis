@@ -152,7 +152,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
 		var ok, isPrivate bool
-		if ok, isPrivate = ctx.HasPermission(R.kind, READ); !ok {
+		if ok, isPrivate = ctx.HasPermission(R.kind, GET); !ok {
 			ctx.PrintError(w, errors.ErrForbidden)
 			return
 		}
@@ -324,18 +324,18 @@ func (R *Route) postHandler() http.HandlerFunc {
 		h := R.kind.NewHolder(ctx.UserKey())
 		err := h.Parse(ctx.Body())
 		if err != nil {
-			ctx.PrintError(w, err)
+			ctx.PrintError(w, err, "error parsing")
 			return
 		}
 
 		if err := R.trigger(BeforeCreate, ctx, h); err != nil {
-			ctx.PrintError(w, err)
+			ctx.PrintError(w, err, "error on before create")
 			return
 		}
 
 		err = h.Add(ctx)
 		if err != nil {
-			ctx.PrintError(w, err)
+			ctx.PrintError(w, err, "error adding")
 			return
 		}
 
@@ -345,7 +345,7 @@ func (R *Route) postHandler() http.HandlerFunc {
 		}
 
 		if err := R.trigger(AfterCreate, ctx, h); err != nil {
-			ctx.PrintError(w, err)
+			ctx.PrintError(w, err, "error on after create")
 			return
 		}
 

@@ -59,13 +59,14 @@ func initMedia(a *Apis, r *mux.Router) {
 		mediaRoute := &Route{
 			kind:    MediaKind,
 			a:       a,
-			path:    "/apis/media",
+			path:    "/media",
 			methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 		}
 		// GET MEDIA
-		r.Handle(mediaRoute.path, a.middleware.Handler(mediaRoute.getHandler())).Methods(http.MethodGet)
+		r.Handle("/media/{id}", a.middleware.Handler(mediaRoute.getHandler())).Methods(http.MethodGet)
+		r.Handle("/media", a.middleware.Handler(mediaRoute.queryHandler())).Methods(http.MethodGet)
 		// UPLOAD
-		r.Handle(mediaRoute.path, a.middleware.Handler(uploadHandler(mediaRoute))).Methods(http.MethodPost)
+		r.Handle("/media", a.middleware.Handler(uploadHandler(mediaRoute))).Methods(http.MethodPost)
 		/*r.Handle("/media/{blobKey}", a.middleware.Handler(serveHandler(mediaRoute))).Methods(http.MethodGet)*/
 	}
 }
