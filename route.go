@@ -420,5 +420,62 @@ func (R *Route) deleteHandler() http.HandlerFunc {
 	if R.delete != nil {
 		return R.delete
 	}
-	return func(w http.ResponseWriter, r *http.Request) {}
+	if R.kind == nil {
+		return func(w http.ResponseWriter, r *http.Request) {}
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := R.NewContext(r)
+
+		var ok, isPrivate bool
+		if ok, isPrivate = ctx.HasPermission(R.kind, DELETE); !ok {
+			ctx.PrintError(w, errors.ErrForbidden)
+			return
+		}
+
+		id := mux.Vars(r)["id"]
+
+		key, err := R.kind.DecodeKey(id)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		if isPrivate && !key.Parent().Equal(ctx.UserKey()) {
+			ctx.PrintError(w, errors.ErrForbidden)
+			return
+		}
+
+		if err := R.trigger(BeforeDelete, ctx, nil); err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		err = R.kind.Delete(ctx, key)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		if R.kind.EnableSearch {
+			DeleteFromIndex(ctx, R.kind.Name, id)
+		}
+
+		if err := R.trigger(AfterDelete, ctx, nil); err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		ctx.Print(w, ActionResult{
+			Action:  "delete",
+			Message: "success",
+			Ids:     []string{id},
+		})
+	}
+}
+
+type ActionResult struct {
+	Action  string   `json:"action,omitempty"`
+	Message string   `json:"message,omitempty"`
+	Error   string   `json:"error,omitempty"`
+	Ids     []string `json:"ids,omitempty"`
 }

@@ -79,7 +79,7 @@ func (h *Holder) Load(ps []datastore.Property) error {
 			return err
 		}
 
-		if err := mergo.Merge(n, h.value, mergo.WithOverride, mergo.WithTransformers(timeTransformer{})); err != nil {
+		if err := mergo.Merge(n, h.value, mergo.WithOverride, mergo.WithTransformers(timeTransformer{}), mergo.WithTransformers(boolTransformer{})); err != nil {
 			return err
 		}
 
@@ -128,6 +128,21 @@ func (t timeTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Val
 				if result[0].Bool() {
 					dst.Set(src)
 				}
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+type boolTransformer struct {
+}
+
+func (t boolTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
+	if typ == reflect.TypeOf(true) {
+		return func(dst, src reflect.Value) error {
+			if dst.CanSet() {
+				dst.Set(src)
 			}
 			return nil
 		}

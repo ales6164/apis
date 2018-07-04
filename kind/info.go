@@ -82,6 +82,10 @@ type KindInfo struct {
 
 type MetaInfo struct {
 	UpdatedAtField *FieldInfo `json:"updated_at_field,omitempty"`
+	CreatedAtField *FieldInfo `json:"created_at_field,omitempty"`
+	UpdatedByField *FieldInfo `json:"updated_by_field,omitempty"`
+	CreatedByField *FieldInfo `json:"created_by_field,omitempty"`
+	IdField        *FieldInfo `json:"id_field,omitempty"`
 }
 
 type FieldInfo struct {
@@ -182,6 +186,14 @@ func (mainKind *KindInfo) informizeType(kindInfo *KindInfo, parentField *FieldIn
 				case 0:
 					if v == "updatedat" {
 						mainKind.Meta.UpdatedAtField = fieldInfo
+					} else if v == "id" {
+						mainKind.Meta.IdField = fieldInfo
+					} else if v == "updatedby" {
+						mainKind.Meta.UpdatedByField = fieldInfo
+					} else if v == "createdat" {
+						mainKind.Meta.CreatedAtField = fieldInfo
+					} else if v == "createdby" {
+						mainKind.Meta.CreatedByField = fieldInfo
 					}
 				}
 			}

@@ -48,6 +48,14 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 	return hs, nil
 }
 
+func (k *Kind) Delete(ctx context.Context, key *datastore.Key) error {
+	err := datastore.Delete(ctx, key)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func GetMulti(ctx context.Context, kind *Kind, key ...*datastore.Key) ([]*Holder, error) {
 	var hs []*Holder
 	for _, k := range key {

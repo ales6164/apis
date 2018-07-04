@@ -433,6 +433,14 @@ func OpenIndex(name string) (*search.Index, error) {
 	return search.Open(name)
 }
 
+func DeleteFromIndex(ctx context.Context, indexName string, documentId string) error {
+	index, err := search.Open(indexName)
+	if err != nil {
+		return err
+	}
+	return index.Delete(ctx, documentId)
+}
+
 func ClearIndex(ctx context.Context, indexName string) error {
 	index, err := search.Open(indexName)
 	if err != nil {
