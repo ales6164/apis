@@ -15,11 +15,12 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/ales6164/apis/kind"
 	"reflect"
+	"github.com/ales6164/apis/errors"
 )
 
 type StoredFile struct {
-	CreatedBy   *datastore.Key `json:"createdBy,omitempty"`
-	CreatedAt   time.Time      `json:"createdAt,omitempty"`
+	CreatedBy   *datastore.Key `apis:"createdBy" json:"createdBy,omitempty"`
+	CreatedAt   time.Time      `apis:"createdAt" json:"createdAt,omitempty"`
 	BlobKey     string         `datastore:",noindex" json:"blobKey,omitempty"`
 	URL         string         `datastore:",noindex" json:"url,omitempty"`
 	Image       Image          `datastore:",noindex" json:"image,omitempty"`
@@ -63,8 +64,8 @@ func initMedia(a *Apis, r *mux.Router) {
 			methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 		}
 		// GET MEDIA
-		r.Handle("/media/{id}", a.middleware.Handler(mediaRoute.getHandler())).Methods(http.MethodGet)
 		r.Handle("/media", a.middleware.Handler(mediaRoute.queryHandler())).Methods(http.MethodGet)
+		r.Handle("/media/{id}", a.middleware.Handler(mediaRoute.getHandler())).Methods(http.MethodGet)
 		// UPLOAD
 		r.Handle("/media", a.middleware.Handler(uploadHandler(mediaRoute))).Methods(http.MethodPost)
 		/*r.Handle("/media/{blobKey}", a.middleware.Handler(serveHandler(mediaRoute))).Methods(http.MethodGet)*/
@@ -78,13 +79,16 @@ func serveHandler(R *Route) http.HandlerFunc {
 }
 
 func uploadHandler(R *Route) http.HandlerFunc {
-
 	return func(w http.ResponseWriter, r *http.Request) {
 		if appengine.IsDevAppServer() {
 			http.Error(w, "This works only on production server", http.StatusNotImplemented)
 		}
 
 		ctx := R.NewContext(r)
+		if ok, _ := ctx.HasPermission(R.kind, CREATE); !ok {
+			ctx.PrintError(w, errors.ErrForbidden)
+			return
+		}
 
 		// read file
 		fileMultipart, fileHeader, err := ctx.r.FormFile("file")
@@ -152,7 +156,7 @@ func uploadHandler(R *Route) http.HandlerFunc {
 		}
 
 		// create stored file object
-		var storedFile = StoredFile{
+		var storedFile = &StoredFile{
 			CreatedBy:   ctx.UserKey(),
 			CreatedAt:   time.Now(),
 			Filename:    fileHeader.Filename,
@@ -161,6 +165,9 @@ func uploadHandler(R *Route) http.HandlerFunc {
 			URL:         "https://storage.googleapis.com/" + path.Join(bucketName, storageFilePath),
 			BlobKey:     string(blobKey),
 		}
+
+		mediaHolder := MediaKind.NewHolder(ctx.UserKey())
+		mediaHolder.SetValue(storedFile)
 
 		// create fast delivery image url
 		if strings.Split(storedFile.ContentType, "/")[0] == "image" {
@@ -173,14 +180,7 @@ func uploadHandler(R *Route) http.HandlerFunc {
 			}
 		}
 
-		key := datastore.NewIncompleteKey(ctx, "_file", nil)
-		if key, err = datastore.Put(ctx, key, &storedFile); err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		index, err := search.Open("_file")
-		if err != nil {
+		if err := mediaHolder.Add(ctx); err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
@@ -198,8 +198,7 @@ func uploadHandler(R *Route) http.HandlerFunc {
 			doc.CreatedBy = search.Atom(storedFile.CreatedBy.Encode())
 		}
 
-		_, err = index.Put(ctx, key.Encode(), doc)
-		if err != nil {
+		if err := saveToIndex(ctx, MediaKind, mediaHolder.GetKey().Encode(), doc); err != nil {
 			ctx.PrintError(w, err)
 			return
 		}
