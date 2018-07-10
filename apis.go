@@ -15,8 +15,8 @@ type Apis struct {
 	options *Options
 	routes  []*Route
 
-	middleware          *middleware.JWTMiddleware
-	privateKey          []byte
+	middleware *middleware.JWTMiddleware
+	privateKey []byte
 	permissions
 	allowedTranslations map[string]bool
 	kinds               map[string]*kind.Kind
@@ -80,6 +80,18 @@ func (a *Apis) Handle(kind *kind.Kind) *Route {
 		kind:    kind,
 		a:       a,
 		path:    "/" + path.Join("kind", kind.Name),
+		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+	}
+	a.kinds[kind.Name] = kind
+	a.routes = append(a.routes, r)
+	return r
+}
+
+func (a *Apis) HandleWPath(p string, kind *kind.Kind) *Route {
+	r := &Route{
+		kind:    kind,
+		a:       a,
+		path:    p,
 		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 	}
 	a.kinds[kind.Name] = kind
@@ -166,6 +178,8 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	// INFO
 	r.Handle("/apis", a.middleware.Handler(infoHandler(authRoute))).Methods(http.MethodGet)
 
+	// GLOBAL SEARCH
+	//initSearchGlobal(a, r)
 	// SEARCH
 	r.Handle("/search/{kind}", a.middleware.Handler(a.searchHandler())).Methods(http.MethodGet)
 

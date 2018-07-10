@@ -39,6 +39,8 @@ var messageKind = kind.New(reflect.TypeOf(Message{}), &kind.Options{
 	Name: "_chatMessage",
 })
 
+// todo: implement with pub/sub
+
 func getChatGroupsHandler(R *Route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := R.NewContext(r)
