@@ -61,6 +61,7 @@ func initMedia(a *Apis, r *mux.Router) {
 		r.Handle("/media/{id}", a.middleware.Handler(mediaRoute.getHandler())).Methods(http.MethodGet)
 		// UPLOAD
 		r.Handle("/media", a.middleware.Handler(uploadHandler(mediaRoute))).Methods(http.MethodPost)
+		r.Handle("/media/{dir}", a.middleware.Handler(uploadHandler(mediaRoute))).Methods(http.MethodPost)
 		/*r.Handle("/media/{blobKey}", a.middleware.Handler(serveHandler(mediaRoute))).Methods(http.MethodGet)*/
 	}
 }
@@ -98,7 +99,7 @@ func uploadHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		dir := r.FormValue("dir")
+		dir := mux.Vars(r)["dir"]
 
 		// generate file name
 		fileName := RandStringBytesMaskImprSrc(LetterBytes, 32)
