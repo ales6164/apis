@@ -1,28 +1,19 @@
 package apis
 
-import (
-	"time"
-	"google.golang.org/appengine/datastore"
-	"github.com/gorilla/mux"
-	"net/http"
-	"github.com/ales6164/apis/kind"
-	"reflect"
-)
-
-type Agreement struct {
-	User          *datastore.Key `json:"user"`
-	UserEmail     string         `json:"email"` // if signed by anonymous user (requires email)
-	ClientRequest ClientRequest  `json:"clientRequest"`
-	Signed        bool           `json:"signed"`
+/*type Agreement struct {
+	User          *datastore.Key `search:"-" json:"user"`
+	UserEmail     string         `search:"-" json:"email"` // if signed by anonymous user (requires email)
+	ClientRequest ClientRequest  `search:"-" json:"clientRequest"`
+	Signed        bool           `search:"-" json:"signed"`
 }
 
 type Contract struct {
-	CreatedAt time.Time      `json:"createdAt"`
-	CreatedBy *datastore.Key `json:"createdBy"`
-	UpdatedBy *datastore.Key `json:"createdBy"`
-	UpdatedAt time.Time      `json:"updatedAt"`
-	Title     string         `datastore:",noindex" json:"title"`
-	Content   []byte         `datastore:",noindex" json:"content"`
+	CreatedAt time.Time      `search:"-" json:"createdAt"`
+	CreatedBy *datastore.Key `search:"-" json:"createdBy"`
+	UpdatedBy *datastore.Key `search:"-" json:"createdBy"`
+	UpdatedAt time.Time      `search:"-" json:"updatedAt"`
+	Title     string         `search:"-" datastore:",noindex" json:"title"`
+	Content   []byte         `search:"-" datastore:",noindex" json:"content"`
 }
 
 // privacy policy, tos or contract agreement
@@ -58,3 +49,4 @@ func initAgreement(a *Apis, r *mux.Router) {
 	r.Handle(contractRoute.path, a.middleware.Handler(contractRoute.putHandler())).Methods(http.MethodPut)
 	r.Handle(contractRoute.path, a.middleware.Handler(contractRoute.deleteHandler())).Methods(http.MethodDelete)
 }
+*/

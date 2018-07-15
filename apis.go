@@ -76,34 +76,40 @@ func New(opt *Options) (*Apis, error) {
 }
 
 func (a *Apis) Handle(kind *kind.Kind) *Route {
+	p := "/" + path.Join("kind", kind.Name)
+	m := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}
 	r := &Route{
 		kind:    kind,
 		a:       a,
-		path:    "/" + path.Join("kind", kind.Name),
-		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+		path:    p,
+		methods: m,
 	}
+	kind.AddRouteSettings(p, m)
 	a.kinds[kind.Name] = kind
 	a.routes = append(a.routes, r)
 	return r
 }
 
 func (a *Apis) HandleWPath(p string, kind *kind.Kind) *Route {
+	m := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}
 	r := &Route{
 		kind:    kind,
 		a:       a,
 		path:    p,
-		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+		methods: m,
 	}
+	kind.AddRouteSettings(p, m)
 	a.kinds[kind.Name] = kind
 	a.routes = append(a.routes, r)
 	return r
 }
 
 func (a *Apis) KindlesRoute(p string) *Route {
+	m := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}
 	r := &Route{
 		a:       a,
 		path:    p,
-		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+		methods: m,
 	}
 	a.routes = append(a.routes, r)
 	return r
@@ -181,12 +187,12 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	// GLOBAL SEARCH
 	//initSearchGlobal(a, r)
 	// SEARCH
-	r.Handle("/search/{kind}", a.middleware.Handler(a.searchHandler())).Methods(http.MethodGet)
+	//r.Handle("/search/{kind}", a.middleware.Handler(a.searchHandler())).Methods(http.MethodGet)
 
 	initUser(a, r)
 	initMedia(a, r)
-	initAgreement(a, r)
 	initChat(a, r)
+	initSearch(a, r)
 
 	// modules
 	for _, m := range a.modules {

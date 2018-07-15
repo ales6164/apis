@@ -57,6 +57,7 @@ type ClientRequest struct {
 	IsAuthenticated bool
 	IsBlocked       bool
 	IsExpired       bool
+	Body            []byte
 }
 
 // authenticated request is necessary - not yet
@@ -261,6 +262,7 @@ func (ctx *Context) PrintError(w http.ResponseWriter, err error, descriptors ...
 		ctx.ClientRequest.Error += `\n[descriptor"` + strconv.Itoa(i) + `","` + d + `"]`
 	}
 	log.Errorf(ctx, "context error: %s", ctx.ClientRequest.Error)
+	ctx.ClientRequest.Body = ctx.Body()
 	datastore.Put(ctx, ctx.clientRequestKey, ctx.ClientRequest)
 	if err == errors.ErrUnathorized {
 		w.WriteHeader(http.StatusUnauthorized)

@@ -9,8 +9,7 @@ import (
 	"encoding/json"
 	"golang.org/x/net/context"
 	"time"
-	"google.golang.org/appengine/search"
-)
+	)
 
 var (
 	ErrEmailUndefined    = errors.New("email undefined")
@@ -253,7 +252,8 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 			return
 		}
 
-		if UserKind.EnableSearch {
+		// todo: user search
+		/*if UserKind.EnableSearch {
 			var visibility string
 			if acc.User.IsPublic {
 				visibility = "public"
@@ -272,7 +272,7 @@ func registrationHandler(R *Route, role Role) http.HandlerFunc {
 				ctx.PrintError(w, err)
 				return
 			}
-		}
+		}*/
 
 		if R.a.OnUserSignUp != nil {
 			signedToken, err := createSession(ctx, userKey, &acc.User)

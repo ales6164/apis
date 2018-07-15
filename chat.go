@@ -12,23 +12,23 @@ import (
 )
 
 type ChatGroup struct {
-	Id        *datastore.Key   `apis:"id" datastore:"-" json:"id"`
-	CreatedAt time.Time        `apis:"createdAt" json:"createdAt"`
-	CreatedBy *datastore.Key   `apis:"createdBy" json:"createdBy"`
-	UpdatedAt time.Time        `apis:"updatedAt" json:"updatedAt"`
-	UpdatedBy *datastore.Key   `apis:"updatedBy" json:"updatedBy"`
-	Users     []string         `json:"users"`
-	UserKeys  []*datastore.Key `json:"-"`
-	GroupName string           `json:"groupName"`
+	Id        *datastore.Key   `search:"-" apis:"id" datastore:"-" json:"id"`
+	CreatedAt time.Time        `search:"-" apis:"createdAt" json:"createdAt"`
+	CreatedBy *datastore.Key   `search:"-" apis:"createdBy" json:"createdBy"`
+	UpdatedAt time.Time        `search:"-" apis:"updatedAt" json:"updatedAt"`
+	UpdatedBy *datastore.Key   `search:"-" apis:"updatedBy" json:"updatedBy"`
+	Users     []string         `search:"-" json:"users"`
+	UserKeys  []*datastore.Key `search:"-" json:"-"`
+	GroupName string           `search:"-" json:"groupName"`
 }
 
 type Message struct {
-	Id        *datastore.Key `apis:"id" datastore:"-" json:"id"`
-	CreatedAt time.Time      `apis:"createdAt" json:"createdAt"`
-	CreatedBy *datastore.Key `apis:"createdBy" json:"createdBy"`
-	UpdatedAt time.Time      `apis:"updatedAt" json:"updatedAt"`
-	UpdatedBy *datastore.Key `apis:"updatedBy" json:"updatedBy"`
-	Body      string         `datastore:",noindex" json:"body"`
+	Id        *datastore.Key `search:"-" apis:"id" datastore:"-" json:"id"`
+	CreatedAt time.Time      `search:"-" apis:"createdAt" json:"createdAt"`
+	CreatedBy *datastore.Key `search:"-" apis:"createdBy" json:"createdBy"`
+	UpdatedAt time.Time      `search:"-" apis:"updatedAt" json:"updatedAt"`
+	UpdatedBy *datastore.Key `search:"-" apis:"updatedBy" json:"updatedBy"`
+	Body      string         `search:"-" datastore:",noindex" json:"body"`
 }
 
 var ChatKind = kind.New(reflect.TypeOf(ChatGroup{}), &kind.Options{

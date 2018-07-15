@@ -11,38 +11,17 @@ type InfoFieldAttr struct {
 	Value string `json:"value,omitempty"`
 }
 
-type UI struct {
-	Label        string
-	LabelMany    string
-	relativePath string
-	methods      []string
-}
-
-func (k *Kind) UI() *UI {
-	return k.ui
-}
-func (k *Kind) SetUI(ui *UI, relativePath string, methods []string) {
-	ui.relativePath = relativePath
-	ui.methods = methods
-	k.ui = ui
-}
-func (k *Kind) HasUI() bool {
-	return k.ui != nil
-}
 func (k *Kind) Info() *KindInfo {
-	if k.info == nil && k.HasUI() {
-
+	if k.info == nil {
 		kindInfo := new(KindInfo)
 		kindInfo.Meta = new(MetaInfo)
 		kindInfo.typ = k.Type
 		kindInfo.Type = kindInfo.typ.String()
-		kindInfo.Name = kindInfo.typ.Name()
-		kindInfo.Label = k.ui.Label
-		kindInfo.LabelMany = k.ui.Label
 		kindInfo = kindInfo.informizeType(kindInfo, nil)
-		kindInfo.SearchIndex = k.SearchType.Name()
-		kindInfo.RelativePath = k.ui.relativePath
-		for _, m := range k.ui.methods {
+		kindInfo.Name = k.Name
+		kindInfo.Label = k.Label
+		kindInfo.RelativePath = k.path
+		for _, m := range k.methods {
 			switch m {
 			case http.MethodGet:
 				kindInfo.HasGet = true
@@ -54,7 +33,6 @@ func (k *Kind) Info() *KindInfo {
 				kindInfo.HasDelete = true
 			}
 		}
-
 		k.info = kindInfo
 	}
 	return k.info
@@ -64,16 +42,14 @@ type KindInfo struct {
 	Name         string       `json:"name,omitempty"`
 	Type         string       `json:"type,omitempty"`
 	Fields       []*FieldInfo `json:"fields,omitempty"`
-	Meta         *MetaInfo    `json:"meta,omitempty"`
-	TableColumns []*FieldInfo `json:"table_columns,omitempty"`
+	Meta         *MetaInfo    `json:"meta"`
+	TableColumns []*FieldInfo `json:"tableColumns,omitempty"`
 
 	typ reflect.Type
 
-	IsNested     bool   `json:"is_nested,omitempty"`
+	IsNested     bool   `json:"isNested,omitempty"`
 	Label        string `json:"label,omitempty"`
-	LabelMany    string `json:"label_many,omitempty"`
-	SearchIndex  string `json:"search_index,omitempty"`
-	RelativePath string `json:"relative_path,omitempty"`
+	RelativePath string `json:"relativePath,omitempty"`
 	HasGet       bool   `json:"get,omitempty"`
 	HasPost      bool   `json:"post,omitempty"`
 	HasPut       bool   `json:"put,omitempty"`
@@ -81,28 +57,24 @@ type KindInfo struct {
 }
 
 type MetaInfo struct {
-	UpdatedAtField *FieldInfo `json:"updated_at_field,omitempty"`
-	CreatedAtField *FieldInfo `json:"created_at_field,omitempty"`
-	UpdatedByField *FieldInfo `json:"updated_by_field,omitempty"`
-	CreatedByField *FieldInfo `json:"created_by_field,omitempty"`
-	IdField        *FieldInfo `json:"id_field,omitempty"`
+	UpdatedAtField *FieldInfo `json:"updatedAt,omitempty"`
+	CreatedAtField *FieldInfo `json:"createdAt,omitempty"`
+	UpdatedByField *FieldInfo `json:"updatedBy,omitempty"`
+	CreatedByField *FieldInfo `json:"createdBy,omitempty"`
+	IdField        *FieldInfo `json:"id,omitempty"`
 }
 
 type FieldInfo struct {
-	Label string          `json:"label,omitempty"`
-	Name  string          `json:"name,omitempty"`
-	Table *InfoFieldTable `json:"table,omitempty"`
+	Label   string          `json:"label,omitempty"`
+	Name    string          `json:"name,omitempty"`
+	JsonTag string          `json:"jsonTag,omitempty"`
+	Table   *InfoFieldTable `json:"table,omitempty"`
 
 	Meta       string          `json:"meta,omitempty"`
 	Hidden     bool            `json:"hidden,omitempty"` // only in on create window
 	Attributes []InfoFieldAttr `json:"attributes,omitempty"`
 	Type       string          `json:"type,omitempty"`
-	IsInput    bool            `json:"is_input,omitempty"`
-	IsSlice    bool            `json:"is_slice,omitempty"`
-	IsStruct   bool            `json:"is_struct,omitempty"`
-	IsSelect   bool            `json:"is_select,omitempty"`
-	IsTextArea bool            `json:"is_text_area,omitempty"`
-	InputType  string          `json:"input_type,omitempty"`
+	InputType  string          `json:"inputType,omitempty"`
 	TagStart   string          `json:"tagStart,omitempty"`
 	TagEnd     string          `json:"tagEnd,omitempty"`
 
@@ -111,12 +83,12 @@ type FieldInfo struct {
 
 type InfoFieldTable struct {
 	Display bool `json:"display,omitempty"`
-	NoSort  bool `json:"no_sort,omitempty"`
+	NoSort  bool `json:"noSort,omitempty"`
 }
 
 func (fi *FieldInfo) generateTag(name string) {
 	// name label type
-	fi.TagStart = "<" + name + " type=" + fi.InputType + " name=" + fi.Name + " label='" + fi.Label + "'"
+	fi.TagStart = "<" + name + " type=" + fi.InputType + " name=" + fi.JsonTag + " label='" + fi.Label + "'"
 	for _, attr := range fi.Attributes {
 		fi.TagStart += " " + attr.Name + "='" + attr.Value + "'"
 	}
@@ -133,16 +105,18 @@ func (mainKind *KindInfo) informizeType(kindInfo *KindInfo, parentField *FieldIn
 
 		calcTable := parentField == nil || parentField.Table != nil && parentField.Table.Display
 
+		fieldInfo.Name = f.Name
+
 		if m, ok := f.Tag.Lookup("json"); ok {
-			fieldInfo.Name = strings.TrimSpace(strings.Split(m, ",")[0])
+			fieldInfo.JsonTag = strings.TrimSpace(strings.Split(m, ",")[0])
 		} else {
-			fieldInfo.Name = f.Name
+			fieldInfo.JsonTag = f.Name
 		}
 
 		if m, ok := f.Tag.Lookup("label"); ok {
 			fieldInfo.Label = m
 		} else {
-			fieldInfo.Label = fieldInfo.Name
+			fieldInfo.Label = f.Name
 		}
 
 		if parentField != nil {
@@ -205,28 +179,23 @@ func (mainKind *KindInfo) informizeType(kindInfo *KindInfo, parentField *FieldIn
 
 		switch fieldInfo.Type {
 		case "string", "*datastore.Key":
-			fieldInfo.IsInput = true
 			fieldInfo.InputType = "text"
 			fieldInfo.generateTag("entry-field-textfield")
 		case "time.Time":
-			fieldInfo.IsInput = true
 			fieldInfo.InputType = "datetime-local"
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "date"})
 			fieldInfo.generateTag("entry-field-textfield")
 		case "bool":
-			fieldInfo.IsInput = true
 			fieldInfo.InputType = "checkbox"
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "bool"})
 			fieldInfo.generateTag("entry-field-toggle")
 		case "float64", "float32":
-			fieldInfo.IsInput = true
 			fieldInfo.InputType = "number"
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "double"})
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"step", "any"})
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"pattern", `-?[0-9]*(\.[0-9]+)?`})
 			fieldInfo.generateTag("entry-field-textfield")
 		case "int64", "int", "int32":
-			fieldInfo.IsInput = true
 			fieldInfo.InputType = "number"
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "number"})
 			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"step", "1"})
@@ -234,7 +203,6 @@ func (mainKind *KindInfo) informizeType(kindInfo *KindInfo, parentField *FieldIn
 		default:
 			switch f.Type.Kind() {
 			case reflect.Slice, reflect.Array:
-				fieldInfo.IsSlice = true
 				fieldInfo.Kind = new(KindInfo)
 				fieldInfo.Kind.typ = f.Type.Elem()
 				fieldInfo.Kind.Type = fieldInfo.Kind.typ.String()
@@ -242,12 +210,13 @@ func (mainKind *KindInfo) informizeType(kindInfo *KindInfo, parentField *FieldIn
 				if m, ok := f.Tag.Lookup("label"); ok {
 					fieldInfo.Kind.Label = m
 				} else {
-					fieldInfo.Kind.Label = fieldInfo.Name
+					fieldInfo.Kind.Label = fieldInfo.Kind.Name
 				}
-				fieldInfo.Kind = mainKind.informizeType(fieldInfo.Kind, fieldInfo)
-				fieldInfo.Kind.IsNested = true
+				if kindInfo.typ.Kind() != reflect.Struct {
+					fieldInfo.Kind = mainKind.informizeType(fieldInfo.Kind, fieldInfo)
+					fieldInfo.Kind.IsNested = true
+				}
 			case reflect.Struct:
-				fieldInfo.IsStruct = true
 				fieldInfo.Kind = new(KindInfo)
 				fieldInfo.Kind.typ = f.Type
 				fieldInfo.Kind.Type = fieldInfo.Kind.typ.String()
@@ -255,7 +224,7 @@ func (mainKind *KindInfo) informizeType(kindInfo *KindInfo, parentField *FieldIn
 				if m, ok := f.Tag.Lookup("label"); ok {
 					fieldInfo.Kind.Label = m
 				} else {
-					fieldInfo.Kind.Label = fieldInfo.Name
+					fieldInfo.Kind.Label = fieldInfo.Kind.Name
 				}
 				fieldInfo.Kind = mainKind.informizeType(fieldInfo.Kind, fieldInfo)
 				fieldInfo.Kind.IsNested = true

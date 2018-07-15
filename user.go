@@ -8,44 +8,51 @@ import (
 	"reflect"
 	"github.com/gorilla/mux"
 	"net/http"
-	"google.golang.org/appengine/search"
 	"encoding/json"
 	"github.com/imdario/mergo"
 	"golang.org/x/net/context"
-	"strings"
-	"strconv"
 )
 
 type Account struct {
-	Email string `json:"-"`
-	Hash  []byte `json:"-"`
-	User  User
+	Email string `search:"-" json:"-"`
+	Hash  []byte `search:"-" json:"-"`
+	User  User   `search:"-"`
 }
 
 type User struct {
 	// these cant be updated by user
+	Id                  *datastore.Key `search:"-" datastore:"-" apis:"id" json:"id"`
 	UserID              *datastore.Key `datastore:"-" json:"user_id,omitempty"`
 	Roles               []string       `json:"roles,omitempty"`
 	Email               string         `json:"email,omitempty"`                 // login email
 	EmailVerified       bool           `json:"email_verified,omitempty"`        // true if email verified
 	PhoneNumber         string         `json:"phone_number,omitempty"`          // login phone number
 	PhoneNumberVerified bool           `json:"phone_number_verified,omitempty"` // true if phone number verified
-	CreatedAt           time.Time      `json:"created_at,omitempty"`
-	UpdatedAt           time.Time      `json:"updated_at,omitempty"`
-	IsPublic            bool           `json:"is_public,omitempty"` // this is only relevant for chat atm - public profiles can be contacted
-	Locale              string         `json:"locale,omitempty"`    // locale
-	Profile             Profile        `json:"profile,omitempty"`
-}
 
-type UserDoc struct {
-	UserID     search.Atom `json:"user_id,omitempty"`
-	Roles      string      `json:"roles,omitempty"`
-	Email      search.Atom `json:"email,omitempty"`
-	Keywords   string      `json:"keywords,omitempty"`
-	CreatedAt  time.Time   `json:"created_at,omitempty"`
-	UpdatedAt  time.Time   `json:"updated_at,omitempty"`
-	Locale     search.Atom `json:"locale,omitempty"`
-	Visibility search.Atom `json:"visibility,omitempty"`
+	CreatedAt time.Time `apis:"createdAt" json:"created_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	IsPublic  bool      `json:"is_public,omitempty"` // this is only relevant for chat atm - public profiles can be contacted
+	Locale    string    `json:"locale,omitempty"`    // locale
+	Profile   Profile   `json:"profile,omitempty"`
+
+	// za združljivost s staro različico
+	Name              string            `json:"name,omitempty"`
+	GivenName         string            `json:"given_name,omitempty"`
+	FamilyName        string            `json:"family_name,omitempty"`
+	MiddleName        string            `json:"middle_name,omitempty"`
+	Nickname          string            `json:"nickname,omitempty"`
+	Picture           string            `json:"picture,omitempty"` // profile picture URL
+	Website           string            `json:"website,omitempty"` // website URL
+	DeliveryAddresses []DeliveryAddress `json:"delivery_addresses,omitempty"`
+	DateOfBirth       time.Time         `json:"date_of_birth,omitempty"`
+	PlaceOfBirth      Address           `json:"place_of_birth,omitempty"`
+	Title             string            `json:"title,omitempty"`
+	Address           Address           `json:"address,omitempty"`
+	Address2          Address           `json:"address_2,omitempty"`
+	Company           Company           `json:"company,omitempty"`
+	Contact           Contact           `json:"contact,omitempty"`
+	SocialProfiles    []SocialProfile   `json:"social_profiles,omitempty"`
+	Slogan            string            `json:"slogan,omitempty"`
 }
 
 type Profile struct {
@@ -131,12 +138,6 @@ type ClientSession struct {
 }
 
 var UserKind = kind.New(reflect.TypeOf(User{}), &kind.Options{
-	Name:         "_user",
-	EnableSearch: true,
-	SearchType:   reflect.TypeOf(UserDoc{}),
-})
-
-var accountKind = kind.New(reflect.TypeOf(Account{}), &kind.Options{
 	Name: "_user",
 })
 
@@ -249,7 +250,7 @@ func initUser(a *Apis, r *mux.Router) {
 
 		acc.User.UserID = userKey
 
-		if userRoute.kind.EnableSearch {
+		/*if userRoute.kind.EnableSearch {
 			var visibility string
 			if acc.User.IsPublic {
 				visibility = "public"
@@ -268,7 +269,7 @@ func initUser(a *Apis, r *mux.Router) {
 				ctx.PrintError(w, err)
 				return
 			}
-		}
+		}*/
 
 		ctx.Print(w, acc.User)
 	})
@@ -303,7 +304,7 @@ func initUser(a *Apis, r *mux.Router) {
 			hs = append(hs, h)
 		}
 
-		for _, acc := range hs {
+		/*for _, acc := range hs {
 			var visibility string
 			if acc.User.IsPublic {
 				visibility = "public"
@@ -324,12 +325,12 @@ func initUser(a *Apis, r *mux.Router) {
 				ctx.PrintError(w, err)
 				return
 			}
-		}
+		}*/
 		ctx.Print(w, "success")
 	}))).Methods(http.MethodGet)
 
 	// SEARCH
-	r.Handle("/users", a.middleware.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	/*r.Handle("/users", a.middleware.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := userRoute.NewContext(r)
 		var ok, isPrivate bool
 		if ok, isPrivate = ctx.HasPermission(UserKind, QUERY); !ok {
@@ -483,7 +484,7 @@ func initUser(a *Apis, r *mux.Router) {
 			Results: results,
 			Cursor:  cursor,
 		})
-	}))).Methods(http.MethodGet)
+	}))).Methods(http.MethodGet)*/
 }
 
 type timeTransformer struct{}

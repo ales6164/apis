@@ -7,6 +7,7 @@ import (
 	"github.com/ales6164/apis/kind"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
+	"google.golang.org/appengine/search"
 )
 
 const COST = 12
@@ -56,7 +57,6 @@ func clear(b []byte) {
 	}
 }
 
-
 // purges datastore and search of all entries
 func ClearAllEntries(ctx context.Context, kind *kind.Kind) error {
 	keys, _ := datastore.NewQuery(kind.Name).KeysOnly().GetAll(ctx, nil)
@@ -67,4 +67,27 @@ func ClearAllEntries(ctx context.Context, kind *kind.Kind) error {
 		}
 	}
 	return ClearIndex(ctx, kind.Name)
+}
+
+// clears search index
+func ClearIndex(ctx context.Context, indexName string) error {
+	index, err := search.Open(indexName)
+	if err != nil {
+		return err
+	}
+
+	var ids []string
+	for t := index.List(ctx, &search.ListOptions{IDsOnly: true}); ; {
+		var doc interface{}
+		id, err := t.Next(&doc)
+		if err == search.Done {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+
+	return index.DeleteMulti(ctx, ids)
 }

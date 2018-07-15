@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"github.com/imdario/mergo"
 	"reflect"
-)
+	"google.golang.org/appengine/search"
+	"golang.org/x/net/context"
+	"github.com/ales6164/apis/errors"
+	)
 
 type Holder struct {
 	Kind   *Kind
@@ -18,6 +21,8 @@ type Holder struct {
 
 	hasInputData  bool // when updating
 	hasLoadedData bool
+
+	rollbackProperties []datastore.Property
 }
 
 type Meta struct {
@@ -69,9 +74,61 @@ func (h *Holder) GetKey() *datastore.Key {
 	return h.key
 }
 
+func (h *Holder) Document(ctx context.Context) *Document {
+	var doc = new(Document)
+	val := reflect.ValueOf(h.Value()).Elem()
+
+	for _, searchField := range h.Kind.searchFields {
+		// get real value field
+		valField := val.FieldByName(searchField.FieldName)
+		if !valField.IsValid() {
+			continue
+		}
+
+		if searchField.Multiple {
+			for j := 0; j < valField.Len(); j++ {
+				convertedValue := searchField.Converter.Convert(valField.Index(j))
+				if searchField.IsFacet {
+					doc.facets = append(doc.facets, search.Facet{Name: searchField.SearchFieldName, Value: convertedValue})
+				} else {
+					doc.fields = append(doc.fields, search.Field{Name: searchField.SearchFieldName, Value: convertedValue})
+				}
+			}
+		} else {
+			convertedValue := searchField.Converter.Convert(valField)
+			if searchField.IsFacet {
+				doc.facets = append(doc.facets, search.Facet{Name: searchField.SearchFieldName, Value: convertedValue})
+			} else {
+				doc.fields = append(doc.fields, search.Field{Name: searchField.SearchFieldName, Value: convertedValue})
+			}
+		}
+	}
+
+	return doc
+}
+
+func (h *Holder) SaveToIndex(ctx context.Context) error {
+	if !h.Kind.EnableSearch {
+		return nil
+	}
+	index, err := search.Open(h.Kind.Name)
+	if err != nil {
+		return err
+	}
+
+	if !h.hasKey {
+		return errors.New("undefined key for index storage")
+	}
+
+	doc := h.Document(ctx)
+
+	_, err = index.Put(ctx, h.Id(), doc)
+	return err
+}
+
 func (h *Holder) Load(ps []datastore.Property) error {
 	h.hasLoadedData = true
-
+	h.rollbackProperties = ps
 	if h.hasInputData {
 		// replace only empty fields
 		n := h.Kind.New()
@@ -87,13 +144,11 @@ func (h *Holder) Load(ps []datastore.Property) error {
 
 		return nil
 	}
-
 	return datastore.LoadStruct(h.value, ps)
 }
 
 func (h *Holder) Save() ([]datastore.Property, error) {
 	var now = reflect.ValueOf(time.Now())
-
 	v := reflect.ValueOf(h.value).Elem()
 	for _, meta := range h.Kind.MetaFields {
 		field := v.FieldByName(meta.FieldName)
@@ -114,6 +169,10 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 	}
 	return datastore.SaveStruct(h.value)
 }
+
+/*func (h *Holder) Rollback() error {
+
+}*/
 
 // mergo transformer
 type timeTransformer struct {

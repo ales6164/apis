@@ -48,12 +48,14 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 	return hs, nil
 }
 
-func (k *Kind) Delete(ctx context.Context, key *datastore.Key) error {
-	err := datastore.Delete(ctx, key)
-	if err != nil {
-		return err
-	}
-	return nil
+func (k *Kind) Delete(_ctx context.Context, key *datastore.Key) error {
+	return datastore.RunInTransaction(_ctx, func(tc context.Context) error {
+		err := datastore.Delete(tc, key)
+		if err != nil {
+			return err
+		}
+		return k.DeleteFromIndex(tc, key.Encode())
+	}, nil)
 }
 
 func GetMulti(ctx context.Context, kind *Kind, key ...*datastore.Key) ([]*Holder, error) {
@@ -74,45 +76,57 @@ func (h *Holder) Get(ctx context.Context, key *datastore.Key) error {
 }
 
 // key id must be a string otherwise it creates incomplete key
-func (h *Holder) Add(ctx context.Context) error {
-	if !h.hasKey || h.key == nil {
-		h.SetKey(h.Kind.NewIncompleteKey(ctx, h.user))
-	}
-	if h.key.Incomplete() {
+func (h *Holder) Add(_ctx context.Context) error {
+	return datastore.RunInTransaction(_ctx, func(tc context.Context) error {
+		if !h.hasKey || h.key == nil {
+			h.SetKey(h.Kind.NewIncompleteKey(tc, h.user))
+		}
 		var err error
-		h.key, err = datastore.Put(ctx, h.key, h)
-		return err
-	} else {
-		return datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			err := datastore.Get(tc, h.key, h)
+		if h.key.Incomplete() {
+			h.key, err = datastore.Put(tc, h.key, h)
+			if err != nil {
+				return err
+			}
+			return h.SaveToIndex(tc)
+		} else {
+			err = datastore.Get(tc, h.key, h)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					h.key, err = datastore.Put(tc, h.key, h)
-					return err
+					if err != nil {
+						return err
+					}
+					return h.SaveToIndex(tc)
 				}
 				return err
 			}
 			return errors.ErrEntityExists
-		}, nil)
-	}
+		}
+		return err
+	}, nil)
 }
 
-func (h *Holder) Update(ctx context.Context) error {
-	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
+func (h *Holder) Update(_ctx context.Context) error {
+	return datastore.RunInTransaction(_ctx, func(tc context.Context) error {
 		err := datastore.Get(tc, h.key, h)
 		if err != nil {
 			return err
 		}
-		h.key, err = datastore.Put(ctx, h.key, h)
+		h.key, err = datastore.Put(tc, h.key, h)
+		if err != nil {
+			return err
+		}
+		return h.SaveToIndex(tc)
 		return err
 	}, nil)
-	return err
 }
 
-func (h *Holder) Delete(ctx context.Context) error {
-	err := datastore.Delete(ctx, h.key)
-	if err != nil {
-		return err
-	}
-	return nil
+func (h *Holder) Delete(_ctx context.Context) error {
+	return datastore.RunInTransaction(_ctx, func(tc context.Context) error {
+		err := datastore.Delete(tc, h.key)
+		if err != nil {
+			return err
+		}
+		return h.Kind.DeleteFromIndex(tc, h.key.Encode())
+	}, nil)
 }

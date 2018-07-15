@@ -16,7 +16,6 @@ type Route struct {
 	kind *kind.Kind
 	path string
 
-	ui        *kind.UI
 	listeners map[string]Listener
 	searchListener func(ctx Context, query string) ([]interface{}, error)
 	roles map[string]bool
@@ -91,17 +90,9 @@ func (R *Route) Roles(rs ...Role) *Route {
 	return R
 }
 
-func (R *Route) UI(ui *kind.UI) *Route {
-	if R.kind.HasUI() {
-		panic(errors.New("failed to set route UI on kind that already has UI"))
-	}
-	R.ui = ui
-	R.kind.SetUI(ui, R.path, R.methods)
-	return R
-}
-
 func (R *Route) Methods(ms ...string) *Route {
 	R.methods = ms
+	R.kind.AddRouteSettings(R.Path(), ms)
 	return R
 }
 
@@ -339,11 +330,6 @@ func (R *Route) postHandler() http.HandlerFunc {
 			return
 		}
 
-		if R.kind.EnableSearch {
-			// put to search
-			saveToIndex(ctx, R.kind, h.GetKey().Encode(), h.Value())
-		}
-
 		if err := R.trigger(AfterCreate, ctx, h); err != nil {
 			ctx.PrintError(w, err, "error on after create")
 			return
@@ -401,11 +387,6 @@ func (R *Route) putHandler() http.HandlerFunc {
 			return
 		}
 
-		if R.kind.EnableSearch {
-			// put to search
-			saveToIndex(ctx, R.kind, h.GetKey().Encode(), h.Value())
-		}
-
 		if err := R.trigger(AfterUpdate, ctx, h); err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -454,10 +435,6 @@ func (R *Route) deleteHandler() http.HandlerFunc {
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
-		}
-
-		if R.kind.EnableSearch {
-			DeleteFromIndex(ctx, R.kind.Name, id)
 		}
 
 		if err := R.trigger(AfterDelete, ctx, nil); err != nil {
