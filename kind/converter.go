@@ -10,6 +10,7 @@ import (
 
 type Converter interface {
 	Convert(value reflect.Value) interface{}
+	ConvertBack(field reflect.Value, value interface{}) reflect.Value
 }
 
 type EmptyConverter struct{}
@@ -77,4 +78,45 @@ func (x *StringConverter) Convert(value reflect.Value) interface{} {
 
 func (x *HTMLConverter) Convert(value reflect.Value) interface{} {
 	return value.Convert(htmlType).Interface()
+}
+
+func (x *EmptyConverter) ConvertBack(field reflect.Value, value interface{}) reflect.Value {
+	return reflect.ValueOf(value)
+}
+
+func (x *KeyConverter) ConvertBack(field reflect.Value, value interface{}) reflect.Value {
+	if value != nil {
+		if v, ok := value.(search.Atom); ok {
+			return reflect.ValueOf(string(v))
+		}
+	}
+	return reflect.Zero(atomType)
+}
+
+func (x *BoolConverter) ConvertBack(field reflect.Value, value interface{}) reflect.Value {
+	if value != nil {
+		if v, ok := value.(search.Atom); ok {
+			if v == "true" {
+				return reflect.ValueOf(true)
+			}
+			return reflect.ValueOf(false)
+		}
+	}
+	return reflect.Zero(boolType)
+}
+
+func (x *Float64Converter) ConvertBack(field reflect.Value, value interface{}) reflect.Value {
+	return reflect.ValueOf(value).Convert(field.Type())
+}
+
+func (x *AtomConverter) ConvertBack(field reflect.Value, value interface{}) reflect.Value {
+	return reflect.ValueOf(value).Convert(field.Type())
+}
+
+func (x *StringConverter) ConvertBack(field reflect.Value, value interface{}) reflect.Value {
+	return reflect.ValueOf(value).Convert(field.Type())
+}
+
+func (x *HTMLConverter) ConvertBack(field reflect.Value, value interface{}) reflect.Value {
+	return reflect.ValueOf(value).Convert(field.Type())
 }

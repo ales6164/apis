@@ -19,7 +19,7 @@ import (
 
 type StoredFile struct {
 	Id          *datastore.Key `search:"-" datastore:"-" apis:"id" json:"id"`
-	CreatedBy   *datastore.Key `search:",,search.Atom" apis:"createdBy" json:"createdBy,omitempty"`
+	CreatedBy   *datastore.Key `search:"-" apis:"createdBy" json:"createdBy,omitempty"`
 	CreatedAt   time.Time      `apis:"createdAt" json:"createdAt,omitempty"`
 	BlobKey     string         `search:"-" datastore:",noindex" json:"blobKey,omitempty"`
 	URL         string         `search:"-" datastore:",noindex" json:"url,omitempty"`
@@ -60,8 +60,8 @@ func initMedia(a *Apis, r *mux.Router) {
 		r.Handle("/media", a.middleware.Handler(mediaRoute.queryHandler())).Methods(http.MethodGet)
 		r.Handle("/media/{id}", a.middleware.Handler(mediaRoute.getHandler())).Methods(http.MethodGet)
 		// UPLOAD
-		r.Handle("/media", a.middleware.Handler(uploadHandler(mediaRoute))).Methods(http.MethodPost)
 		r.Handle("/media/{dir}", a.middleware.Handler(uploadHandler(mediaRoute))).Methods(http.MethodPost)
+		r.Handle("/media", a.middleware.Handler(uploadHandler(mediaRoute))).Methods(http.MethodPost)
 		/*r.Handle("/media/{blobKey}", a.middleware.Handler(serveHandler(mediaRoute))).Methods(http.MethodGet)*/
 	}
 }
@@ -84,6 +84,8 @@ func uploadHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
+		dir := mux.Vars(r)["dir"]
+
 		// read file
 		fileMultipart, fileHeader, err := r.FormFile("file")
 		if err != nil {
@@ -98,8 +100,6 @@ func uploadHandler(R *Route) http.HandlerFunc {
 			ctx.PrintError(w, err)
 			return
 		}
-
-		dir := mux.Vars(r)["dir"]
 
 		// generate file name
 		fileName := RandStringBytesMaskImprSrc(LetterBytes, 32)
@@ -178,11 +178,6 @@ func uploadHandler(R *Route) http.HandlerFunc {
 		}
 
 		if err := mediaHolder.Add(ctx); err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		if err := mediaHolder.SaveToIndex(ctx); err != nil {
 			ctx.PrintError(w, err)
 			return
 		}

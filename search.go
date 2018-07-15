@@ -10,7 +10,6 @@ import (
 	"github.com/ales6164/apis/kind"
 	"google.golang.org/appengine/datastore"
 	"math"
-	"reflect"
 )
 
 func initSearch(a *Apis, r *mux.Router) {
@@ -174,7 +173,7 @@ func initSearch(a *Apis, r *mux.Router) {
 			Sort: &search.SortOptions{
 				Expressions: sortExpr,
 			}}); ; {
-			var doc = reflect.New(k.Type).Interface()
+			var doc = new(kind.Document)
 			docKey, err := t.Next(doc)
 			if err == search.Done {
 				break
@@ -184,11 +183,15 @@ func initSearch(a *Apis, r *mux.Router) {
 				return
 			}
 
-			if key, err := k.DecodeKey(docKey); err == nil {
-				if (isPrivate && key.Parent().Equal(ctx.UserKey())) || !isPrivate {
-					docKeys = append(docKeys, key)
-					results = append(results, doc)
+			if k.RetrieveByIDOnSearch {
+				if key, err := k.DecodeKey(docKey); err == nil {
+					if (isPrivate && key.Parent().Equal(ctx.UserKey())) || !isPrivate {
+						docKeys = append(docKeys, key)
+						results = append(results, nil)
+					}
 				}
+			} else {
+				results = append(results, doc.Parse(k))
 			}
 		}
 
