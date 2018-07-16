@@ -97,6 +97,10 @@ func New(t reflect.Type, opt *Options) *Kind {
 		k.Name = t.Name()
 	}
 
+	if len(k.Options.Label) == 0 {
+		k.Label = t.Name()
+	}
+
 	// build search parser
 	if k.EnableSearch {
 	searchField:
@@ -114,6 +118,11 @@ func New(t reflect.Type, opt *Options) *Kind {
 				} else {
 					fieldType = field.StructField.Type
 				}
+
+				if fieldType == nil {
+					panic(errors.New("error reflecting type for " + field.Name))
+				}
+
 				// convert type differs for search.Field and search.Facet
 				if field.SearchField.IsFacet {
 					switch fieldType {
@@ -126,9 +135,9 @@ func New(t reflect.Type, opt *Options) *Kind {
 					case boolType:
 						field.SearchField.ConvertType = boolType
 					default:
-						if field.SearchField.ConvertType.ConvertibleTo(atomType) {
+						if fieldType.ConvertibleTo(atomType) {
 							field.SearchField.ConvertType = atomType
-						} else if field.SearchField.ConvertType.ConvertibleTo(float64Type) {
+						} else if fieldType.ConvertibleTo(float64Type) {
 							field.SearchField.ConvertType = float64Type
 						} else {
 							panic(errors.New("no convert type specified for searchable facet " + field.Name))
@@ -251,6 +260,8 @@ func (k *Kind) checkFields() {
 					field.Label = v
 				}
 			}
+		} else {
+			field.Label = structField.Name
 		}
 		if val, ok := structField.Tag.Lookup("apis"); ok {
 			for n, v := range strings.Split(val, ",") {

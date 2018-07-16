@@ -90,6 +90,7 @@ func (a *Apis) Handle(kind *kind.Kind) *Route {
 	return r
 }
 
+// deprecated
 func (a *Apis) HandleWPath(p string, kind *kind.Kind) *Route {
 	m := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}
 	r := &Route{

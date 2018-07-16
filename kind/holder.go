@@ -9,7 +9,7 @@ import (
 	"google.golang.org/appengine/search"
 	"golang.org/x/net/context"
 	"github.com/ales6164/apis/errors"
-	)
+)
 
 type Holder struct {
 	Kind   *Kind
@@ -136,7 +136,7 @@ func (h *Holder) Load(ps []datastore.Property) error {
 			return err
 		}
 
-		if err := mergo.Merge(n, h.value, mergo.WithOverride, mergo.WithTransformers(timeTransformer{}), mergo.WithTransformers(boolTransformer{})); err != nil {
+		if err := mergo.Merge(n, h.value, mergo.WithOverride, mergo.WithTransformers(timeTransformer{}), mergo.WithTransformers(boolTransformer{}), mergo.WithTransformers(stringTransfomer{})); err != nil {
 			return err
 		}
 
@@ -199,6 +199,21 @@ type boolTransformer struct {
 
 func (t boolTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
 	if typ == reflect.TypeOf(true) {
+		return func(dst, src reflect.Value) error {
+			if dst.CanSet() {
+				dst.Set(src)
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+type stringTransfomer struct {
+}
+
+func (t stringTransfomer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
+	if typ == reflect.TypeOf("") {
 		return func(dst, src reflect.Value) error {
 			if dst.CanSet() {
 				dst.Set(src)
