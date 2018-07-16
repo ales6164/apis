@@ -62,6 +62,8 @@ func initMedia(a *Apis, r *mux.Router) {
 		// UPLOAD
 		r.Handle("/media/{dir}", a.middleware.Handler(uploadHandler(mediaRoute))).Methods(http.MethodPost)
 		r.Handle("/media", a.middleware.Handler(uploadHandler(mediaRoute))).Methods(http.MethodPost)
+
+		r.Handle("/media/{id}", a.middleware.Handler(mediaRoute.deleteHandler())).Methods(http.MethodDelete)
 		/*r.Handle("/media/{blobKey}", a.middleware.Handler(serveHandler(mediaRoute))).Methods(http.MethodGet)*/
 	}
 }
