@@ -3,8 +3,8 @@ package paypal
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/ales6164/apis/errors"
-	"github.com/ales6164/apis/module"
+	"github.com/ales6164/apis-v1/errors"
+	"github.com/ales6164/apis-v1/module"
 	"github.com/gorilla/mux"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"

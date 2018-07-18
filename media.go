@@ -2,8 +2,8 @@ package apis
 
 import (
 	"cloud.google.com/go/storage"
-	"github.com/ales6164/apis/errors"
-	"github.com/ales6164/apis/kind"
+	"github.com/ales6164/apis-v1/errors"
+	"github.com/ales6164/apis-v1/kind"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/blobstore"

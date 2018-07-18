@@ -2,9 +2,9 @@ package apis
 
 import (
 	"encoding/json"
-	"github.com/ales6164/apis/errors"
-	"github.com/ales6164/apis/kind"
-	"github.com/ales6164/apis/middleware"
+	"github.com/ales6164/apis-v1/errors"
+	"github.com/ales6164/apis-v1/kind"
+	"github.com/ales6164/apis-v1/middleware"
 	"github.com/dgrijalva/jwt-go"
 	gcontext "github.com/gorilla/context"
 	"github.com/gorilla/mux"

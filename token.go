@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"github.com/ales6164/apis/middleware"
+	"github.com/ales6164/apis-v1/middleware"
 	"github.com/dgrijalva/jwt-go"
 	"time"
 )

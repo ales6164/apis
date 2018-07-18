@@ -2,7 +2,7 @@ package kind
 
 import (
 	"encoding/json"
-	"github.com/ales6164/apis/errors"
+	"github.com/ales6164/apis-v1/errors"
 	"github.com/imdario/mergo"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"

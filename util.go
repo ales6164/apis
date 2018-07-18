@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"github.com/ales6164/apis/kind"
+	"github.com/ales6164/apis-v1/kind"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"

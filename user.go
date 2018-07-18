@@ -2,8 +2,8 @@ package apis
 
 import (
 	"encoding/json"
-	"github.com/ales6164/apis/errors"
-	"github.com/ales6164/apis/kind"
+	"github.com/ales6164/apis-v1/errors"
+	"github.com/ales6164/apis-v1/kind"
 	"github.com/gorilla/mux"
 	"github.com/imdario/mergo"
 	"golang.org/x/net/context"
