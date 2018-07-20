@@ -21,24 +21,19 @@ type Apis struct {
 	allowedTranslations map[string]bool
 	kinds               map[string]*kind.Kind
 	modules             []module.Module
-
-	OnUserSignUp func(ctx Context, user User, token string)
-	//OnUserSignIn func(ctx context.Context, user User)
-	OnUserVerified func(ctx Context, user User, token string)
 }
 
 type Options struct {
 	AppName       string
 	StorageBucket string // required for file upload and media library
 	/*Chat                     ChatOptions*/ // required for built in chat service
-	PrivateKeyPath           string          // for password hashing
-	AuthorizedOrigins        []string
-	AuthorizedRedirectURIs   []string
-	AllowUserRegistration    bool
-	DefaultRole              Role
-	RequireEmailConfirmation bool
-	HasTranslationsFor       []string
-	DefaultLanguage          string
+	PrivateKeyPath         string            // for password hashing
+	AuthorizedOrigins      []string
+	AuthorizedRedirectURIs []string
+	DefaultRole            Role
+	HasTranslationsFor     []string
+	AllowUserRegistration  bool
+	DefaultLanguage        string
 	/*UserProfileKind          *kind.Kind*/
 	RequireTrackingID bool // todo:generated from pages - track users - stored as session cookie
 	Permissions
@@ -153,8 +148,10 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 					r.Handle(lang+route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
 				}
 			case http.MethodPost:
+				r.Handle(route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 				r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 				if hasLang {
+					r.Handle(lang+route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 					r.Handle(lang+route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 				}
 			case http.MethodPut:
@@ -171,25 +168,8 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 		}
 	}
 
-	authRoute := &Route{
-		a:       a,
-		methods: []string{},
-	}
-	r.Handle("/auth/login", loginHandler(authRoute)).Methods(http.MethodPost)
-	if a.options.AllowUserRegistration {
-		r.Handle("/auth/register", registrationHandler(authRoute, a.options.DefaultRole)).Methods(http.MethodPost)
-	}
-	r.Handle("/auth/confirm", a.middleware.Handler(confirmEmailHandler(authRoute)))
-	r.Handle("/auth/password", a.middleware.Handler(changePasswordHandler(authRoute))).Methods(http.MethodPost)
-
-	// INFO
-	r.Handle("/apis", a.middleware.Handler(infoHandler(authRoute))).Methods(http.MethodGet)
-
-	// GLOBAL SEARCH
-	//initSearchGlobal(a, r)
-	// SEARCH
-	//r.Handle("/search/{kind}", a.middleware.Handler(a.searchHandler())).Methods(http.MethodGet)
-
+	initInfo(a, r)
+	initAuth(a, r)
 	initUser(a, r)
 	initMedia(a, r)
 	initChat(a, r)

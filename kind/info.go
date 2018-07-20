@@ -17,7 +17,7 @@ func (k *Kind) Info() *KindInfo {
 		kindInfo.Meta = new(MetaInfo)
 		kindInfo.typ = k.Type
 		kindInfo.Type = kindInfo.typ.String()
-		kindInfo = kindInfo.informizeType(kindInfo, nil)
+		kindInfo.parse()
 		kindInfo.Name = k.Name
 		kindInfo.Label = k.Label
 		kindInfo.RelativePath = k.path
@@ -69,6 +69,9 @@ type FieldInfo struct {
 	Name    string          `json:"name,omitempty"`
 	JsonTag string          `json:"jsonTag,omitempty"`
 	Table   *InfoFieldTable `json:"table,omitempty"`
+	IsSlice bool            `json:"isSlice,omitempty"`
+
+	typ reflect.Type
 
 	Meta       string          `json:"meta,omitempty"`
 	Hidden     bool            `json:"hidden,omitempty"` // only in on create window
@@ -86,154 +89,164 @@ type InfoFieldTable struct {
 	NoSort  bool `json:"noSort,omitempty"`
 }
 
-func (fi *FieldInfo) generateTag(name string) {
+func (fieldInfo *FieldInfo) generateTag(name string) {
 	// name label type
-	fi.TagStart = "<" + name + " type=" + fi.InputType + " name=" + fi.JsonTag + " label='" + fi.Label + "'"
-	for _, attr := range fi.Attributes {
-		fi.TagStart += " " + attr.Name + "='" + attr.Value + "'"
+	fieldInfo.TagStart = "<" + name + " type=" + fieldInfo.InputType + " name=" + fieldInfo.JsonTag + " label='" + fieldInfo.Label + "'"
+	for _, attr := range fieldInfo.Attributes {
+		fieldInfo.TagStart += " " + attr.Name + "='" + attr.Value + "'"
 	}
-	fi.TagStart += ">"
-	fi.TagEnd = "</" + name + ">"
+	fieldInfo.TagStart += ">"
+	fieldInfo.TagEnd = "</" + name + ">"
 }
 
-func (mainKind *KindInfo) informizeType(kindInfo *KindInfo, parentField *FieldInfo) *KindInfo {
-	for i := 0; i < kindInfo.typ.NumField(); i++ {
-		f := kindInfo.typ.Field(i)
+func (info *KindInfo) parse() {
+	for i := 0; i < info.typ.NumField(); i++ {
+		f := info.typ.Field(i)
+		info.parseField(f, nil)
+	}
+}
 
-		fieldInfo := new(FieldInfo)
-		fieldInfo.Type = f.Type.String()
+func (info *KindInfo) parseField(structField reflect.StructField, parentField *FieldInfo) {
+	fieldInfo := new(FieldInfo)
+	fieldInfo.typ = structField.Type
+	fieldInfo.Type = structField.Type.String()
+	fieldInfo.Name = structField.Name
 
-		calcTable := parentField == nil || parentField.Table != nil && parentField.Table.Display
-
-		fieldInfo.Name = f.Name
-
-		if m, ok := f.Tag.Lookup("json"); ok {
-			fieldInfo.JsonTag = strings.TrimSpace(strings.Split(m, ",")[0])
-		} else {
-			fieldInfo.JsonTag = f.Name
-		}
-
-		if m, ok := f.Tag.Lookup("label"); ok {
-			fieldInfo.Label = m
-		} else {
-			fieldInfo.Label = f.Name
-		}
-
-		if parentField != nil {
-			fieldInfo.Label = kindInfo.Label + "." + fieldInfo.Label
-		}
-
-		if calcTable {
-			if m, ok := f.Tag.Lookup("table"); ok {
-				ms := strings.Split(m, ",")
-			tableLoop:
-				for i, msv := range ms {
-					msv = strings.TrimSpace(msv)
-					switch i {
-					case 0:
-						if msv == "-" {
-							break tableLoop
-						} else {
-							fieldInfo.Table = new(InfoFieldTable)
-							fieldInfo.Table.Display = true
-						}
-					case 1:
-						fieldInfo.Table.NoSort = msv == "nosort"
-					}
-				}
-			} else {
-				fieldInfo.Table = new(InfoFieldTable)
-				fieldInfo.Table.Display = true
-			}
-		}
-
-		if m, ok := f.Tag.Lookup("apis"); ok {
-			fieldInfo.Meta = m
-			fieldInfo.Hidden = true
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"readonly", "true"})
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"disabled", "true"})
-
-			for n, v := range strings.Split(m, ",") {
-				v = strings.TrimSpace(v)
-				v = strings.ToLower(v)
-				switch n {
-				case 0:
-					if v == "updatedat" {
-						mainKind.Meta.UpdatedAtField = fieldInfo
-					} else if v == "id" {
-						mainKind.Meta.IdField = fieldInfo
-					} else if v == "updatedby" {
-						mainKind.Meta.UpdatedByField = fieldInfo
-					} else if v == "createdat" {
-						mainKind.Meta.CreatedAtField = fieldInfo
-					} else if v == "createdby" {
-						mainKind.Meta.CreatedByField = fieldInfo
-					}
-				}
-			}
-		}
-
-		if len(fieldInfo.Meta) == 0 && fieldInfo.Table != nil {
-			mainKind.TableColumns = append(mainKind.TableColumns, fieldInfo)
-		}
-
-		switch fieldInfo.Type {
-		case "string", "*datastore.Key":
-			fieldInfo.InputType = "text"
-			fieldInfo.generateTag("entry-field-textfield")
-		case "time.Time":
-			fieldInfo.InputType = "datetime-local"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "date"})
-			fieldInfo.generateTag("entry-field-textfield")
-		case "bool":
-			fieldInfo.InputType = "checkbox"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "bool"})
-			fieldInfo.generateTag("entry-field-toggle")
-		case "float64", "float32":
-			fieldInfo.InputType = "number"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "double"})
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"step", "any"})
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"pattern", `-?[0-9]*(\.[0-9]+)?`})
-			fieldInfo.generateTag("entry-field-textfield")
-		case "int64", "int", "int32":
-			fieldInfo.InputType = "number"
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "number"})
-			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"step", "1"})
-			fieldInfo.generateTag("entry-field-textfield")
-		default:
-			switch f.Type.Kind() {
-			case reflect.Slice, reflect.Array:
-				fieldInfo.Kind = new(KindInfo)
-				fieldInfo.Kind.typ = f.Type.Elem()
-				fieldInfo.Kind.Type = fieldInfo.Kind.typ.String()
-				fieldInfo.Kind.Name = fieldInfo.Kind.typ.Name()
-				if m, ok := f.Tag.Lookup("label"); ok {
-					fieldInfo.Kind.Label = m
-				} else {
-					fieldInfo.Kind.Label = fieldInfo.Kind.Name
-				}
-				if kindInfo.typ.Kind() != reflect.Struct {
-					fieldInfo.Kind = mainKind.informizeType(fieldInfo.Kind, fieldInfo)
-					fieldInfo.Kind.IsNested = true
-				}
-			case reflect.Struct:
-				fieldInfo.Kind = new(KindInfo)
-				fieldInfo.Kind.typ = f.Type
-				fieldInfo.Kind.Type = fieldInfo.Kind.typ.String()
-				fieldInfo.Kind.Name = fieldInfo.Kind.typ.Name()
-				if m, ok := f.Tag.Lookup("label"); ok {
-					fieldInfo.Kind.Label = m
-				} else {
-					fieldInfo.Kind.Label = fieldInfo.Kind.Name
-				}
-				fieldInfo.Kind = mainKind.informizeType(fieldInfo.Kind, fieldInfo)
-				fieldInfo.Kind.IsNested = true
-			}
-		}
-
-		kindInfo.Fields = append(kindInfo.Fields, fieldInfo)
-
+	if m, ok := structField.Tag.Lookup("json"); ok {
+		fieldInfo.JsonTag = strings.TrimSpace(strings.Split(m, ",")[0])
+	} else {
+		fieldInfo.JsonTag = structField.Name
 	}
 
-	return kindInfo
+	if m, ok := structField.Tag.Lookup("label"); ok {
+		fieldInfo.Label = m
+	} else {
+		fieldInfo.Label = structField.Name
+	}
+
+	var calcTable = parentField == nil || parentField.Table != nil && parentField.Table.Display
+	if calcTable {
+		if m, ok := structField.Tag.Lookup("table"); ok {
+			ms := strings.Split(m, ",")
+		tableLoop:
+			for i, msv := range ms {
+				msv = strings.TrimSpace(msv)
+				switch i {
+				case 0:
+					if msv == "-" {
+						break tableLoop
+					} else {
+						fieldInfo.Table = new(InfoFieldTable)
+						fieldInfo.Table.Display = true
+					}
+				case 1:
+					fieldInfo.Table.NoSort = msv == "nosort"
+				}
+			}
+		} else {
+			fieldInfo.Table = new(InfoFieldTable)
+			fieldInfo.Table.Display = true
+		}
+	}
+
+	if m, ok := structField.Tag.Lookup("apis"); ok {
+		fieldInfo.Meta = m
+		fieldInfo.Hidden = true
+		fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"readonly", "true"})
+		fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"disabled", "true"})
+
+		for n, v := range strings.Split(m, ",") {
+			v = strings.TrimSpace(v)
+			v = strings.ToLower(v)
+			switch n {
+			case 0:
+				if v == "updatedat" {
+					info.Meta.UpdatedAtField = fieldInfo
+				} else if v == "id" {
+					info.Meta.IdField = fieldInfo
+				} else if v == "updatedby" {
+					info.Meta.UpdatedByField = fieldInfo
+				} else if v == "createdat" {
+					info.Meta.CreatedAtField = fieldInfo
+				} else if v == "createdby" {
+					info.Meta.CreatedByField = fieldInfo
+				}
+			}
+		}
+	}
+
+	if len(fieldInfo.Meta) == 0 && fieldInfo.Table != nil {
+		info.TableColumns = append(info.TableColumns, fieldInfo)
+	}
+
+	fieldInfo.parseType()
+
+	info.Fields = append(info.Fields, fieldInfo)
+}
+
+func (fieldInfo *FieldInfo) parseType() {
+	switch fieldInfo.typ {
+	case stringType, keyType:
+		fieldInfo.InputType = "text"
+		fieldInfo.generateTag("entry-field-textfield")
+	case timeType:
+		fieldInfo.InputType = "datetime-local"
+		fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "date"})
+		fieldInfo.generateTag("entry-field-textfield")
+	case boolType:
+		fieldInfo.InputType = "checkbox"
+		fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "bool"})
+		fieldInfo.generateTag("entry-field-toggle")
+	case float64Type, float32Type:
+		fieldInfo.InputType = "number"
+		fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "double"})
+		fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"step", "any"})
+		fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"pattern", `-?[0-9]*(\.[0-9]+)?`})
+		fieldInfo.generateTag("entry-field-textfield")
+	case int64Type, intType, int32Type:
+		fieldInfo.InputType = "number"
+		fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"transform", "number"})
+		fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"step", "1"})
+		fieldInfo.generateTag("entry-field-textfield")
+	default:
+		switch fieldInfo.typ.Kind() {
+		case reflect.Slice, reflect.Array:
+			// is slice
+			fieldInfo.IsSlice = true
+			fieldInfo.Attributes = append(fieldInfo.Attributes, InfoFieldAttr{"slice", "true"})
+
+			typ := fieldInfo.typ.Elem()
+			if typ.Kind() == reflect.Struct {
+				fieldInfo.Kind = &KindInfo{
+					typ:      typ,
+					Name:     typ.Name(),
+					Type:     typ.String(),
+					IsNested: true,
+				}
+
+				for i := 0; i < typ.NumField(); i++ {
+					f := typ.Field(i)
+					fieldInfo.Kind.parseField(f, fieldInfo)
+				}
+			} else {
+				fieldInfo.typ = typ
+				fieldInfo.parseType()
+			}
+		case reflect.Struct:
+			fieldInfo.Kind = &KindInfo{
+				typ:      fieldInfo.typ,
+				Name:     fieldInfo.typ.Name(),
+				Type:     fieldInfo.typ.String(),
+				IsNested: true,
+			}
+
+			for i := 0; i < fieldInfo.typ.NumField(); i++ {
+				f := fieldInfo.typ.Field(i)
+				fieldInfo.Kind.parseField(f, fieldInfo)
+			}
+
+		default:
+			//panic(errors.New("unrecognized field type"))
+		}
+	}
 }

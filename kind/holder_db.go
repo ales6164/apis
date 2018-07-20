@@ -34,7 +34,7 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 	}
 	t := q.Run(ctx)
 	for {
-		var h = k.NewHolder(nil)
+		var h = k.NewHolder(nil, nil)
 		h.key, err = t.Next(h)
 		h.hasKey = true
 		if err == datastore.Done {
@@ -61,7 +61,7 @@ func (k *Kind) Delete(_ctx context.Context, key *datastore.Key) error {
 func GetMulti(ctx context.Context, kind *Kind, key ...*datastore.Key) ([]*Holder, error) {
 	var hs []*Holder
 	for _, k := range key {
-		h := kind.NewHolder(nil)
+		h := kind.NewHolder(nil, nil)
 		h.SetKey(k)
 		hs = append(hs, h)
 	}
@@ -79,7 +79,7 @@ func (h *Holder) Get(ctx context.Context, key *datastore.Key) error {
 func (h *Holder) Add(_ctx context.Context) error {
 	return datastore.RunInTransaction(_ctx, func(tc context.Context) error {
 		if !h.hasKey || h.key == nil {
-			h.SetKey(h.Kind.NewIncompleteKey(tc, h.user))
+			h.SetKey(h.Kind.NewIncompleteKey(tc, h.ancestor))
 		}
 		var err error
 		if h.key.Incomplete() {
@@ -117,7 +117,6 @@ func (h *Holder) Update(_ctx context.Context) error {
 			return err
 		}
 		return h.SaveToIndex(tc)
-		return err
 	}, nil)
 }
 

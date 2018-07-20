@@ -16,12 +16,13 @@ type Route struct {
 	kind *kind.Kind
 	path string
 
-	listeners map[string]Listener
+	listeners      map[string]Listener
 	searchListener func(ctx Context, query string) ([]interface{}, error)
 	roles map[string]bool
 
 	methods []string
 
+	query    http.HandlerFunc
 	get    http.HandlerFunc
 	post   http.HandlerFunc
 	put    http.HandlerFunc
@@ -96,6 +97,10 @@ func (R *Route) Methods(ms ...string) *Route {
 	return R
 }
 
+func (R *Route) Query(x http.HandlerFunc) *Route {
+	R.query = x
+	return R
+}
 func (R *Route) Get(x http.HandlerFunc) *Route {
 	R.get = x
 	return R
@@ -160,7 +165,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 			return
 		}
 
-		h := R.kind.NewHolder(ctx.UserKey())
+		h := R.kind.NewHolder(ctx.UserKey(), nil)
 
 		if err := R.trigger(BeforeRead, ctx, h); err != nil {
 			ctx.PrintError(w, err)
@@ -183,8 +188,8 @@ func (R *Route) getHandler() http.HandlerFunc {
 }
 
 func (R *Route) queryHandler() http.HandlerFunc {
-	if R.get != nil {
-		return R.get
+	if R.query != nil {
+		return R.query
 	}
 	if R.kind == nil {
 		return func(w http.ResponseWriter, r *http.Request) {}
@@ -211,7 +216,7 @@ func (R *Route) queryHandler() http.HandlerFunc {
 				ctx.PrintError(w, errors.ErrForbidden)
 				return
 			}
-			h := R.kind.NewHolder(ctx.UserKey())
+			h := R.kind.NewHolder(ctx.UserKey(), nil)
 
 			if err := R.trigger(BeforeRead, ctx, h); err != nil {
 				ctx.PrintError(w, err)
@@ -312,7 +317,18 @@ func (R *Route) postHandler() http.HandlerFunc {
 			return
 		}
 
-		h := R.kind.NewHolder(ctx.UserKey())
+		var ancestorKey *datastore.Key
+		ancestor := mux.Vars(r)["ancestor"]
+		if len(ancestor) > 0 {
+			var err error
+			ancestorKey, err = datastore.DecodeKey(ancestor)
+			if err != nil {
+				ctx.PrintError(w, err)
+				return
+			}
+		}
+
+		h := R.kind.NewHolder(ctx.UserKey(), ancestorKey)
 		err := h.Parse(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err, "error parsing")
@@ -368,7 +384,7 @@ func (R *Route) putHandler() http.HandlerFunc {
 			return
 		}
 
-		h := R.kind.NewHolder(ctx.UserKey())
+		h := R.kind.NewHolder(ctx.UserKey(), nil)
 		err = h.Parse(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err)

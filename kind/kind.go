@@ -342,10 +342,11 @@ func (k *Kind) DeleteFromIndex(ctx context.Context, id string) error {
 	return index.Delete(ctx, id)
 }
 
-func (k *Kind) NewHolder(user *datastore.Key) *Holder {
+func (k *Kind) NewHolder(createdBy, ancestor *datastore.Key) *Holder {
 	return &Holder{
 		Kind:  k,
-		user:  user,
+		createdBy:  createdBy,
+		ancestor:  ancestor,
 		value: k.New(),
 	}
 }

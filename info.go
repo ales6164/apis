@@ -3,12 +3,23 @@ package apis
 import (
 	"net/http"
 	"github.com/ales6164/apis/kind"
+	"github.com/gorilla/mux"
 )
 
 // todo: add get, put, post, delete handlers
 // todo: add simple search but index.put has to be delayed
 // simple search output could be displayed in order that fields are defined
 // todo: add "label" tag to display proper label with input
+
+func initInfo(a *Apis, r *mux.Router) {
+	infoRoute := &Route{
+		a:       a,
+		methods: []string{},
+	}
+
+	r.Handle("/apis", a.middleware.Handler(infoHandler(infoRoute))).Methods(http.MethodGet)
+}
+
 
 func infoHandler(R *Route) http.HandlerFunc {
 	var isInited bool

@@ -155,11 +155,6 @@ func (ctx Context) Body() []byte {
 	return ctx.body.body
 }
 
-func (ctx Context) User() *User {
-	u, _ := getUser(ctx, ctx.UserKey())
-	return u
-}
-
 func (ctx Context) UserKey() *datastore.Key {
 	key, _ := datastore.DecodeKey(ctx.claims.StandardClaims.Subject)
 	return key
@@ -170,10 +165,7 @@ func (ctx Context) Claims() middleware.Claims {
 }
 
 func (ctx Context) Roles() []string {
-	if len(ctx.claims.Roles) > 0 {
-		return ctx.claims.Roles
-	}
-	return PublicRoles
+	return ctx.ClientSession.Roles
 }
 
 func (ctx Context) Id() string {
@@ -188,7 +180,7 @@ func (ctx Context) SetNamespace(namespace string) (Context, error) {
 
 func (ctx Context) HasRole(role Role) bool {
 	sr := string(role)
-	for _, r := range ctx.claims.Roles {
+	for _, r := range ctx.ClientSession.Roles {
 		if r == sr {
 			return true
 		}

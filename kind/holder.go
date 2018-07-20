@@ -9,12 +9,13 @@ import (
 	"google.golang.org/appengine/search"
 	"golang.org/x/net/context"
 	"github.com/ales6164/apis/errors"
-)
+	)
 
 type Holder struct {
-	Kind   *Kind
-	user   *datastore.Key
-	hasKey bool
+	Kind      *Kind
+	createdBy *datastore.Key
+	ancestor  *datastore.Key
+	hasKey    bool
 
 	key   *datastore.Key
 	value interface{}
@@ -70,7 +71,10 @@ func (h *Holder) SetKey(k *datastore.Key) {
 	h.hasKey = k != nil
 }
 
-func (h *Holder) GetKey() *datastore.Key {
+func (h *Holder) GetKey(ctx context.Context) *datastore.Key {
+	if !h.hasKey {
+		h.SetKey(h.Kind.NewIncompleteKey(ctx, h.ancestor))
+	}
 	return h.key
 }
 
@@ -136,7 +140,7 @@ func (h *Holder) Load(ps []datastore.Property) error {
 			return err
 		}
 
-		if err := mergo.Merge(n, h.value, mergo.WithOverride, mergo.WithTransformers(timeTransformer{}), mergo.WithTransformers(boolTransformer{}), mergo.WithTransformers(stringTransfomer{})); err != nil {
+		if err := mergo.Merge(n, h.value, mergo.WithTransformers(timeTransformer{}), mergo.WithTransformers(boolTransformer{}), mergo.WithTransformers(stringTransfomer{})); err != nil {
 			return err
 		}
 
@@ -162,7 +166,11 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 				}
 			case "createdby":
 				if !h.hasLoadedData {
-					field.Set(reflect.ValueOf(h.user))
+					field.Set(reflect.ValueOf(h.createdBy))
+				}
+			case "ancestor":
+				if !h.hasLoadedData {
+					field.Set(reflect.ValueOf(h.ancestor))
 				}
 			}
 		}

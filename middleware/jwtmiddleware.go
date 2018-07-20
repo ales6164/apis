@@ -61,7 +61,7 @@ type JWTMiddleware struct {
 }
 
 type Claims struct {
-	Roles               []string `json:"roles,omitempty"`
+	/*Roles               []string `json:"roles,omitempty"`
 	Name                string   `json:"name,omitempty"`
 	GivenName           string   `json:"given_name,omitempty"`
 	FamilyName          string   `json:"family_name,omitempty"`
@@ -73,7 +73,7 @@ type Claims struct {
 	EmailVerified       bool     `json:"email_verified,omitempty"`        // true if email verified
 	Locale              string   `json:"locale,omitempty"`                // locale
 	PhoneNumber         string   `json:"phone_number,omitempty"`          // preferred phone number
-	PhoneNumberVerified bool     `json:"phone_number_verified,omitempty"` // true if phone number verified
+	PhoneNumberVerified bool     `json:"phone_number_verified,omitempty"` // true if phone number verified*/
 	Nonce               string   `json:"nonce,omitempty"`                 // value used to associate client session with id token
 	jwt.StandardClaims
 }

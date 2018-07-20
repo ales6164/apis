@@ -86,7 +86,7 @@ func (p *PayPal) Router(modulePath string) *mux.Router {
 		// add callbacks
 
 		// test order
-		p.router.HandleFunc(modulePath+"/hi", func(writer http.ResponseWriter, request *http.Request) {
+		/*p.router.HandleFunc(modulePath+"/hi", func(writer http.ResponseWriter, request *http.Request) {
 			ctx := appengine.NewContext(request)
 
 			payment, err := p.CreatePayment(ctx, &Payment{
@@ -142,7 +142,7 @@ func (p *PayPal) Router(modulePath string) *mux.Router {
 			}
 			json.NewEncoder(writer).Encode(payment)
 			//writer.Write(payment.Bytes())
-		})
+		})*/
 		p.router.HandleFunc(modulePath+"/return", func(writer http.ResponseWriter, request *http.Request) {
 			if p.OnPaymentCreated != nil {
 				query := request.URL.Query()
