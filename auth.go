@@ -47,7 +47,7 @@ func initAuth(a *Apis, r *mux.Router) {
 	r.Handle("/auth/password", a.middleware.Handler(changePasswordHandler(authRoute))).Methods(http.MethodPut)
 }
 
-func createSession(ctx Context, usrKey *datastore.Key, roles []string) (Token, error) {
+func createSession(ctx Context, usrKey *datastore.Key, usrEmail string, roles []string) (Token, error) {
 	var signedToken Token
 	now := time.Now()
 	expiresAt := now.Add(time.Hour * time.Duration(72))
@@ -62,10 +62,10 @@ func createSession(ctx Context, usrKey *datastore.Key, roles []string) (Token, e
 	if err != nil {
 		return signedToken, err
 	}
-	return ctx.authenticate(sess, sessKey.Encode(), usrKey.Encode(), expiresAt.Unix())
+	return ctx.authenticate(usrEmail, sess, sessKey.Encode(), usrKey.Encode(), expiresAt.Unix())
 }
 
-func (ctx Context) authenticate(sess *ClientSession, sessionID string, encodedUsrKey string, expiresAt int64) (Token, error) {
+func (ctx Context) authenticate(accEmail string, sess *ClientSession, sessionID string, encodedUsrKey string, expiresAt int64) (Token, error) {
 	var err error
 	now := time.Now()
 	claims := middleware.Claims{

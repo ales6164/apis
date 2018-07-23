@@ -89,7 +89,7 @@ func loginHandler(R *Route) http.HandlerFunc {
 
 		acc.User = usrHolder.Value()
 
-		signedToken, err := createSession(ctx, acc.UserId, acc.Roles)
+		signedToken, err := createSession(ctx, acc.UserId, acc.Email, acc.Roles)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -195,7 +195,7 @@ func registrationHandler(R *Route) http.HandlerFunc {
 
 		var acc = accHolder.Value().(*account)
 
-		signedToken, err := createSession(ctx, usrKey, acc.Roles)
+		signedToken, err := createSession(ctx, usrKey, acc.Email, acc.Roles)
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
