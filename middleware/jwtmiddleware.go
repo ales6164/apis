@@ -74,6 +74,7 @@ type Claims struct {
 	Locale              string   `json:"locale,omitempty"`                // locale
 	PhoneNumber         string   `json:"phone_number,omitempty"`          // preferred phone number
 	PhoneNumberVerified bool     `json:"phone_number_verified,omitempty"` // true if phone number verified*/
+	Email               string   `json:"email,omitempty"`
 	Nonce               string   `json:"nonce,omitempty"`                 // value used to associate client session with id token
 	jwt.StandardClaims
 }

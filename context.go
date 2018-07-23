@@ -155,6 +155,12 @@ func (ctx Context) Body() []byte {
 	return ctx.body.body
 }
 
+func (ctx Context) User() (*kind.Holder, error) {
+	var h = UserKind.NewHolder(nil, nil)
+	err := h.Get(ctx, ctx.UserKey())
+	return h, err
+}
+
 func (ctx Context) UserKey() *datastore.Key {
 	key, _ := datastore.DecodeKey(ctx.claims.StandardClaims.Subject)
 	return key

@@ -140,7 +140,9 @@ func (h *Holder) Load(ps []datastore.Property) error {
 			return err
 		}
 
-		if err := mergo.Merge(n, h.value, mergo.WithTransformers(timeTransformer{}), mergo.WithTransformers(boolTransformer{}), mergo.WithTransformers(stringTransfomer{})); err != nil {
+		if err := mergo.Merge(n, h.value, func(config *mergo.Config) {
+			config.AppendSlice = false
+		}, mergo.WithTransformers(Transformer{})); err != nil {
 			return err
 		}
 
@@ -182,12 +184,16 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 
 }*/
 
+//todo: override arrays
+// todo: all transforms into one
+
 // mergo transformer
-type timeTransformer struct {
+type Transformer struct {
 }
 
-func (t timeTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
-	if typ == reflect.TypeOf(time.Time{}) {
+func (t Transformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
+	switch typ {
+	case timeType:
 		return func(dst, src reflect.Value) error {
 			if dst.CanSet() {
 				isZero := dst.MethodByName("IsZero")
@@ -198,35 +204,29 @@ func (t timeTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Val
 			}
 			return nil
 		}
-	}
-	return nil
-}
-
-type boolTransformer struct {
-}
-
-func (t boolTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
-	if typ == reflect.TypeOf(true) {
+	case boolType:
 		return func(dst, src reflect.Value) error {
 			if dst.CanSet() {
 				dst.Set(src)
 			}
 			return nil
 		}
-	}
-	return nil
-}
-
-type stringTransfomer struct {
-}
-
-func (t stringTransfomer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
-	if typ == reflect.TypeOf("") {
+	case stringType:
 		return func(dst, src reflect.Value) error {
 			if dst.CanSet() {
 				dst.Set(src)
 			}
 			return nil
+		}
+	default:
+		// override slices
+		if typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array {
+			return func(dst, src reflect.Value) error {
+				if dst.CanSet() {
+					dst.Set(src)
+				}
+				return nil
+			}
 		}
 	}
 	return nil
