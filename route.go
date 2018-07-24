@@ -12,13 +12,14 @@ import (
 )
 
 type Route struct {
-	a    *Apis
-	kind *kind.Kind
-	path string
+	a         *Apis
+	kind      *kind.Kind
+	path      string
+	isKindles bool
 
 	listeners      map[string]Listener
 	searchListener func(ctx Context, query string) ([]interface{}, error)
-	roles        map[string]bool
+	roles map[string]bool
 
 	methods []string
 

@@ -105,9 +105,10 @@ func (a *Apis) HandleWPath(p string, kind *kind.Kind) *Route {
 func (a *Apis) KindlesRoute(p string) *Route {
 	m := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}
 	r := &Route{
-		a:       a,
-		path:    p,
-		methods: m,
+		a:         a,
+		path:      p,
+		methods:   m,
+		isKindles: true,
 	}
 	a.routes = append(a.routes, r)
 	return r
@@ -143,28 +144,44 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 		for _, method := range route.methods {
 			switch method {
 			case http.MethodGet:
-				r.Handle(route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
-				r.Handle(route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
-				if hasLang {
-					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
-					r.Handle(lang+route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
+				if route.isKindles {
+					r.Handle(route.path, a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
+				} else {
+					r.Handle(route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
+					r.Handle(route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
+					if hasLang {
+						r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
+						r.Handle(lang+route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
+					}
 				}
 			case http.MethodPost:
-				r.Handle(route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
-				r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
-				if hasLang {
-					r.Handle(lang+route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
-					r.Handle(lang+route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+				if route.isKindles {
+					r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+				} else {
+					r.Handle(route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+					r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+					if hasLang {
+						r.Handle(lang+route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+						r.Handle(lang+route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+					}
 				}
 			case http.MethodPut:
-				r.Handle(route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
-				if hasLang {
-					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
+				if route.isKindles {
+					r.Handle(route.path, a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
+				} else {
+					r.Handle(route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
+					if hasLang {
+						r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
+					}
 				}
 			case http.MethodDelete:
-				r.Handle(route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
-				if hasLang {
-					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
+				if route.isKindles {
+					r.Handle(route.path, a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
+				} else {
+					r.Handle(route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
+					if hasLang {
+						r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
+					}
 				}
 			}
 		}
