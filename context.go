@@ -170,11 +170,13 @@ func (ctx Context) Claims() middleware.Claims {
 	return ctx.claims
 }
 
+var defaultRoles = []string{string(PublicRole)}
+
 func (ctx Context) Roles() []string {
 	if ctx.IsAuthenticated {
 		return ctx.ClientSession.Roles
 	}
-	return ctx.a.defaultRoles
+	return defaultRoles
 }
 
 func (ctx Context) Id() string {
