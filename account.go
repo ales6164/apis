@@ -141,14 +141,14 @@ func registrationHandler(R *Route) http.HandlerFunc {
 			return
 		}
 
-		usrId, _, err := datastore.AllocateIDs(ctx, UserKind.Name, nil, 1)
+		/*usrId, _, err := datastore.AllocateIDs(ctx, UserKind.Name, nil, 1)
 		if err != nil {
 			ctx.PrintError(w, err, "id usr gen")
 			return
-		}
+		}*/
 
 		accKey := accountKind.NewKey(ctx, inputAcc.Email, nil)
-		usrKey := datastore.NewKey(ctx, UserKind.Name, "", usrId, accKey)
+		usrKey := datastore.NewKey(ctx, UserKind.Name, RandStringBytesMaskImprSrc(LetterBytes, 12), 0, accKey)
 
 		usrHolder := UserKind.NewHolder(nil, nil)
 		usrHolder.SetKey(usrKey)

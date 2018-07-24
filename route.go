@@ -18,11 +18,11 @@ type Route struct {
 
 	listeners      map[string]Listener
 	searchListener func(ctx Context, query string) ([]interface{}, error)
-	roles map[string]bool
+	roles        map[string]bool
 
 	methods []string
 
-	query    http.HandlerFunc
+	query  http.HandlerFunc
 	get    http.HandlerFunc
 	post   http.HandlerFunc
 	put    http.HandlerFunc

@@ -21,6 +21,7 @@ type Apis struct {
 	allowedTranslations map[string]bool
 	kinds               map[string]*kind.Kind
 	modules             []module.Module
+	defaultRoles        []string
 }
 
 type Options struct {
@@ -44,6 +45,7 @@ func New(opt *Options) (*Apis, error) {
 		options:             opt,
 		allowedTranslations: map[string]bool{},
 		kinds:               map[string]*kind.Kind{},
+		defaultRoles:        []string{string(opt.DefaultRole)},
 	}
 
 	// read private key
