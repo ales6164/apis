@@ -9,43 +9,41 @@ import (
 	"path"
 	"strings"
 	"github.com/ales6164/apis/module"
+	"github.com/ales6164/apis/providers"
 )
 
 type Apis struct {
-	options *Options
-	routes  []*Route
-
-	middleware *middleware.JWTMiddleware
-	privateKey []byte
 	permissions
+	options             *Options
+	routes              []*Route
+	router              *mux.Router
+	middleware          *middleware.JWTMiddleware
+	privateKey          []byte
 	allowedTranslations map[string]bool
 	kinds               map[string]*kind.Kind
 	modules             []module.Module
-	defaultRoles        []string
 }
 
 type Options struct {
-	AppName       string
-	StorageBucket string // required for file upload and media library
-	/*Chat                     ChatOptions*/ // required for built in chat service
-	PrivateKeyPath         string            // for password hashing
-	AuthorizedOrigins      []string
-	AuthorizedRedirectURIs []string
-	DefaultRole            Role
-	HasTranslationsFor     []string
-	AllowUserRegistration  bool
-	DefaultLanguage        string
-	/*UserProfileKind          *kind.Kind*/
-	RequireTrackingID bool // todo:generated from pages - track users - stored as session cookie
 	Permissions
+	AppName                string
+	StorageBucket          string // required for file upload and media library
+	PrivateKeyPath         string // for password hashing
+	IdentityProviders      []providers.IdentityProvider
+	DefaultRole            Role   // default role for registered account
+	DefaultLanguage        string // fallback language
+	HasTranslationsFor     []string
+	AuthorizedOrigins      []string // not implemented
+	AuthorizedRedirectURIs []string // not implemented
+	RequireTrackingID      bool     // not implemented
 }
 
 func New(opt *Options) (*Apis, error) {
 	a := &Apis{
+		router:              mux.NewRouter(),
 		options:             opt,
 		allowedTranslations: map[string]bool{},
 		kinds:               map[string]*kind.Kind{},
-		defaultRoles:        []string{string(opt.DefaultRole)},
 	}
 
 	// read private key
@@ -102,16 +100,8 @@ func (a *Apis) HandleWPath(p string, kind *kind.Kind) *Route {
 	return r
 }
 
-func (a *Apis) KindlesRoute(p string) *Route {
-	m := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}
-	r := &Route{
-		a:         a,
-		path:      p,
-		methods:   m,
-		isKindles: true,
-	}
-	a.routes = append(a.routes, r)
-	return r
+func (a *Apis) Router() *mux.Router {
+	return a.router
 }
 
 func (a *Apis) Module(module module.Module) {
@@ -121,15 +111,8 @@ func (a *Apis) Module(module module.Module) {
 	a.modules = append(a.modules, module)
 }
 
-// /kind/:order?name=some-key-string-id GET - query
-// /kind/:order/:id GET - get single
-// /kind/:order/:id PUT - put single
-// /kind/:order/:id
-/// ...
-// /search/order GET - search
-
 func (a *Apis) Handler(pathPrefix string) http.Handler {
-	r := mux.NewRouter().PathPrefix(pathPrefix).Subrouter()
+	r := a.router.PathPrefix(pathPrefix).Subrouter()
 
 	// {sort:(?:asc|desc|new)}
 	// lang path
@@ -144,44 +127,28 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 		for _, method := range route.methods {
 			switch method {
 			case http.MethodGet:
-				if route.isKindles {
-					r.Handle(route.path, a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
-				} else {
-					r.Handle(route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
-					r.Handle(route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
-					if hasLang {
-						r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
-						r.Handle(lang+route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
-					}
+				r.Handle(route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
+				r.Handle(route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
+				if hasLang {
+					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
+					r.Handle(lang+route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
 				}
 			case http.MethodPost:
-				if route.isKindles {
-					r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
-				} else {
-					r.Handle(route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
-					r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
-					if hasLang {
-						r.Handle(lang+route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
-						r.Handle(lang+route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
-					}
+				r.Handle(route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+				r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+				if hasLang {
+					r.Handle(lang+route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
+					r.Handle(lang+route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 				}
 			case http.MethodPut:
-				if route.isKindles {
-					r.Handle(route.path, a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
-				} else {
-					r.Handle(route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
-					if hasLang {
-						r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
-					}
+				r.Handle(route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
+				if hasLang {
+					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
 				}
 			case http.MethodDelete:
-				if route.isKindles {
-					r.Handle(route.path, a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
-				} else {
-					r.Handle(route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
-					if hasLang {
-						r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
-					}
+				r.Handle(route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
+				if hasLang {
+					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
 				}
 			}
 		}
@@ -200,5 +167,5 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 		r.PathPrefix(modulePath).Handler(m.Router(modulePath))
 	}
 
-	return &Server{r}
+	return &Server{a.router}
 }

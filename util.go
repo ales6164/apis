@@ -1,16 +1,13 @@
 package apis
 
 import (
-	"golang.org/x/crypto/bcrypt"
-	"math/rand"
+		"math/rand"
 	"time"
 	"github.com/ales6164/apis/kind"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
 	"google.golang.org/appengine/search"
 )
-
-const COST = 12
 
 const LetterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 const LetterNumberBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -41,21 +38,7 @@ func RandStringBytesMaskImprSrc(letterBytes string, n int) string {
 	return string(b)
 }
 
-func decrypt(hash []byte, password []byte) error {
-	defer clear(password)
-	return bcrypt.CompareHashAndPassword(hash, password)
-}
 
-func crypt(password []byte) ([]byte, error) {
-	defer clear(password)
-	return bcrypt.GenerateFromPassword(password, COST)
-}
-
-func clear(b []byte) {
-	for i := 0; i < len(b); i++ {
-		b[i] = 0
-	}
-}
 
 // purges datastore and search of all entries
 func ClearAllEntries(ctx context.Context, kind *kind.Kind) error {
