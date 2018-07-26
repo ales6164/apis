@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"github.com/ales6164/apis-v1/kind"
+	"gopkg.in/ales6164/apis.v1/kind"
 	"net/http"
 )
 

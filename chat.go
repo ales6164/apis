@@ -1,8 +1,8 @@
 package apis
 
 import (
-	"github.com/ales6164/apis-v1/errors"
-	"github.com/ales6164/apis-v1/kind"
+	"gopkg.in/ales6164/apis.v1/errors"
+	"gopkg.in/ales6164/apis.v1/kind"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"

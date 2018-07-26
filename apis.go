@@ -1,9 +1,9 @@
 package apis
 
 import (
-	"github.com/ales6164/apis-v1/kind"
-	"github.com/ales6164/apis-v1/middleware"
-	"github.com/ales6164/apis-v1/module"
+	"gopkg.in/ales6164/apis.v1/kind"
+	"gopkg.in/ales6164/apis.v1/middleware"
+	"gopkg.in/ales6164/apis.v1/module"
 	"github.com/gorilla/mux"
 	"io/ioutil"
 	"net/http"
