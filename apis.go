@@ -30,7 +30,6 @@ type Options struct {
 	StorageBucket          string // required for file upload and media library
 	PrivateKeyPath         string // for password hashing
 	IdentityProviders      []providers.IdentityProvider
-	DefaultRole            Role   // default role for registered account
 	DefaultLanguage        string // fallback language
 	HasTranslationsFor     []string
 	AuthorizedOrigins      []string // not implemented

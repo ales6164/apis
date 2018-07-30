@@ -170,7 +170,7 @@ func registerHandler(p *EmailPasswordProvider) http.HandlerFunc {
 		}
 
 		identity := NewIdentity(p, hash)
-		account, err := identity.Save(ctx, inputCredentials.Email)
+		account, err := identity.Save(ctx, inputCredentials.Email, p.options.DefaultRole)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

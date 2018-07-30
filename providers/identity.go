@@ -36,7 +36,7 @@ func GetIdentity(ctx context.Context, p IdentityProvider, id string) (*identity,
 	return i, err
 }
 
-func (i *identity) Save(ctx context.Context, id string) (*Account, error) {
+func (i *identity) Save(ctx context.Context, id string, role string) (*Account, error) {
 	var accountKey *datastore.Key
 	var account *Account
 	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
@@ -45,7 +45,7 @@ func (i *identity) Save(ctx context.Context, id string) (*Account, error) {
 		err := datastore.Get(tc, key, &dst)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
-				accountKey, account, err = i.provider.Authority().CreateAccount(tc)
+				accountKey, account, err = i.provider.Authority().CreateAccount(tc, role)
 				if err != nil {
 					return err
 				}

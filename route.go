@@ -83,7 +83,7 @@ func (R *Route) Search(searchListener func(ctx Context, query string) ([]interfa
 	return R
 }
 
-func (R *Route) Roles(rs ...Role) *Route {
+func (R *Route) Roles(rs ...string) *Route {
 	R.roles = map[string]bool{}
 	for _, r := range rs {
 		R.roles[string(r)] = true

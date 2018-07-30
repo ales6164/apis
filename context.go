@@ -63,9 +63,9 @@ type ClientRequest struct {
 // authenticated request is necessary - not yet
 // logs every request
 func (R *Route) NewContext(r *http.Request) Context {
-	return R.a.newContext(r, R)
+	return R.a.NewContext(r, R)
 }
-func (a *Apis) newContext(r *http.Request, R *Route) Context {
+func (a *Apis) NewContext(r *http.Request, R *Route) Context {
 	clientReq := new(ClientRequest)
 	ctx := Context{
 		ClientRequest: clientReq,
@@ -189,7 +189,7 @@ func (ctx Context) SetNamespace(namespace string) (Context, error) {
 	return ctx, err
 }
 
-func (ctx Context) HasRole(role Role) bool {
+func (ctx Context) HasRole(role string) bool {
 	sr := string(role)
 	for _, r := range ctx.ClientSession.Roles {
 		if r == sr {

@@ -20,7 +20,8 @@ type User struct {
 	Id        *datastore.Key `datastore:"-" apis:"id" json:"id"`
 	CreatedAt time.Time      `apis:"createdAt" json:"createdAt"`
 	UpdatedAt time.Time      `apis:"updatedAt" json:"updatedAt"`
-	Name      string         `json:"name,omitempty"`
+	FirstName string         `json:"firstName,omitempty"`
+	LastName  string         `json:"lastName,omitempty"`
 	Picture   string         `json:"picture,omitempty"` // profile picture URL
 	Website   string         `json:"website,omitempty"` // website URL
 	Address   Address        `json:"address,omitempty"`

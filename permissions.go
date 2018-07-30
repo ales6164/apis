@@ -4,19 +4,13 @@ import (
 	"github.com/ales6164/apis/kind"
 )
 
-type Role string
-
 const (
-	PublicRole Role = "public"
-	AdminRole  Role = "admin"
-)
-
-var (
-	PublicRoles = []string{string(PublicRole)}
+	PublicRole string = "public"
+	AdminRole  string = "admin"
 )
 
 // userGroup: kind: scope
-type Permissions map[Role]map[*kind.Kind][]Scope
+type Permissions map[string]map[*kind.Kind][]Scope
 
 func (p Permissions) parse() (permissions, error) {
 	var perms = permissions{}

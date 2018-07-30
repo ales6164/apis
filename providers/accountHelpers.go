@@ -24,6 +24,6 @@ type Token struct {
 
 type Authority interface {
 	GetAccount(ctx context.Context, accountKey *datastore.Key) (account *Account, err error)
-	CreateAccount(ctx context.Context) (accountKey *datastore.Key, account *Account, err error)
+	CreateAccount(ctx context.Context, role string) (accountKey *datastore.Key, account *Account, err error)
 	SignToken(ctx context.Context, account *Account) (signedToken Token, err error)
 }

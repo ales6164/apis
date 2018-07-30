@@ -21,7 +21,8 @@ type ClientSession struct {
 }
 
 type Auth struct {
-	a *Apis
+	defaultRole string
+	a           *Apis
 	providers.Authority
 }
 
@@ -47,7 +48,7 @@ func (a *Auth) GetAccount(ctx context.Context, accountKey *datastore.Key) (accou
 
 	return account, err
 }
-func (a *Auth) CreateAccount(ctx context.Context) (accountKey *datastore.Key, account *providers.Account, err error) {
+func (a *Auth) CreateAccount(ctx context.Context, role string) (accountKey *datastore.Key, account *providers.Account, err error) {
 	// 1. Create and save user
 	// 2. Create and save account
 	userHolder := UserKind.NewHolder(nil, nil)
@@ -61,7 +62,7 @@ func (a *Auth) CreateAccount(ctx context.Context) (accountKey *datastore.Key, ac
 		userHolder.SetKey(userKey)
 
 		accountHolder.SetValue(&providers.Account{
-			Roles:  []string{string(a.a.options.DefaultRole)},
+			Roles:  []string{role},
 			UserId: userKey,
 			User:   userHolder.Value(),
 		})

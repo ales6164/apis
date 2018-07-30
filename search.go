@@ -18,7 +18,7 @@ func initSearch(a *Apis, r *mux.Router) {
 		methods: []string{http.MethodGet},
 	}
 	R.get = func(w http.ResponseWriter, r *http.Request) {
-		ctx := a.newContext(r, R)
+		ctx := a.NewContext(r, R)
 
 		kindName := mux.Vars(r)["kind"]
 		k := a.kinds[kindName]
