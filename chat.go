@@ -132,13 +132,13 @@ func createChatGroupMessageHandler(R *Route) http.HandlerFunc {
 		}
 
 		// check if user has access to user group
-		chatGroupHolder := ChatKind.NewHolder(ctx.UserKey(), nil)
+		chatGroupHolder := ChatKind.NewHolder(ctx.UserKey())
 		if err := chatGroupHolder.Get(ctx, decodedGroupKey); err != nil {
 			ctx.PrintError(w, err, "parsing error")
 			return
 		}
 
-		h := messageKind.NewHolder(ctx.UserKey(), nil)
+		h := messageKind.NewHolder(ctx.UserKey())
 		err = h.Parse(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err, "parsing error")

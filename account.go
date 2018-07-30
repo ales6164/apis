@@ -20,13 +20,14 @@ type User struct {
 	Id        *datastore.Key `datastore:"-" apis:"id" json:"id"`
 	CreatedAt time.Time      `apis:"createdAt" json:"createdAt"`
 	UpdatedAt time.Time      `apis:"updatedAt" json:"updatedAt"`
+	Email     string         `json:"email,omitempty"`
+	Phone     string         `json:"phone,omitempty"`
 	FirstName string         `json:"firstName,omitempty"`
 	LastName  string         `json:"lastName,omitempty"`
 	Picture   string         `json:"picture,omitempty"` // profile picture URL
 	Website   string         `json:"website,omitempty"` // website URL
 	Address   Address        `json:"address,omitempty"`
 	Company   Company        `json:"company,omitempty"`
-	Contact   Contact        `json:"contact,omitempty"`
 	Slogan    string         `json:"slogan,omitempty"`
 	Locale    string         `json:"locale,omitempty"`
 }
@@ -50,12 +51,8 @@ type Company struct {
 	Name      string  `json:"name,omitempty"`
 	VatNumber string  `json:"vatNumber,omitempty"`
 	Address   Address `json:"address,omitempty"`
-	Contact   Contact `json:"contact,omitempty"`
-}
-
-type Contact struct {
-	Email       string `json:"email,omitempty"`
-	PhoneNumber string `json:"phone,omitempty"`
+	Email     string  `json:"email,omitempty"`
+	Phone     string  `json:"phone,omitempty"`
 }
 
 var UserKind = kind.New(reflect.TypeOf(User{}), &kind.Options{
@@ -76,7 +73,7 @@ func initUser(a *Apis, r *mux.Router) {
 			return
 		}
 
-		h := UserKind.NewHolder(nil, nil)
+		h := UserKind.NewHolder(nil)
 		if err := h.Get(ctx, ctx.UserKey()); err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -93,7 +90,7 @@ func initUser(a *Apis, r *mux.Router) {
 			return
 		}
 
-		h := UserKind.NewHolder(nil, nil)
+		h := UserKind.NewHolder(nil)
 		if err := h.Parse(ctx.Body()); err != nil {
 			ctx.PrintError(w, err)
 			return

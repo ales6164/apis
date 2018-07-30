@@ -30,7 +30,7 @@ func (a *Auth) GetAccount(ctx context.Context, accountKey *datastore.Key) (accou
 	// 1. Get account
 	// 2. Get user and insert object into account
 
-	accountHolder := accountKind.NewHolder(nil, nil)
+	accountHolder := accountKind.NewHolder( nil)
 	err = accountHolder.Get(ctx, accountKey)
 	if err != nil {
 		return account, err
@@ -38,7 +38,7 @@ func (a *Auth) GetAccount(ctx context.Context, accountKey *datastore.Key) (accou
 
 	account = accountHolder.Value().(*providers.Account)
 
-	userHolder := UserKind.NewHolder(nil, nil)
+	userHolder := UserKind.NewHolder(nil)
 	err = userHolder.Get(ctx, account.UserId)
 	if err != nil {
 		return account, err
@@ -51,33 +51,26 @@ func (a *Auth) GetAccount(ctx context.Context, accountKey *datastore.Key) (accou
 func (a *Auth) CreateAccount(ctx context.Context, role string) (accountKey *datastore.Key, account *providers.Account, err error) {
 	// 1. Create and save user
 	// 2. Create and save account
-	userHolder := UserKind.NewHolder(nil, nil)
-	accountHolder := accountKind.NewHolder(nil, nil)
+	userHolder := UserKind.NewHolder( nil)
+	accountHolder := accountKind.NewHolder( nil)
 
-	err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-		userKey, err := datastore.Put(tc, UserKind.NewIncompleteKey(tc, nil), userHolder)
-		if err != nil {
-			return err
-		}
-		userHolder.SetKey(userKey)
-
-		accountHolder.SetValue(&providers.Account{
-			Roles:  []string{role},
-			UserId: userKey,
-			User:   userHolder.Value(),
-		})
-
-		accountKey, err = datastore.Put(tc, accountKind.NewIncompleteKey(tc, nil), accountHolder)
-		if err != nil {
-			return err
-		}
-		accountHolder.SetKey(accountKey)
-
-		return nil
-	}, nil)
+	userKey, err := datastore.Put(ctx, UserKind.NewIncompleteKey(ctx, nil), userHolder)
 	if err != nil {
-		return nil, account, err
+		return accountKey, account, err
 	}
+	userHolder.SetKey(userKey)
+
+	accountHolder.SetValue(&providers.Account{
+		Roles:  []string{role},
+		UserId: userKey,
+		User:   userHolder.Value(),
+	})
+
+	accountKey, err = datastore.Put(ctx, accountKind.NewIncompleteKey(ctx, nil), accountHolder)
+	if err != nil {
+		return accountKey, account, err
+	}
+	accountHolder.SetKey(accountKey)
 
 	return accountHolder.GetKey(ctx), accountHolder.Value().(*providers.Account), err
 }
@@ -103,6 +96,7 @@ func (a *Apis) createSession(ctx context.Context, account *providers.Account) (s
 	sess := new(ClientSession)
 	sess.CreatedAt = now
 	sess.ExpiresAt = expiresAt
+	sess.Account = account.Id
 	sess.User = account.UserId
 	sess.Roles = account.Roles
 	sess.JwtID = RandStringBytesMaskImprSrc(LetterBytes, 16)
@@ -111,22 +105,22 @@ func (a *Apis) createSession(ctx context.Context, account *providers.Account) (s
 	if err != nil {
 		return signedToken, err
 	}
-	return a.authenticate(account.Id, sess, sessKey.Encode(), expiresAt.Unix())
+	return a.authenticate(account.UserId, sessKey, sess, expiresAt.Unix())
 }
 
-func (a *Apis) authenticate(accountKey *datastore.Key, sess *ClientSession, sessionID string, expiresAt int64) (providers.Token, error) {
+func (a *Apis) authenticate(userKey, sessionKey *datastore.Key, session *ClientSession, expiresAt int64) (providers.Token, error) {
 	var err error
 	now := time.Now()
 	claims := middleware.Claims{
-		Nonce: sessionID,
+		Nonce:  sessionKey.Encode(),
 		StandardClaims: jwt.StandardClaims{
 			Audience:  "all",
-			Id:        sess.JwtID,
+			Id:        session.JwtID,
 			ExpiresAt: expiresAt,
 			IssuedAt:  now.Unix(),
 			Issuer:    a.options.AppName,
 			NotBefore: now.Add(-time.Minute).Unix(),
-			Subject:   accountKey.Encode(),
+			Subject:   userKey.Encode(),
 		},
 	}
 	token := providers.Token{

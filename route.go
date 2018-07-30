@@ -12,9 +12,10 @@ import (
 )
 
 type Route struct {
-	a         *Apis
-	kind      *kind.Kind
-	path      string
+	a       *Apis
+	kind    *kind.Kind
+	path    string
+	private bool
 
 	listeners      map[string]Listener
 	searchListener func(ctx Context, query string) ([]interface{}, error)
@@ -96,7 +97,10 @@ func (R *Route) Methods(ms ...string) *Route {
 	R.kind.AddRouteSettings(R.Path(), ms)
 	return R
 }
-
+func (R *Route) Private(private bool) *Route {
+	R.private = private
+	return R
+}
 func (R *Route) Query(x http.HandlerFunc) *Route {
 	R.query = x
 	return R
@@ -165,7 +169,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 			return
 		}
 
-		h := R.kind.NewHolder(ctx.UserKey(), nil)
+		h := R.kind.NewHolder(ctx.UserKey())
 
 		if err := R.trigger(BeforeRead, ctx, h); err != nil {
 			ctx.PrintError(w, err)
@@ -216,7 +220,7 @@ func (R *Route) queryHandler() http.HandlerFunc {
 				ctx.PrintError(w, errors.ErrForbidden)
 				return
 			}
-			h := R.kind.NewHolder(ctx.UserKey(), nil)
+			h := R.kind.NewHolder(ctx.UserKey())
 
 			if err := R.trigger(BeforeRead, ctx, h); err != nil {
 				ctx.PrintError(w, err)
@@ -317,18 +321,16 @@ func (R *Route) postHandler() http.HandlerFunc {
 			return
 		}
 
-		var ancestorKey *datastore.Key
+		h := R.kind.NewHolder(ctx.UserKey())
 		ancestor := mux.Vars(r)["ancestor"]
 		if len(ancestor) > 0 {
-			var err error
-			ancestorKey, err = datastore.DecodeKey(ancestor)
+			ancestorKey, err := datastore.DecodeKey(ancestor)
 			if err != nil {
 				ctx.PrintError(w, err)
 				return
 			}
+			h.SetAncestor(ancestorKey)
 		}
-
-		h := R.kind.NewHolder(ctx.UserKey(), ancestorKey)
 		err := h.Parse(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err, "error parsing")
@@ -384,7 +386,7 @@ func (R *Route) putHandler() http.HandlerFunc {
 			return
 		}
 
-		h := R.kind.NewHolder(ctx.UserKey(), nil)
+		h := R.kind.NewHolder(ctx.UserKey())
 		err = h.Parse(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err)

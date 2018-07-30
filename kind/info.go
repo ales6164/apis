@@ -15,7 +15,7 @@ func (k *Kind) Info() *KindInfo {
 	if k.info == nil {
 		kindInfo := new(KindInfo)
 		kindInfo.Meta = new(MetaInfo)
-		kindInfo.typ = k.Type
+		kindInfo.typ = k.t
 		kindInfo.Type = kindInfo.typ.String()
 		kindInfo.parse()
 		kindInfo.Name = k.Name

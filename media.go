@@ -165,7 +165,7 @@ func uploadHandler(R *Route) http.HandlerFunc {
 			BlobKey:     string(blobKey),
 		}
 
-		mediaHolder := MediaKind.NewHolder(ctx.UserKey(), nil)
+		mediaHolder := MediaKind.NewHolder(ctx.UserKey())
 		mediaHolder.SetValue(storedFile)
 
 		// create fast delivery image url

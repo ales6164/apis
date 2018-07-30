@@ -24,7 +24,7 @@ func NewIdentity(p IdentityProvider, secret []byte) (*identity) {
 }
 
 func GetIdentity(ctx context.Context, p IdentityProvider, id string) (*identity, error) {
-	var i *identity
+	var i = new(identity)
 	err := datastore.Get(ctx, datastore.NewKey(ctx, identityKind, id, 0, nil), i)
 	if err != nil {
 		return nil, err
@@ -56,7 +56,9 @@ func (i *identity) Save(ctx context.Context, id string, role string) (*Account, 
 			return err
 		}
 		return errors.ErrEntityExists
-	}, nil)
+	}, &datastore.TransactionOptions{
+		XG: true,
+	})
 	return account, err
 }
 

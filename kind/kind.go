@@ -10,7 +10,7 @@ import (
 )
 
 type Kind struct {
-	Type        reflect.Type
+	t           reflect.Type
 	MetaFields  []MetaField
 	MetaIdField MetaField
 	*Options
@@ -78,20 +78,33 @@ func New(t reflect.Type, opt *Options) *Kind {
 	}
 
 	k := &Kind{
-		Type:         t,
 		Options:      opt,
 		searchFields: map[string]*SearchField{},
 	}
 
+	err := k.SetType(t)
+	if err != nil {
+		panic(err)
+	}
+
+	return k
+}
+
+func (k *Kind) SetType(t reflect.Type) error {
+	k.t = t
+
 	if t == nil {
-		return k
+		return errors.New("type not of kind struct")
 	}
 
 	if t.Kind() != reflect.Struct {
-		panic(errors.New("type not of kind struct"))
+		return errors.New("type not of kind struct")
 	}
 
-	k.checkFields()
+	err := k.checkFields()
+	if err != nil {
+		return err
+	}
 
 	if len(k.Options.Name) == 0 {
 		k.Name = t.Name()
@@ -120,7 +133,7 @@ func New(t reflect.Type, opt *Options) *Kind {
 				}
 
 				if fieldType == nil {
-					panic(errors.New("error reflecting type for " + field.Name))
+					return errors.New("error reflecting type for " + field.Name)
 				}
 
 				// convert type differs for search.Field and search.Facet
@@ -140,7 +153,7 @@ func New(t reflect.Type, opt *Options) *Kind {
 						} else if fieldType.ConvertibleTo(float64Type) {
 							field.SearchField.ConvertType = float64Type
 						} else {
-							panic(errors.New("no convert type specified for searchable facet " + field.Name))
+							return errors.New("no convert type specified for searchable facet " + field.Name)
 						}
 					}
 				} else {
@@ -154,7 +167,7 @@ func New(t reflect.Type, opt *Options) *Kind {
 					case boolType:
 						field.SearchField.ConvertType = boolType
 					default:
-						panic(errors.New("no convert type specified for searchable field " + field.Name))
+						return errors.New("no convert type specified for searchable field " + field.Name)
 					}
 				}
 			}
@@ -173,7 +186,7 @@ func New(t reflect.Type, opt *Options) *Kind {
 				case boolType:
 					converter = new(BoolConverter)
 				default:
-					panic(errors.New("invalid convert type for searchable facet " + field.Name))
+					return errors.New("invalid convert type for searchable facet " + field.Name)
 				}
 			} else {
 				switch field.SearchField.ConvertType {
@@ -190,7 +203,7 @@ func New(t reflect.Type, opt *Options) *Kind {
 				case boolType:
 					converter = new(BoolConverter)
 				default:
-					panic(errors.New("invalid convert type for searchable field " + field.Name))
+					return errors.New("invalid convert type for searchable field " + field.Name)
 				}
 			}
 
@@ -200,18 +213,22 @@ func New(t reflect.Type, opt *Options) *Kind {
 		}
 	}
 
-	return k
+	return nil
+}
+
+func (k *Kind) Type() reflect.Type {
+	return k.t
 }
 
 func (k *Kind) SearchFields() map[string]*SearchField {
 	return k.searchFields
 }
 
-func (k *Kind) checkFields() {
+func (k *Kind) checkFields() error {
 	k.fields = []*Field{}
 	var hasId, hasCreatedAt bool
-	for i := 0; i < k.Type.NumField(); i++ {
-		structField := k.Type.Field(i)
+	for i := 0; i < k.t.NumField(); i++ {
+		structField := k.t.Field(i)
 		field := new(Field)
 		field.SearchField = &SearchField{
 			Field:           field,
@@ -326,12 +343,13 @@ func (k *Kind) checkFields() {
 		k.fields = append(k.fields, field)
 	}
 	if !(hasId && hasCreatedAt) {
-		panic(errors.New("kind " + k.Name + " requires id and createdAt fields"))
+		return errors.New("kind " + k.Name + " requires id and createdAt fields")
 	}
+	return nil
 }
 
 func (k *Kind) New() interface{} {
-	return reflect.New(k.Type).Interface()
+	return reflect.New(k.t).Interface()
 }
 
 func (k *Kind) DeleteFromIndex(ctx context.Context, id string) error {
@@ -342,12 +360,11 @@ func (k *Kind) DeleteFromIndex(ctx context.Context, id string) error {
 	return index.Delete(ctx, id)
 }
 
-func (k *Kind) NewHolder(createdBy, ancestor *datastore.Key) *Holder {
+func (k *Kind) NewHolder(createdBy *datastore.Key) *Holder {
 	return &Holder{
-		Kind:  k,
-		createdBy:  createdBy,
-		ancestor:  ancestor,
-		value: k.New(),
+		Kind:      k,
+		createdBy: createdBy,
+		value:     k.New(),
 	}
 }
 

@@ -133,10 +133,8 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 					r.Handle(lang+route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
 				}
 			case http.MethodPost:
-				r.Handle(route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 				r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 				if hasLang {
-					r.Handle(lang+route.path+"/{ancestor}", a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 					r.Handle(lang+route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
 				}
 			case http.MethodPut:

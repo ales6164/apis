@@ -55,22 +55,18 @@ func loginHandler(p *EmailPasswordProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := appengine.NewContext(r)
 
-		var inputCredentials *InputCredentials
+		var inputCredentials = new(InputCredentials)
 
 		if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
-			body, err := ioutil.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
+			body, _ := ioutil.ReadAll(r.Body)
 			r.Body.Close()
-			err = json.Unmarshal(body, inputCredentials)
+			err := json.Unmarshal(body, inputCredentials)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		} else {
-			email, password := r.FormValue("email"), r.FormValue("password")
+			email, password := r.PostFormValue("email"), r.PostFormValue("password")
 			inputCredentials = &InputCredentials{
 				Email:    email,
 				Password: password,
@@ -128,7 +124,7 @@ func registerHandler(p *EmailPasswordProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := appengine.NewContext(r)
 
-		var inputCredentials *InputCredentials
+		var inputCredentials = new(InputCredentials)
 
 		if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
 			body, err := ioutil.ReadAll(r.Body)
@@ -137,13 +133,13 @@ func registerHandler(p *EmailPasswordProvider) http.HandlerFunc {
 				return
 			}
 			r.Body.Close()
-			err = json.Unmarshal(body, inputCredentials)
+			err = json.Unmarshal(body, &inputCredentials)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		} else {
-			email, password := r.FormValue("email"), r.FormValue("password")
+			email, password := r.PostFormValue("email"), r.PostFormValue("password")
 			inputCredentials = &InputCredentials{
 				Email:    email,
 				Password: password,

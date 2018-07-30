@@ -34,7 +34,7 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 	}
 	t := q.Run(ctx)
 	for {
-		var h = k.NewHolder(nil, nil)
+		var h = k.NewHolder(nil)
 		h.key, err = t.Next(h)
 		h.hasKey = true
 		if err == datastore.Done {
@@ -61,7 +61,7 @@ func (k *Kind) Delete(_ctx context.Context, key *datastore.Key) error {
 func GetMulti(ctx context.Context, kind *Kind, key ...*datastore.Key) ([]*Holder, error) {
 	var hs []*Holder
 	for _, k := range key {
-		h := kind.NewHolder(nil, nil)
+		h := kind.NewHolder(nil)
 		h.SetKey(k)
 		hs = append(hs, h)
 	}

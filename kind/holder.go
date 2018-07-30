@@ -9,7 +9,7 @@ import (
 	"google.golang.org/appengine/search"
 	"golang.org/x/net/context"
 	"github.com/ales6164/apis/errors"
-	)
+)
 
 type Holder struct {
 	Kind      *Kind
@@ -50,6 +50,10 @@ func (h *Holder) Value() interface{} {
 		}
 	}
 	return h.value
+}
+
+func (h *Holder) SetAncestor(key *datastore.Key) {
+	h.ancestor = key
 }
 
 func (h *Holder) SetValue(v interface{}) {

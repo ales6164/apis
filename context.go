@@ -156,7 +156,7 @@ func (ctx Context) Body() []byte {
 }
 
 func (ctx Context) User() (*kind.Holder, error) {
-	var h = UserKind.NewHolder(nil, nil)
+	var h = UserKind.NewHolder(nil)
 	err := h.Get(ctx, ctx.UserKey())
 	return h, err
 }

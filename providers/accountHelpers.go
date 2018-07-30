@@ -3,13 +3,15 @@ package providers
 import (
 	"google.golang.org/appengine/datastore"
 	"golang.org/x/net/context"
+	"time"
 )
 
 type Account struct {
-	Id     *datastore.Key `datastore:"-" apis:"id" json:"-"`
-	UserId *datastore.Key `json:"-"`
-	User   interface{}    `datastore:"-" json:"user,omitempty"`
-	Roles  []string       `json:"roles"`
+	Id        *datastore.Key `datastore:"-" apis:"id" json:"-"`
+	CreatedAt time.Time      `apis:"createdAt"`
+	UserId    *datastore.Key `json:"-"`
+	User      interface{}    `datastore:"-" json:"user,omitempty"`
+	Roles     []string       `json:"roles"`
 }
 
 type Output struct {
