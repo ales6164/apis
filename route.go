@@ -322,14 +322,13 @@ func (R *Route) postHandler() http.HandlerFunc {
 		}
 
 		h := R.kind.NewHolder(ctx.UserKey())
-		ancestor := mux.Vars(r)["ancestor"]
-		if len(ancestor) > 0 {
-			ancestorKey, err := datastore.DecodeKey(ancestor)
-			if err != nil {
-				ctx.PrintError(w, err)
+
+		if R.private {
+			if !ctx.IsAuthenticated {
+				ctx.PrintError(w, errors.ErrForbidden)
 				return
 			}
-			h.SetAncestor(ancestorKey)
+			h.SetAncestor(ctx.UserKey())
 		}
 		err := h.Parse(ctx.Body())
 		if err != nil {
