@@ -215,31 +215,52 @@ func (R *Route) queryHandler() http.HandlerFunc {
 				parent = ctx.UserKey()
 			}
 
-			key := R.kind.NewKey(ctx, name, parent)
-			if isPrivate && !key.Parent().Equal(ctx.UserKey()) {
-				ctx.PrintError(w, errors.ErrForbidden)
+			names := r.URL.Query()["name"]
+			if len(names) > 1 {
+				var keys []*datastore.Key
+				for _, name := range names {
+					key := R.kind.NewKey(ctx, name, parent)
+					if isPrivate && !key.Parent().Equal(ctx.UserKey()) {
+						ctx.PrintError(w, errors.ErrForbidden)
+						return
+					} else {
+						keys = append(keys, key)
+					}
+				}
+
+				hs, err := kind.GetMulti(ctx, R.kind, keys...)
+				if err != nil {
+					ctx.PrintError(w, err)
+					return
+				}
+
+				var out []interface{}
+				for _, h := range hs {
+					out = append(out, h.Value())
+				}
+
+				ctx.PrintResult(w, map[string]interface{}{
+					"count":   len(out),
+					"results": out,
+				})
+				return
+			} else {
+				key := R.kind.NewKey(ctx, name, parent)
+				if isPrivate && !key.Parent().Equal(ctx.UserKey()) {
+					ctx.PrintError(w, errors.ErrForbidden)
+					return
+				}
+				h := R.kind.NewHolder(ctx.UserKey())
+
+				err := h.Get(ctx, key)
+				if err != nil {
+					ctx.PrintError(w, err)
+					return
+				}
+
+				ctx.Print(w, h.Value())
 				return
 			}
-			h := R.kind.NewHolder(ctx.UserKey())
-
-			if err := R.trigger(BeforeRead, ctx, h); err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
-
-			err := h.Get(ctx, key)
-			if err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
-
-			if err := R.trigger(AfterRead, ctx, h); err != nil {
-				ctx.PrintError(w, err)
-				return
-			}
-
-			ctx.Print(w, h.Value())
-			return
 		} else {
 			limitInt, _ := strconv.Atoi(limit)
 			offsetInt, _ := strconv.Atoi(offset)
