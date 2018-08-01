@@ -345,10 +345,6 @@ func (R *Route) postHandler() http.HandlerFunc {
 		h := R.kind.NewHolder(ctx.UserKey())
 
 		if R.private {
-			if !ctx.IsAuthenticated {
-				ctx.PrintError(w, errors.ErrForbidden)
-				return
-			}
 			h.SetAncestor(ctx.UserKey())
 		}
 		err := h.Parse(ctx.Body())
