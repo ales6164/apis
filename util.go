@@ -7,7 +7,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
 	"google.golang.org/appengine/search"
-)
+	)
 
 const LetterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 const LetterNumberBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -37,8 +37,6 @@ func RandStringBytesMaskImprSrc(letterBytes string, n int) string {
 
 	return string(b)
 }
-
-
 
 // purges datastore and search of all entries
 func ClearAllEntries(ctx context.Context, kind *kind.Kind) error {

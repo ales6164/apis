@@ -97,7 +97,9 @@ func (h *Holder) Document(ctx context.Context) *Document {
 			for j := 0; j < valField.Len(); j++ {
 				convertedValue := searchField.Converter.Convert(valField.Index(j))
 				if searchField.IsFacet {
-					doc.facets = append(doc.facets, search.Facet{Name: searchField.SearchFieldName, Value: convertedValue})
+					if convertedValue != nil && !IsZeroOfUnderlyingType(convertedValue) {
+						doc.facets = append(doc.facets, search.Facet{Name: searchField.SearchFieldName, Value: convertedValue})
+					}
 				} else {
 					doc.fields = append(doc.fields, search.Field{Name: searchField.SearchFieldName, Value: convertedValue})
 				}
@@ -105,7 +107,9 @@ func (h *Holder) Document(ctx context.Context) *Document {
 		} else {
 			convertedValue := searchField.Converter.Convert(valField)
 			if searchField.IsFacet {
-				doc.facets = append(doc.facets, search.Facet{Name: searchField.SearchFieldName, Value: convertedValue})
+				if convertedValue != nil && !IsZeroOfUnderlyingType(convertedValue) {
+					doc.facets = append(doc.facets, search.Facet{Name: searchField.SearchFieldName, Value: convertedValue})
+				}
 			} else {
 				doc.fields = append(doc.fields, search.Field{Name: searchField.SearchFieldName, Value: convertedValue})
 			}
@@ -113,6 +117,15 @@ func (h *Holder) Document(ctx context.Context) *Document {
 	}
 
 	return doc
+}
+
+func IsZeroOfUnderlyingType(x interface{}) bool {
+	return x == reflect.Zero(reflect.TypeOf(x)).Interface()
+}
+
+// for non comparable types
+func IsZeroOfDeepUnderlyingType(x interface{}) bool {
+	return reflect.DeepEqual(x, reflect.Zero(reflect.TypeOf(x)).Interface())
 }
 
 func (h *Holder) SaveToIndex(ctx context.Context) error {
