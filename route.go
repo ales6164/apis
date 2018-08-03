@@ -36,11 +36,12 @@ type Cursor struct {
 }
 
 type SearchOutput struct {
-	Count   int                      `json:"count"`
-	Total   int                      `json:"total"`
-	Results []interface{}            `json:"results"`
-	Filters map[string][]FacetOutput `json:"filters,omitempty"`
-	Cursor  *Cursor                  `json:"cursor,omitempty"`
+	Count         int                      `json:"count"`
+	Total         int                      `json:"total"`
+	Results       []interface{}            `json:"results"`
+	ResultFilters map[string][]FacetOutput `json:"resultFilters,omitempty"`
+	Filters       map[string][]FacetOutput `json:"filters,omitempty"`
+	Cursor        *Cursor                  `json:"cursor,omitempty"`
 }
 
 type Listener func(ctx Context, h *kind.Holder) error

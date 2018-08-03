@@ -34,7 +34,7 @@ func initSearch(a *Apis, r *mux.Router) {
 			return
 		}
 
-		q, next, autoFilterDiscovery, sort, limit, offset := r.FormValue("q"), r.FormValue("next"), r.FormValue("autoFilterDiscovery"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset")
+		q, next, autoFilterDiscovery, resultFilterDiscovery, sort, limit, offset := r.FormValue("q"), r.FormValue("next"), r.FormValue("autoFilterDiscovery"), r.FormValue("resultFilterDiscovery"), r.FormValue("sort"), r.FormValue("limit"), r.FormValue("offset")
 
 		index, err := search.Open(kindName)
 		if err != nil {
@@ -159,6 +159,13 @@ func initSearch(a *Apis, r *mux.Router) {
 			sortExpr = append(sortExpr, search.SortExpression{Expr: sort, Reverse: !desc})
 		}
 
+		var fsDisc []search.FacetSearchOption
+		if len(resultFilterDiscovery) > 0 {
+			fsDisc = []search.FacetSearchOption{
+				search.AutoFacetDiscovery(0, 0),
+			}
+		}
+
 		// real search
 		var results []interface{}
 		var docKeys []*datastore.Key
@@ -169,6 +176,7 @@ func initSearch(a *Apis, r *mux.Router) {
 			Cursor:        search.Cursor(next),
 			CountAccuracy: 1000,
 			Offset:        intOffset,
+			Facets:        fsDisc,
 			Limit:         intLimit,
 			Sort: &search.SortOptions{
 				Expressions: sortExpr,
@@ -192,6 +200,42 @@ func initSearch(a *Apis, r *mux.Router) {
 				}
 			} else {
 				results = append(results, doc.Parse(k))
+			}
+		}
+
+		// refetch all filter
+		var facsCurrentOutput = map[string][]FacetOutput{}
+		if len(resultFilterDiscovery) > 0 {
+			facetsResult, _ := t.Facets()
+			for _, f := range facetsResult {
+				for _, v := range f {
+					if _, ok := facsCurrentOutput[v.Name]; !ok {
+						facsCurrentOutput[v.Name] = []FacetOutput{}
+					}
+					if rang, ok := v.Value.(search.Range); ok {
+						var value interface{}
+						if rang.Start == math.Inf(-1) || rang.End == math.Inf(1) {
+							value = "Inf"
+						} else {
+							value = map[string]interface{}{
+								"start": rang.Start,
+								"end":   rang.End,
+							}
+						}
+						facsCurrentOutput[v.Name] = append(facsCurrentOutput[v.Name], FacetOutput{
+							Count: v.Count,
+							Value: value,
+							Name:  v.Name,
+						})
+					} else if rang, ok := v.Value.(search.Atom); ok {
+						facsCurrentOutput[v.Name] = append(facsCurrentOutput[v.Name], FacetOutput{
+							Count: v.Count,
+							Value: string(rang),
+							Name:  v.Name,
+						})
+					}
+
+				}
 			}
 		}
 
@@ -221,11 +265,12 @@ func initSearch(a *Apis, r *mux.Router) {
 		}
 
 		ctx.Print(w, &SearchOutput{
-			Count:   len(results),
-			Total:   t.Count(),
-			Results: results,
-			Filters: facsOutput,
-			Cursor:  cursor,
+			Count:         len(results),
+			Total:         t.Count(),
+			Results:       results,
+			Filters:       facsOutput,
+			ResultFilters: facsCurrentOutput,
+			Cursor:        cursor,
 		})
 	}
 
