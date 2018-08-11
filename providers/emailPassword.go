@@ -79,21 +79,15 @@ func loginHandler(p *EmailPasswordProvider) http.HandlerFunc {
 			return
 		}
 
-		err = checkPassword(inputCredentials.Password)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
 		identity, err := GetIdentity(ctx, p, inputCredentials.Email)
 		if err != nil {
-			http.Error(w, errors.ErrUserDoesNotExist.Error(), http.StatusInternalServerError)
+			http.Error(w, errors.ErrUserDoesNotExist.Error(), http.StatusBadRequest)
 			return
 		}
 
 		err = decrypt(identity.Secret, []byte(inputCredentials.Password))
 		if err != nil {
-			http.Error(w, errors.ErrUserDoesNotExist.Error(), http.StatusInternalServerError)
+			http.Error(w, errors.ErrUserPasswordIncorrect.Error(), http.StatusBadRequest)
 			return
 		}
 
