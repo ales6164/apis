@@ -174,7 +174,7 @@ func initSearch(a *Apis, r *mux.Router) {
 			IDsOnly:       k.RetrieveByIDOnSearch,
 			Refinements:   facets,
 			Cursor:        search.Cursor(next),
-			CountAccuracy: 1000,
+			CountAccuracy: 10000,
 			Offset:        intOffset,
 			Facets:        fsDisc,
 			Limit:         intLimit,
