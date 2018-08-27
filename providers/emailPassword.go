@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"github.com/asaskevich/govalidator"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v2/errors"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine"
 	"encoding/json"

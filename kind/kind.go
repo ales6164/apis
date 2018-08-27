@@ -5,7 +5,7 @@ import (
 	"google.golang.org/appengine/datastore"
 	"reflect"
 	"strings"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v2/errors"
 	"google.golang.org/appengine/search"
 )
 

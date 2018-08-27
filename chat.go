@@ -5,9 +5,9 @@ import (
 	"time"
 	"github.com/gorilla/mux"
 	"net/http"
-	"github.com/ales6164/apis/kind"
+	"gopkg.in/ales6164/apis.v2/kind"
 	"reflect"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v2/errors"
 	"google.golang.org/appengine"
 )
 

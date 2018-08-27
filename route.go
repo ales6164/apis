@@ -1,12 +1,12 @@
 package apis
 
 import (
-	"github.com/ales6164/apis/kind"
+	"gopkg.in/ales6164/apis.v2/kind"
 	"net/http"
 	"google.golang.org/appengine/datastore"
 	"strconv"
 	"strings"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v2/errors"
 	"regexp"
 	"github.com/gorilla/mux"
 )

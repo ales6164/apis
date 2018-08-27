@@ -2,14 +2,14 @@ package apis
 
 import (
 	"io/ioutil"
-	"github.com/ales6164/apis/middleware"
+	"gopkg.in/ales6164/apis.v2/middleware"
 	"net/http"
-	"github.com/ales6164/apis/kind"
+	"gopkg.in/ales6164/apis.v2/kind"
 	"github.com/gorilla/mux"
 	"path"
 	"strings"
-	"github.com/ales6164/apis/module"
-	"github.com/ales6164/apis/providers"
+	"gopkg.in/ales6164/apis.v2/module"
+	"gopkg.in/ales6164/apis.v2/providers"
 )
 
 type Apis struct {

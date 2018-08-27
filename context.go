@@ -10,13 +10,13 @@ import (
 	"encoding/json"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
-	"github.com/ales6164/apis/kind"
+	"gopkg.in/ales6164/apis.v2/kind"
 	"google.golang.org/appengine/log"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v2/errors"
 	"strings"
 	"strconv"
 	"time"
-	"github.com/ales6164/apis/middleware"
+	"gopkg.in/ales6164/apis.v2/middleware"
 )
 
 type Context struct {

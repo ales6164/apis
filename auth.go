@@ -4,9 +4,9 @@ import (
 	"google.golang.org/appengine/datastore"
 	"time"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/ales6164/apis/middleware"
+	"gopkg.in/ales6164/apis.v2/middleware"
 	"github.com/gorilla/mux"
-	"github.com/ales6164/apis/providers"
+	"gopkg.in/ales6164/apis.v2/providers"
 	"golang.org/x/net/context"
 )
 

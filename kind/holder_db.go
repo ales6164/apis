@@ -3,7 +3,7 @@ package kind
 import (
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v2/errors"
 )
 
 type Filter struct {

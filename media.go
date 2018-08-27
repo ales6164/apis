@@ -12,9 +12,9 @@ import (
 	"path"
 	"io/ioutil"
 	"cloud.google.com/go/storage"
-	"github.com/ales6164/apis/kind"
+	"gopkg.in/ales6164/apis.v2/kind"
 	"reflect"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v2/errors"
 )
 
 type StoredFile struct {

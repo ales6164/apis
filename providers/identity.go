@@ -3,7 +3,7 @@ package providers
 import (
 	"google.golang.org/appengine/datastore"
 	"golang.org/x/net/context"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v2/errors"
 )
 
 const identityKind = "_identity"

@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"google.golang.org/appengine/search"
 	"golang.org/x/net/context"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v2/errors"
 )
 
 type Holder struct {

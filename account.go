@@ -2,13 +2,13 @@ package apis
 
 import (
 	"reflect"
-	"github.com/ales6164/apis/kind"
-	"github.com/ales6164/apis/providers"
+	"gopkg.in/ales6164/apis.v2/kind"
+	"gopkg.in/ales6164/apis.v2/providers"
 	"github.com/gorilla/mux"
 	"time"
 	"net/http"
 	"google.golang.org/appengine/datastore"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v2/errors"
 )
 
 var accountKind = kind.New(reflect.TypeOf(providers.Account{}), &kind.Options{
