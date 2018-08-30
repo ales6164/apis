@@ -3,7 +3,6 @@ package apis
 import (
 		"math/rand"
 	"time"
-	"github.com/ales6164/apis/kind"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
 	"google.golang.org/appengine/search"
@@ -39,7 +38,7 @@ func RandStringBytesMaskImprSrc(letterBytes string, n int) string {
 }
 
 // purges datastore and search of all entries
-func ClearAllEntries(ctx context.Context, kind *kind.Kind) error {
+func ClearAllEntries(ctx context.Context, kind *Kind) error {
 	keys, _ := datastore.NewQuery(kind.Name).KeysOnly().GetAll(ctx, nil)
 	if len(keys) > 0 {
 		err := datastore.DeleteMulti(ctx, keys)

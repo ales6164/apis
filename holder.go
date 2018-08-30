@@ -1,4 +1,4 @@
-package kind
+package apis
 
 import (
 	"google.golang.org/appengine/datastore"
@@ -13,7 +13,6 @@ import (
 
 type Holder struct {
 	Kind      *Kind
-	createdBy *datastore.Key
 	ancestor  *datastore.Key
 	hasKey    bool
 
@@ -24,14 +23,6 @@ type Holder struct {
 	hasLoadedData bool
 
 	rollbackProperties []datastore.Property
-}
-
-type Meta struct {
-	Id        *datastore.Key `json:"id"`
-	CreatedAt time.Time      `json:"createdAt"`
-	UpdatedAt time.Time      `json:"updatedAt"`
-	CreatedBy *datastore.Key `json:"createdBy"`
-	Value     interface{}    `json:"value"`
 }
 
 func (h *Holder) Id() string {
@@ -129,9 +120,9 @@ func IsZeroOfDeepUnderlyingType(x interface{}) bool {
 }
 
 func (h *Holder) SaveToIndex(ctx context.Context) error {
-	if !h.Kind.EnableSearch {
+	/*if !h.Kind.EnableSearch {
 		return nil
-	}
+	}*/
 	index, err := search.Open(h.Kind.Name)
 	if err != nil {
 		return err
@@ -182,10 +173,6 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 			case "createdat":
 				if !h.hasLoadedData {
 					field.Set(now)
-				}
-			case "createdby":
-				if !h.hasLoadedData {
-					field.Set(reflect.ValueOf(h.createdBy))
 				}
 			case "ancestor":
 				if !h.hasLoadedData {

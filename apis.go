@@ -1,31 +1,28 @@
 package apis
 
 import (
-	"io/ioutil"
+	"github.com/ales6164/apis/errors"
 	"github.com/ales6164/apis/middleware"
-	"net/http"
-	"github.com/ales6164/apis/kind"
-	"github.com/gorilla/mux"
-	"path"
-	"strings"
 	"github.com/ales6164/apis/module"
 	"github.com/ales6164/apis/providers"
+	"github.com/gorilla/context"
+	"github.com/gorilla/mux"
+	"io/ioutil"
+	"net/http"
 )
 
 type Apis struct {
-	permissions
-	options             *Options
-	routes              []*Route
-	router              *mux.Router
+	*mux.Router
+	options *Options
+
 	middleware          *middleware.JWTMiddleware
 	privateKey          []byte
 	allowedTranslations map[string]bool
-	kinds               map[string]*kind.Kind
 	modules             []module.Module
 }
 
 type Options struct {
-	Permissions
+	Roles                  map[string][]string
 	AppName                string
 	StorageBucket          string // required for file upload and media library
 	PrivateKeyPath         string // for password hashing
@@ -39,21 +36,30 @@ type Options struct {
 
 func New(opt *Options) (*Apis, error) {
 	a := &Apis{
-		router:              mux.NewRouter(),
+		Router:              mux.NewRouter(),
 		options:             opt,
 		allowedTranslations: map[string]bool{},
-		kinds:               map[string]*kind.Kind{},
 	}
+
+	a.Router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if origin := r.Header.Get("Origin"); origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+				w.Header().Set("Access-Control-Allow-Headers",
+					"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
+						"X-Requested-With")
+			}
+			if r.Method == "OPTIONS" {
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 
 	// read private key
 	var err error
 	a.privateKey, err = ioutil.ReadFile(opt.PrivateKeyPath)
-	if err != nil {
-		return a, err
-	}
-
-	// parse permissions
-	a.permissions, err = a.options.Permissions.parse()
 	if err != nil {
 		return a, err
 	}
@@ -69,100 +75,35 @@ func New(opt *Options) (*Apis, error) {
 	return a, nil
 }
 
-func (a *Apis) Handle(kind *kind.Kind) *Route {
-	p := "/" + path.Join("kind", kind.Name)
-	m := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}
-	r := &Route{
-		kind:    kind,
-		a:       a,
-		path:    p,
-		methods: m,
-	}
-	kind.AddRouteSettings(p, m)
-	a.kinds[kind.Name] = kind
-	a.routes = append(a.routes, r)
-	return r
-}
-
-// deprecated
-func (a *Apis) HandleWPath(p string, kind *kind.Kind) *Route {
-	m := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}
-	r := &Route{
-		kind:    kind,
-		a:       a,
-		path:    p,
-		methods: m,
-	}
-	kind.AddRouteSettings(p, m)
-	a.kinds[kind.Name] = kind
-	a.routes = append(a.routes, r)
-	return r
-}
-
-func (a *Apis) Router() *mux.Router {
-	return a.router
-}
-
-func (a *Apis) Module(module module.Module) {
+/*func (a *Apis) Module(module module.Module) {
 	if err := module.Init(); err != nil {
 		panic(module.Name() + ": " + err.Error())
 	}
 	a.modules = append(a.modules, module)
 }
 
-func (a *Apis) Handler(pathPrefix string) http.Handler {
-	r := a.router.PathPrefix(pathPrefix).Subrouter()
-
-	// {sort:(?:asc|desc|new)}
-	// lang path
-	var lang string
-	var hasLang bool
-	if len(a.options.HasTranslationsFor) > 0 {
-		lang = "/{lang:(?:" + strings.Join(a.options.HasTranslationsFor, "|") + ")}" // /{lang:(?:sl|en|gb)}
-		hasLang = true
-	}
-
-	for _, route := range a.routes {
-		for _, method := range route.methods {
-			switch method {
-			case http.MethodGet:
-				r.Handle(route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
-				r.Handle(route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
-				if hasLang {
-					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.getHandler())).Methods(http.MethodGet)
-					r.Handle(lang+route.path, a.middleware.Handler(route.queryHandler())).Methods(http.MethodGet)
-				}
-			case http.MethodPost:
-				r.Handle(route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
-				if hasLang {
-					r.Handle(lang+route.path, a.middleware.Handler(route.postHandler())).Methods(http.MethodPost)
-				}
-			case http.MethodPut:
-				r.Handle(route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
-				if hasLang {
-					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.putHandler())).Methods(http.MethodPut)
-				}
-			case http.MethodDelete:
-				r.Handle(route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
-				if hasLang {
-					r.Handle(lang+route.path+"/{id}", a.middleware.Handler(route.deleteHandler())).Methods(http.MethodDelete)
-				}
-			}
-		}
-	}
-
-	initInfo(a, r)
-	initAuth(a, r)
-	initUser(a, r)
-	initMedia(a, r)
-	initChat(a, r)
-	initSearch(a, r)
-
+func (a *Apis) Handler() http.Handler {
 	// modules
 	for _, m := range a.modules {
-		modulePath := path.Join(pathPrefix, "module", m.Name())
-		r.PathPrefix(modulePath).Handler(m.Router(modulePath))
+		modulePath := path.Join("/", "module", m.Name())
+		a.PathPrefix(modulePath).Handler(m.Router(modulePath))
 	}
-
-	return &Server{a.router}
+	return &Server{a.Router}
+}
+*/
+func (a *Apis) AuthMiddleware(h http.Handler, scopes ...string) http.Handler {
+	return a.middleware.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := NewContext(r)
+		var ok bool
+		if !ctx.IsAuthenticated {
+			ctx.PrintError(w, errors.ErrUnathorized)
+			return
+		}
+		if ok = ctx.HasScope(scopes...); !ok {
+			ctx.PrintError(w, errors.ErrForbidden)
+			return
+		}
+		context.Set(r, "context", ctx)
+		h.ServeHTTP(w, r)
+	}))
 }

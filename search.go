@@ -1,18 +1,6 @@
 package apis
 
-import (
-	"github.com/gorilla/mux"
-	"net/http"
-	"github.com/ales6164/apis/errors"
-	"google.golang.org/appengine/search"
-	"strings"
-	"strconv"
-	"github.com/ales6164/apis/kind"
-	"google.golang.org/appengine/datastore"
-	"math"
-)
-
-func initSearch(a *Apis, r *mux.Router) {
+/*func initSearch(a *Apis, r *mux.Router) {
 	R := &Route{
 		a:       a,
 		methods: []string{http.MethodGet},
@@ -276,3 +264,4 @@ func initSearch(a *Apis, r *mux.Router) {
 
 	r.Handle("/search/{kind}", a.middleware.Handler(R.getHandler())).Methods(http.MethodGet)
 }
+*/

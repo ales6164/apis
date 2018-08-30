@@ -1,4 +1,4 @@
-package kind
+package apis
 
 import (
 	"google.golang.org/appengine/search"
