@@ -4,6 +4,7 @@ import (
 	"github.com/ales6164/apis/errors"
 	"github.com/ales6164/apis/middleware"
 	"github.com/ales6164/apis/module"
+	"github.com/ales6164/apis/providers"
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"io/ioutil"
@@ -21,16 +22,20 @@ type Apis struct {
 }
 
 type Options struct {
-	Roles                  map[string][]string
+	Roles                  Roles
 	AppName                string
 	StorageBucket          string // required for file upload and media library
-	PrivateKeyPath         string // for password hashing
+	PrivateKeyPath         string
+	IdentityProviders      []providers.IdentityProvider
 	DefaultLanguage        string // fallback language
 	HasTranslationsFor     []string
 	AuthorizedOrigins      []string // not implemented
 	AuthorizedRedirectURIs []string // not implemented
 	RequireTrackingID      bool     // not implemented
 }
+
+type Roles map[string]Scopes
+type Scopes []string
 
 func New(opt *Options) (*Apis, error) {
 	a := &Apis{

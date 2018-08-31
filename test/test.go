@@ -11,14 +11,14 @@ import (
 var ObjectKind = apis.NewKind(reflect.TypeOf(Object{}))
 
 func init() {
-	api, _ := apis.New(&apis.Options{PrivateKeyPath: "key.txt"})
+	api, _ := apis.New(&apis.Options{
+		PrivateKeyPath: "key.txt",
+		IdentityProviders: []providers.IdentityProvider{
+			providers.WithEmailPasswordProvider(&providers.Options{Scopes: []string{ObjectKind.ScopeFullControl}}),
+		},
+	})
 
-	emailPasswordProvider := providers.EmailPasswordProvider{
-		Cost:       12,
-		SigningKey: api.SigningKey(),
-	}
-
-	api.Handle("/signin", emailPasswordProvider.LoginHandler()).Methods(http.MethodPost)
+	//api.Handle("/signin", emailPasswordProvider.LoginHandler()).Methods(http.MethodPost)
 
 	api.Handle("/objects", ObjectKind).Methods(http.MethodPost)
 	api.Handle("/objects/{id}", ObjectKind).Methods(http.MethodGet)

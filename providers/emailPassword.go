@@ -23,8 +23,8 @@ var (
 )
 
 type EmailPasswordProvider struct {
-	Cost       int // default is 12
-	SigningKey []byte
+	*Options
+	IdentityProvider
 }
 
 func (p *EmailPasswordProvider) LoginHandler() http.Handler {
