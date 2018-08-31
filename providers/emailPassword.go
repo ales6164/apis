@@ -1,19 +1,16 @@
 package providers
 
 import (
-	"net/http"
-	"strings"
-	"github.com/asaskevich/govalidator"
-	"github.com/ales6164/apis/errors"
-	"github.com/gorilla/mux"
-	"google.golang.org/appengine"
 	"encoding/json"
-	"io/ioutil"
+	"github.com/ales6164/apis"
+	"github.com/ales6164/apis/errors"
+	"github.com/ales6164/client"
+	"github.com/asaskevich/govalidator"
 	"golang.org/x/crypto/bcrypt"
+	"net/http"
 )
 
-const emailPasswordProvider = "email"
-
+const EmailPasswordProviderName = "email"
 const COST = 12
 
 var (
@@ -26,60 +23,32 @@ var (
 )
 
 type EmailPasswordProvider struct {
-	authority Authority
-	options   *Options
+	Cost       int // default is 12
+	SigningKey []byte
 }
 
-func (p *EmailPasswordProvider) Apply(r *mux.Router, a Authority) {
-	p.authority = a
-	r.HandleFunc("/login", loginHandler(p)).Methods(http.MethodPost)
-	r.HandleFunc("/register", registerHandler(p)).Methods(http.MethodPost)
-}
-
-func (p *EmailPasswordProvider) Authority() Authority {
-	return p.authority
-}
-func (p *EmailPasswordProvider) Options() *Options {
-	return p.options
-}
-
-func (p *EmailPasswordProvider) Name() string {
-	return emailPasswordProvider
-}
-
-func loginHandler(p *EmailPasswordProvider) http.HandlerFunc {
+func (p *EmailPasswordProvider) LoginHandler() http.Handler {
 	type InputCredentials struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := appengine.NewContext(r)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := apis.NewContext(r)
 
 		var inputCredentials = new(InputCredentials)
-
-		if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
-			body, _ := ioutil.ReadAll(r.Body)
-			r.Body.Close()
-			err := json.Unmarshal(body, inputCredentials)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		} else {
-			email, password := r.PostFormValue("email"), r.PostFormValue("password")
-			inputCredentials = &InputCredentials{
-				Email:    email,
-				Password: password,
-			}
+		err := json.Unmarshal(ctx.Body(), inputCredentials)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 
-		err := checkEmail(inputCredentials.Email)
+		err = checkEmail(inputCredentials.Email)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		identity, err := GetIdentity(ctx, p, inputCredentials.Email)
+		identity, err := client.GetIdentity(ctx, EmailPasswordProviderName, inputCredentials.Email)
 		if err != nil {
 			http.Error(w, errors.ErrUserDoesNotExist.Error(), http.StatusBadRequest)
 			return
@@ -91,26 +60,32 @@ func loginHandler(p *EmailPasswordProvider) http.HandlerFunc {
 			return
 		}
 
-		account, err := p.Authority().GetAccount(ctx, identity.AccountKey)
+		user, err := identity.GetUser(ctx)
 		if err != nil {
 			http.Error(w, errors.ErrUserDoesNotExist.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		signedToken, err := p.Authority().SignToken(ctx, account)
+		_, token, err := client.NewSession(ctx, identity)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		json.NewEncoder(w).Encode(Output{
-			Token: signedToken,
-			User:  account.User,
+		signedToken, err := token.SignedString(p.SigningKey)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"User":  user,
+			"Token": signedToken,
 		})
-	}
+	})
 }
 
-func registerHandler(p *EmailPasswordProvider) http.HandlerFunc {
+/*func registerHandler(p *EmailPasswordProvider) http.HandlerFunc {
 	type InputCredentials struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -177,7 +152,7 @@ func registerHandler(p *EmailPasswordProvider) http.HandlerFunc {
 			User:  account.User,
 		})
 	}
-}
+}*/
 
 func checkEmail(v string) error {
 	if len(v) == 0 {

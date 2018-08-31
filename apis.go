@@ -4,7 +4,6 @@ import (
 	"github.com/ales6164/apis/errors"
 	"github.com/ales6164/apis/middleware"
 	"github.com/ales6164/apis/module"
-	"github.com/ales6164/apis/providers"
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"io/ioutil"
@@ -16,7 +15,7 @@ type Apis struct {
 	options *Options
 
 	middleware          *middleware.JWTMiddleware
-	privateKey          []byte
+	signingKey          []byte
 	allowedTranslations map[string]bool
 	modules             []module.Module
 }
@@ -26,7 +25,6 @@ type Options struct {
 	AppName                string
 	StorageBucket          string // required for file upload and media library
 	PrivateKeyPath         string // for password hashing
-	IdentityProviders      []providers.IdentityProvider
 	DefaultLanguage        string // fallback language
 	HasTranslationsFor     []string
 	AuthorizedOrigins      []string // not implemented
@@ -59,13 +57,13 @@ func New(opt *Options) (*Apis, error) {
 
 	// read private key
 	var err error
-	a.privateKey, err = ioutil.ReadFile(opt.PrivateKeyPath)
+	a.signingKey, err = ioutil.ReadFile(opt.PrivateKeyPath)
 	if err != nil {
 		return a, err
 	}
 
 	// set auth middleware
-	a.middleware = middleware.AuthMiddleware(a.privateKey)
+	a.middleware = middleware.AuthMiddleware(a.signingKey)
 
 	// languages
 	for _, l := range opt.HasTranslationsFor {
@@ -73,6 +71,10 @@ func New(opt *Options) (*Apis, error) {
 	}
 
 	return a, nil
+}
+
+func (a *Apis) SigningKey() []byte {
+	return a.signingKey
 }
 
 /*func (a *Apis) Module(module module.Module) {
