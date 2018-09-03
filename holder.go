@@ -1,27 +1,23 @@
 package apis
 
 import (
-	"google.golang.org/appengine/datastore"
-	"time"
 	"encoding/json"
-	"github.com/imdario/mergo"
-	"reflect"
-	"google.golang.org/appengine/search"
-	"golang.org/x/net/context"
 	"github.com/ales6164/apis/errors"
+	"github.com/imdario/mergo"
+	"golang.org/x/net/context"
+	"google.golang.org/appengine/datastore"
+	"google.golang.org/appengine/search"
+	"reflect"
+	"time"
 )
 
 type Holder struct {
-	Kind      *Kind
-	ancestor  *datastore.Key
-	hasKey    bool
-
-	key   *datastore.Key
-	value interface{}
-
-	hasInputData  bool // when updating
-	hasLoadedData bool
-
+	Kind               *Kind
+	hasKey             bool
+	key                *datastore.Key
+	value              interface{}
+	hasInputData       bool // when updating
+	hasLoadedData      bool
 	rollbackProperties []datastore.Property
 }
 
@@ -43,10 +39,6 @@ func (h *Holder) Value() interface{} {
 	return h.value
 }
 
-func (h *Holder) SetAncestor(key *datastore.Key) {
-	h.ancestor = key
-}
-
 func (h *Holder) SetValue(v interface{}) {
 	h.value = v
 }
@@ -66,10 +58,7 @@ func (h *Holder) SetKey(k *datastore.Key) {
 	h.hasKey = k != nil
 }
 
-func (h *Holder) GetKey(ctx context.Context) *datastore.Key {
-	if !h.hasKey {
-		h.SetKey(h.Kind.NewIncompleteKey(ctx, h.ancestor))
-	}
+func (h *Holder) GetKey() *datastore.Key {
 	return h.key
 }
 
@@ -173,10 +162,6 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 			case "createdat":
 				if !h.hasLoadedData {
 					field.Set(now)
-				}
-			case "ancestor":
-				if !h.hasLoadedData {
-					field.Set(reflect.ValueOf(h.ancestor))
 				}
 			}
 		}

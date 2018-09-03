@@ -1,9 +1,9 @@
 package apis
 
 import (
+	"github.com/ales6164/apis/errors"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
-	"github.com/ales6164/apis/errors"
 )
 
 type Filter struct {
@@ -76,11 +76,9 @@ func (h *Holder) Get(ctx context.Context, key *datastore.Key) error {
 }
 
 // key id must be a string otherwise it creates incomplete key
-func (h *Holder) Add(_ctx context.Context) error {
+func (h *Holder) Add(_ctx context.Context, key *datastore.Key) error {
 	return datastore.RunInTransaction(_ctx, func(tc context.Context) error {
-		if !h.hasKey || h.key == nil {
-			h.SetKey(h.Kind.NewIncompleteKey(tc, h.ancestor))
-		}
+		h.SetKey(key)
 		var err error
 		if h.key.Incomplete() {
 			h.key, err = datastore.Put(tc, h.key, h)

@@ -2,7 +2,6 @@ package apis
 
 import (
 	"github.com/ales6164/apis/errors"
-	gContext "github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
@@ -383,12 +382,19 @@ func (k *Kind) RetrieveSearchParameter(parameterName string, value string, field
 }
 
 // todo: implement {userId} for all methods
+// za get rabim ancestor/userId samo v primeru, da querijam oz. preverim, če id vsebuje ta ancestor
+// za post je ancestor in userId sign, da v key vključim ancestor
+// za put/delete je ancestor/userId sign, da preverim, če ima id key res tak ancestor ... Key.Ancestor.Matches(ancestorKey)
 func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		k.get(w, r)
 	case http.MethodPost:
 		k.post(w, r)
+	case http.MethodPut:
+		k.put(w, r)
+	case http.MethodDelete:
+		k.delete(w, r)
 	}
 }
 
@@ -396,11 +402,7 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (k *Kind) get(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	var err error
-	var ctx Context
-	var ok bool
-	if ctx, ok = gContext.Get(r, "context").(Context); !ok {
-		ctx = NewContext(r)
-	}
+	ctx := NewContext(r)
 
 	var ancestorKey *datastore.Key
 	if ancestor, ok := vars["ancestor"]; ok {
@@ -559,30 +561,18 @@ func (k *Kind) get(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// za post je ancestor in userId sign, da v key vključim ancestor
 func (k *Kind) post(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	var err error
-	var ctx Context
-	var ok bool
-	if ctx, ok = gContext.Get(r, "context").(Context); !ok {
-		ctx = NewContext(r)
-	}
-
-	var userId *datastore.Key
-	var hasUserId bool
-	if uid, ok := vars["userId"]; ok {
-		userId, _ = datastore.DecodeKey(uid)
-		if !ctx.Session.User.Equal(userId) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		hasUserId = true
-	}
+	ctx := NewContext(r)
+	_, userId, ancestor, err := getKeysFromRequest(ctx, vars)
 
 	h := k.NewHolder()
 
-	if hasUserId {
-		h.SetAncestor(userId)
+	if userId != nil {
+		h.SetKey(k.NewIncompleteKey(ctx, userId))
+	} else if ancestor != nil {
+		h.SetKey(k.NewIncompleteKey(ctx, ancestor))
 	}
 
 	err = h.Parse(ctx.Body())
@@ -591,13 +581,103 @@ func (k *Kind) post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.Add(ctx)
+	err = h.Add(ctx, h.key)
 	if err != nil {
 		ctx.PrintError(w, err, "error adding")
 		return
 	}
 
 	ctx.Print(w, h.Value())
+}
+
+func (k *Kind) put(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	var err error
+
+	ctx := NewContext(r)
+
+	var ancestorKey *datastore.Key
+	if ancestor, ok := vars["ancestor"]; ok {
+		ancestorKey, err = datastore.DecodeKey(ancestor)
+		if err != nil {
+			ctx.PrintError(w, errors.ErrDecodingKey)
+			return
+		}
+	}
+	if uid, ok := vars["userId"]; ok {
+		ancestorKey, _ = datastore.DecodeKey(uid)
+		if !ctx.Session.User.Equal(ancestorKey) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+	}
+	if id, ok := vars["id"]; ok {
+		// got encoded key
+		idKey, err := datastore.DecodeKey(id)
+		if err != nil {
+			ctx.PrintError(w, errors.ErrDecodingKey)
+			return
+		}
+
+		h := k.NewHolder()
+		err = h.Parse(ctx.Body())
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+		h.SetKey(idKey)
+		h.SetAncestor(ancestorKey)
+
+		err = h.Update(ctx)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		ctx.Print(w, h.Value())
+	} else {
+		ctx.PrintError(w, errors.ErrIdRequired)
+	}
+}
+
+func (k *Kind) delete(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	var err error
+
+	ctx := NewContext(r)
+
+	id, userId, ancestor, err := getKeysFromRequest(ctx, vars)
+	if err != nil {
+		ctx.PrintError(w, errors.ErrDecodingKey)
+		return
+	}
+
+	if id, ok := vars["id"]; ok {
+		// got encoded key
+		idKey, err := datastore.DecodeKey(id)
+		if err != nil {
+			ctx.PrintError(w, errors.ErrDecodingKey)
+			return
+		}
+
+		h := k.NewHolder()
+		err = h.Parse(ctx.Body())
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+		h.SetKey(idKey)
+
+		err = h.Update(ctx)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		ctx.Print(w, h.Value())
+	} else {
+		ctx.PrintError(w, errors.ErrIdRequired)
+	}
 }
 
 func (k *Kind) Get(ctx context.Context, key *datastore.Key, ancestor *datastore.Key) (h *Holder, err error) {
@@ -620,6 +700,33 @@ func (k *Kind) Get(ctx context.Context, key *datastore.Key, ancestor *datastore.
 		return h, datastore.ErrNoSuchEntity
 	}
 	return h, err
+}
+
+func getKeysFromRequest(ctx Context, vars map[string]string) (id *datastore.Key, userId *datastore.Key, ancestor *datastore.Key, err error) {
+	if encodedAncestorKey, ok := vars["ancestor"]; ok {
+		ancestor, err = datastore.DecodeKey(encodedAncestorKey)
+		if err != nil {
+			return id, userId, ancestor, errors.ErrDecodingKey
+		}
+	}
+	if encodedUserIdKey, ok := vars["userId"]; ok {
+		userId, err = datastore.DecodeKey(encodedUserIdKey)
+		if err != nil {
+			return id, userId, ancestor, errors.ErrDecodingKey
+		}
+		if !ctx.Session.User.Equal(userId) {
+			return id, userId, ancestor, errors.ErrForbidden
+		}
+	}
+	if encodedIdKey, ok := vars["id"]; ok {
+		// got encoded key
+		id, err = datastore.DecodeKey(encodedIdKey)
+		if err != nil {
+			return id, userId, ancestor, errors.ErrDecodingKey
+		}
+	}
+
+	return id, userId, ancestor, errors.ErrDecodingKey
 }
 
 var queryFilters = regexp.MustCompile(`(?m)filters\[(?P<num>[^\]]+)\]\[(?P<nam>[^\]]+)\]`)

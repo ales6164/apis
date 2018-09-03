@@ -2,7 +2,7 @@ package errors
 
 /*
 Form errors
- */
+*/
 type Error struct {
 	Message string `json:"error"`
 	error
@@ -24,6 +24,7 @@ func New(msg string) *Error {
 var (
 	ErrPasswordLength                = New("password must be between 6 and 128 characters long")
 	ErrDecodingKey                   = New("error decoding key")
+	ErrIdRequired                    = New("id required")
 	ErrOrderUnavailableWithIdParam   = New("order unavailable with param id")
 	ErrLimitUnavailableWithIdParam   = New("limit unavailable with param id")
 	ErrOffsetUnavailableWithIdParam  = New("offset unavailable with param id")
