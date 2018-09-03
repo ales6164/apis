@@ -2,13 +2,14 @@ package middleware
 
 import (
 	"fmt"
+	"github.com/ales6164/apis"
+	"github.com/ales6164/apis/errors"
 	"log"
 	"net/http"
 	"strings"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/context"
-	"google.golang.org/appengine"
 	clog "google.golang.org/appengine/log"
 )
 
@@ -60,24 +61,6 @@ type JWTMiddleware struct {
 	Options MiddlewareOptions
 }
 
-type Claims struct {
-	/*Roles               []string `json:"roles,omitempty"`
-	Name                string   `json:"name,omitempty"`
-	GivenName           string   `json:"given_name,omitempty"`
-	FamilyName          string   `json:"family_name,omitempty"`
-	MiddleName          string   `json:"middle_name,omitempty"`
-	Nickname            string   `json:"nickname,omitempty"`
-	Picture             string   `json:"picture,omitempty"`               // profile picture URL
-	Website             string   `json:"website,omitempty"`               // website URL
-	Email               string   `json:"email,omitempty"`                 // preferred email
-	EmailVerified       bool     `json:"email_verified,omitempty"`        // true if email verified
-	Locale              string   `json:"locale,omitempty"`                // locale
-	PhoneNumber         string   `json:"phone_number,omitempty"`          // preferred phone number
-	PhoneNumberVerified bool     `json:"phone_number_verified,omitempty"` // true if phone number verified*/
-	Nonce  string `json:"nonce,omitempty"`  // value used to associate client session with id token
-	jwt.StandardClaims
-}
-
 func OnError(w http.ResponseWriter, r *http.Request, err string) {
 	http.Error(w, err, http.StatusUnauthorized)
 }
@@ -105,6 +88,7 @@ func New(options ...MiddlewareOptions) *JWTMiddleware {
 	}
 
 	return &JWTMiddleware{
+
 		Options: opts,
 	}
 }
@@ -129,6 +113,15 @@ func (m *JWTMiddleware) logf(format string, args ...interface{}) {
 func (m *JWTMiddleware) HandlerWithNext(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	err := m.CheckJWT(w, r)
 
+	ctx := apis.NewContext(r)
+
+	if !ctx.IsAuthenticated {
+		ctx.PrintError(w, errors.ErrUnathorized)
+		return
+	}
+
+	context.Set(r, "context", ctx)
+
 	// If there was an error, do not call next.
 	if err == nil && next != nil {
 		next(w, r)
@@ -141,21 +134,25 @@ func (m *JWTMiddleware) Handler(h http.Handler) http.Handler {
 		// that indicates the request should not continue.
 		err := m.CheckJWT(w, r)
 
+		ctx := apis.NewContext(r)
+
 		// If there was an error, do not continue.
 		if err != nil {
-
-			ctx := appengine.NewContext(r)
 			clog.Debugf(ctx, "auth error: %s", err.Error())
-
 			if len(m.Options.RedirectOnError) > 0 {
 				redirect(w, r, m.Options.RedirectOnError)
 			} else {
-				//panic(err)
-				//printError(w, err, http.StatusUnauthorized)
+				ctx.PrintError(w, errors.ErrUnathorized)
 			}
 			return
 		}
 
+		if !ctx.IsAuthenticated {
+			ctx.PrintError(w, errors.ErrUnathorized)
+			return
+		}
+
+		context.Set(r, "context", ctx)
 		h.ServeHTTP(w, r)
 	})
 }
@@ -266,7 +263,7 @@ func (m *JWTMiddleware) CheckJWT(w http.ResponseWriter, r *http.Request) error {
 	// Now parse the token
 	parser := new(jwt.Parser)
 	parser.SkipClaimsValidation = true
-	parsedToken, err := parser.ParseWithClaims(token, &Claims{}, m.Options.ValidationKeyGetter)
+	parsedToken, err := parser.ParseWithClaims(token, &jwt.StandardClaims{}, m.Options.ValidationKeyGetter)
 
 	// Check if there was an error in parsing...
 	if err != nil {

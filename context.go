@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/ales6164/apis/errors"
 	"github.com/ales6164/client"
+	gContext "github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
@@ -18,8 +19,13 @@ type Context struct {
 	body        []byte
 }
 
-// todo: ne rabmo Apis v contextu ... ker apis se rabi samo za avtentikacijo - to se pa lahko prestavi v middleware, ki se enabla na client appu
 func NewContext(r *http.Request) Context {
+	// restore from request
+	if c1, ok := gContext.GetOk(r, "context"); ok {
+		if c, ok := c1.(Context); ok {
+			return c
+		}
+	}
 	gaeCtx := appengine.NewContext(r)
 	clientReq := client.New(gaeCtx, r)
 	return Context{
@@ -68,7 +74,7 @@ func (ctx Context) HasScope(scopes ...string) bool {
 
 /**
 RESPONSE
- */
+*/
 
 func (ctx *Context) Print(w http.ResponseWriter, result interface{}) {
 	w.Header().Set("Content-Type", "application/json")

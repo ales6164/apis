@@ -1,32 +1,24 @@
 package apis
 
 import (
-	"github.com/ales6164/apis/errors"
-	"github.com/ales6164/apis/middleware"
 	"github.com/ales6164/apis/module"
-	"github.com/ales6164/apis/providers"
-	"github.com/gorilla/context"
+	"github.com/ales6164/client"
 	"github.com/gorilla/mux"
-	"io/ioutil"
 	"net/http"
 )
 
 type Apis struct {
 	*mux.Router
-	options *Options
-
-	middleware          *middleware.JWTMiddleware
-	signingKey          []byte
+	options             *Options
 	allowedTranslations map[string]bool
 	modules             []module.Module
+	roles               map[string][]string
+	client.RoleProvider
 }
 
 type Options struct {
-	Roles                  Roles
 	AppName                string
 	StorageBucket          string // required for file upload and media library
-	PrivateKeyPath         string
-	IdentityProviders      []providers.IdentityProvider
 	DefaultLanguage        string // fallback language
 	HasTranslationsFor     []string
 	AuthorizedOrigins      []string // not implemented
@@ -34,14 +26,12 @@ type Options struct {
 	RequireTrackingID      bool     // not implemented
 }
 
-type Roles map[string]Scopes
-type Scopes []string
-
 func New(opt *Options) (*Apis, error) {
 	a := &Apis{
 		Router:              mux.NewRouter(),
 		options:             opt,
 		allowedTranslations: map[string]bool{},
+		roles:               map[string][]string{},
 	}
 
 	a.Router.Use(func(next http.Handler) http.Handler {
@@ -60,16 +50,6 @@ func New(opt *Options) (*Apis, error) {
 		})
 	})
 
-	// read private key
-	var err error
-	a.signingKey, err = ioutil.ReadFile(opt.PrivateKeyPath)
-	if err != nil {
-		return a, err
-	}
-
-	// set auth middleware
-	a.middleware = middleware.AuthMiddleware(a.signingKey)
-
 	// languages
 	for _, l := range opt.HasTranslationsFor {
 		a.allowedTranslations[l] = true
@@ -78,8 +58,12 @@ func New(opt *Options) (*Apis, error) {
 	return a, nil
 }
 
-func (a *Apis) SigningKey() []byte {
-	return a.signingKey
+func (a *Apis) RegisterRole(name string, scopes ...string) {
+	a.roles[name] = append(a.roles[name], scopes...)
+}
+
+func (a *Apis) Roles() map[string][]string {
+	return a.roles
 }
 
 /*func (a *Apis) Module(module module.Module) {
@@ -98,19 +82,3 @@ func (a *Apis) Handler() http.Handler {
 	return &Server{a.Router}
 }
 */
-func (a *Apis) AuthMiddleware(h http.Handler, scopes ...string) http.Handler {
-	return a.middleware.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := NewContext(r)
-		var ok bool
-		if !ctx.IsAuthenticated {
-			ctx.PrintError(w, errors.ErrUnathorized)
-			return
-		}
-		if ok = ctx.HasScope(scopes...); !ok {
-			ctx.PrintError(w, errors.ErrForbidden)
-			return
-		}
-		context.Set(r, "context", ctx)
-		h.ServeHTTP(w, r)
-	}))
-}

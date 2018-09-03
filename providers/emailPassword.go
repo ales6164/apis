@@ -23,11 +23,11 @@ var (
 )
 
 type EmailPasswordProvider struct {
-	*Options
-	IdentityProvider
+	Cost       int
+	SigningKey []byte
 }
 
-func (p *EmailPasswordProvider) LoginHandler() http.Handler {
+func (p *EmailPasswordProvider) SignInHandler(rp client.RoleProvider) http.Handler {
 	type InputCredentials struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -66,7 +66,7 @@ func (p *EmailPasswordProvider) LoginHandler() http.Handler {
 			return
 		}
 
-		_, token, err := client.NewSession(ctx, identity)
+		_, token, err := client.NewSession(ctx, identity, rp, user.Scopes...)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -79,80 +79,75 @@ func (p *EmailPasswordProvider) LoginHandler() http.Handler {
 		}
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"User":  user,
-			"Token": signedToken,
+			"user":  user,
+			"token": signedToken,
 		})
 	})
 }
 
-/*func registerHandler(p *EmailPasswordProvider) http.HandlerFunc {
+func (p *EmailPasswordProvider) SignUpHandler(rp client.RoleProvider, scopes ...string) http.Handler {
 	type InputCredentials struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email    string                 `json:"email"`
+		Password string                 `json:"password"`
+		Profile  map[string]interface{} `json:"profile"`
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := appengine.NewContext(r)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := apis.NewContext(r)
 
 		var inputCredentials = new(InputCredentials)
-
-		if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
-			body, err := ioutil.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			r.Body.Close()
-			err = json.Unmarshal(body, &inputCredentials)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		} else {
-			email, password := r.PostFormValue("email"), r.PostFormValue("password")
-			inputCredentials = &InputCredentials{
-				Email:    email,
-				Password: password,
-			}
+		err := json.Unmarshal(ctx.Body(), inputCredentials)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 
-		err := checkEmail(inputCredentials.Email)
+		err = checkEmail(inputCredentials.Email)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		err = checkPassword(inputCredentials.Password)
+		if inputCredentials.Profile == nil {
+			inputCredentials.Profile = map[string]interface{}{}
+		}
+		inputCredentials.Profile["email"] = inputCredentials.Email
+
+		user, err := client.NewUser(ctx, inputCredentials.Email, inputCredentials.Profile, scopes...)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// create password hash
 		hash, err := crypt([]byte(inputCredentials.Password))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		identity := NewIdentity(p, hash)
-		account, err := identity.Save(ctx, inputCredentials.Email, p.options.DefaultRole)
+		identity, err := client.NewIdentity(ctx, EmailPasswordProviderName, user.Key, inputCredentials.Email, hash)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, errors.ErrUserDoesNotExist.Error(), http.StatusBadRequest)
 			return
 		}
 
-		signedToken, err := p.Authority().SignToken(ctx, account)
+		_, token, err := client.NewSession(ctx, identity, rp, user.Scopes...)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		json.NewEncoder(w).Encode(Output{
-			Token: signedToken,
-			User:  account.User,
+		signedToken, err := token.SignedString(p.SigningKey)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"user":  user,
+			"token": signedToken,
 		})
-	}
-}*/
+	})
+}
 
 func checkEmail(v string) error {
 	if len(v) == 0 {
