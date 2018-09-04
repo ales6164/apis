@@ -52,6 +52,8 @@ func init() {
 	http.Handle("/", api)
 }
 
+// todo: map kind fields with "apis" tag and make those available to use in api handle path -> /items/{id}/{someFieldTag}
+
 type Object struct {
 	Id   *datastore.Key `datastore:"-" apis:"id"`
 	Name string

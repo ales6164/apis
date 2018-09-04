@@ -1,6 +1,7 @@
 package apis
 
 import (
+	"fmt"
 	"github.com/ales6164/apis/errors"
 	"github.com/gorilla/mux"
 	"golang.org/x/net/context"
@@ -646,38 +647,71 @@ func (k *Kind) delete(w http.ResponseWriter, r *http.Request) {
 
 	ctx := NewContext(r)
 
-	id, userId, ancestor, err := getKeysFromRequest(ctx, vars)
+	id, ancestor, err := getKeysFromRequest(ctx, vars)
 	if err != nil {
 		ctx.PrintError(w, errors.ErrDecodingKey)
 		return
 	}
 
-	if id, ok := vars["id"]; ok {
-		// got encoded key
-		idKey, err := datastore.DecodeKey(id)
-		if err != nil {
-			ctx.PrintError(w, errors.ErrDecodingKey)
-			return
-		}
-
-		h := k.NewHolder()
-		err = h.Parse(ctx.Body())
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-		h.SetKey(idKey)
-
-		err = h.Update(ctx)
-		if err != nil {
-			ctx.PrintError(w, err)
-			return
-		}
-
-		ctx.Print(w, h.Value())
-	} else {
-		ctx.PrintError(w, errors.ErrIdRequired)
+	// if both id and ancestor are present, check their hierarchy
+	if ancestor != nil && id != nil && !id.Parent().Equal(ancestor) {
+		ctx.PrintError(w, errors.ErrNoHierarchy)
+		return
 	}
+
+	var count int
+
+	// delete ancestor children
+	if ancestor != nil {
+		// delete all or nothing (if error occurs)
+		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			q := datastore.NewQuery(k.Name).Ancestor(ancestor).KeysOnly()
+			t := q.Run(ctx)
+			var keys []*datastore.Key
+			for {
+				key, err := t.Next(nil)
+				if err == datastore.Done {
+					if len(keys) > 0 {
+						err := datastore.DeleteMulti(ctx, keys)
+						if err != nil {
+							return err
+						}
+						count += len(keys)
+					}
+					break
+				}
+				keys = append(keys, key)
+				if len(keys) >= 1000 {
+					err := datastore.DeleteMulti(ctx, keys)
+					if err != nil {
+						return err
+					}
+					count += len(keys)
+					keys = []*datastore.Key{}
+				}
+			}
+			return nil
+		}, &datastore.TransactionOptions{XG: true})
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+	}
+
+	// delete self
+	if id != nil {
+		err = k.Delete(ctx, id)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+		count++
+	}
+
+	ctx.Print(w, map[string]interface{}{
+		"count":   count,
+		"message": fmt.Sprintf("deleted %d entries", count),
+	})
 }
 
 func (k *Kind) Get(ctx context.Context, key *datastore.Key, ancestor *datastore.Key) (h *Holder, err error) {
@@ -702,31 +736,31 @@ func (k *Kind) Get(ctx context.Context, key *datastore.Key, ancestor *datastore.
 	return h, err
 }
 
-func getKeysFromRequest(ctx Context, vars map[string]string) (id *datastore.Key, userId *datastore.Key, ancestor *datastore.Key, err error) {
+func getKeysFromRequest(ctx Context, vars map[string]string) (id *datastore.Key, ancestor *datastore.Key, err error) {
 	if encodedAncestorKey, ok := vars["ancestor"]; ok {
 		ancestor, err = datastore.DecodeKey(encodedAncestorKey)
 		if err != nil {
-			return id, userId, ancestor, errors.ErrDecodingKey
+			return id, ancestor, errors.ErrDecodingKey
 		}
 	}
 	if encodedUserIdKey, ok := vars["userId"]; ok {
-		userId, err = datastore.DecodeKey(encodedUserIdKey)
+		ancestor, err = datastore.DecodeKey(encodedUserIdKey)
 		if err != nil {
-			return id, userId, ancestor, errors.ErrDecodingKey
+			return id, ancestor, errors.ErrDecodingKey
 		}
-		if !ctx.Session.User.Equal(userId) {
-			return id, userId, ancestor, errors.ErrForbidden
+		if !ctx.Session.User.Equal(ancestor) {
+			return id, ancestor, errors.ErrForbidden
 		}
 	}
 	if encodedIdKey, ok := vars["id"]; ok {
 		// got encoded key
 		id, err = datastore.DecodeKey(encodedIdKey)
 		if err != nil {
-			return id, userId, ancestor, errors.ErrDecodingKey
+			return id, ancestor, errors.ErrDecodingKey
 		}
 	}
 
-	return id, userId, ancestor, errors.ErrDecodingKey
+	return id, ancestor, errors.ErrDecodingKey
 }
 
 var queryFilters = regexp.MustCompile(`(?m)filters\[(?P<num>[^\]]+)\]\[(?P<nam>[^\]]+)\]`)

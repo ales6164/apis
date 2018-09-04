@@ -24,6 +24,7 @@ func New(msg string) *Error {
 var (
 	ErrPasswordLength                = New("password must be between 6 and 128 characters long")
 	ErrDecodingKey                   = New("error decoding key")
+	ErrNoHierarchy                   = New("no hierarchy link")
 	ErrIdRequired                    = New("id required")
 	ErrOrderUnavailableWithIdParam   = New("order unavailable with param id")
 	ErrLimitUnavailableWithIdParam   = New("limit unavailable with param id")
