@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/mux"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
+	"google.golang.org/appengine/log"
 	"io/ioutil"
 	"net/http"
 )
@@ -106,6 +107,7 @@ func (ctx *Context) PrintError(w http.ResponseWriter, err error, descriptors ...
 	log.Errorf(ctx, "context error: %s", ctx.ClientRequest.Error)
 	ctx.ClientRequest.Body = ctx.Body()
 	datastore.Put(ctx, ctx.clientRequestKey, ctx.ClientRequest)*/
+	log.Errorf(ctx, "context error: %s", err, descriptors)
 	if err == errors.ErrUnathorized {
 		w.WriteHeader(http.StatusUnauthorized)
 	} else if err == errors.ErrForbidden {

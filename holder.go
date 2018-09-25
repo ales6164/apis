@@ -13,7 +13,6 @@ import (
 
 type Holder struct {
 	Kind               *Kind
-	hasKey             bool
 	key                *datastore.Key
 	value              interface{}
 	hasInputData       bool // when updating
@@ -22,14 +21,14 @@ type Holder struct {
 }
 
 func (h *Holder) Id() string {
-	if h.hasKey {
+	if h.key != nil {
 		return h.key.Encode()
 	}
 	return ""
 }
 
 func (h *Holder) Value() interface{} {
-	if h.hasKey {
+	if h.key != nil {
 		v := reflect.ValueOf(h.value).Elem()
 		idField := v.FieldByName(h.Kind.MetaIdField.FieldName)
 		if idField.IsValid() && idField.CanSet() {
@@ -55,7 +54,6 @@ func (h *Holder) Bytes() ([]byte, error) {
 
 func (h *Holder) SetKey(k *datastore.Key) {
 	h.key = k
-	h.hasKey = k != nil
 }
 
 func (h *Holder) GetKey() *datastore.Key {
@@ -117,7 +115,7 @@ func (h *Holder) SaveToIndex(ctx context.Context) error {
 		return err
 	}
 
-	if !h.hasKey {
+	if h.key == nil {
 		return errors.New("undefined key for index storage")
 	}
 

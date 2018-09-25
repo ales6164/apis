@@ -32,9 +32,6 @@ type Kind struct {
 	ScopeFullControl string
 	ScopeReadOnly    string
 	ScopeReadWrite   string
-
-	/*router *mux.Router*/
-	http.Handler
 }
 
 type MetaField struct {
@@ -108,105 +105,6 @@ func (k *Kind) SetType(t reflect.Type) error {
 	if len(k.Name) == 0 {
 		k.Name = t.Name()
 	}
-
-	// build search parser
-	/*if k.EnableSearch {
-	searchField:
-		for _, field := range k.fields {
-			if !field.SearchField.Enabled {
-				continue searchField
-			}
-
-			// 1. Set convert type from search tag or try to find a good converter
-			if field.SearchField.ConvertType == nil {
-				var fieldType reflect.Type
-				if field.Multiple {
-					// get slice type
-					fieldType = reflect.MakeSlice(field.StructField.Type, 1, 1).Index(0).Type()
-				} else {
-					fieldType = field.StructField.Type
-				}
-
-				if fieldType == nil {
-					return errors.New("error reflecting type for " + field.Name)
-				}
-
-				// convert type differs for search.Field and search.Facet
-				if field.SearchField.IsFacet {
-					switch fieldType {
-					case stringType:
-						field.SearchField.ConvertType = atomType
-					case intType, int8Type, int16Type, int32Type, int64Type, float32Type:
-						field.SearchField.ConvertType = float64Type
-					case keyType:
-						field.SearchField.ConvertType = keyType
-					case boolType:
-						field.SearchField.ConvertType = boolType
-					default:
-						if fieldType.ConvertibleTo(atomType) {
-							field.SearchField.ConvertType = atomType
-						} else if fieldType.ConvertibleTo(float64Type) {
-							field.SearchField.ConvertType = float64Type
-						} else {
-							return errors.New("no convert type specified for searchable facet " + field.Name)
-						}
-					}
-				} else {
-					switch fieldType {
-					case stringType, atomType, htmlType, float64Type, timeType, geoPointType:
-						// ok
-					case intType, int8Type, int16Type, int32Type, int64Type, float32Type:
-						field.SearchField.ConvertType = float64Type
-					case keyType:
-						field.SearchField.ConvertType = keyType
-					case boolType:
-						field.SearchField.ConvertType = boolType
-					default:
-						return errors.New("no convert type specified for searchable field " + field.Name)
-					}
-				}
-			}
-
-			var converter Converter
-			if field.SearchField.ConvertType == nil {
-				converter = new(EmptyConverter)
-			} else if field.SearchField.IsFacet {
-				switch field.SearchField.ConvertType {
-				case atomType:
-					converter = new(AtomConverter)
-				case float64Type:
-					converter = new(Float64Converter)
-				case keyType:
-					converter = new(KeyConverter)
-				case boolType:
-					converter = new(BoolConverter)
-				default:
-					return errors.New("invalid convert type for searchable facet " + field.Name)
-				}
-			} else {
-				switch field.SearchField.ConvertType {
-				case atomType:
-					converter = new(AtomConverter)
-				case float64Type:
-					converter = new(Float64Converter)
-				case stringType:
-					converter = new(StringConverter)
-				case htmlType:
-					converter = new(HTMLConverter)
-				case keyType:
-					converter = new(KeyConverter)
-				case boolType:
-					converter = new(BoolConverter)
-				default:
-					return errors.New("invalid convert type for searchable field " + field.Name)
-				}
-			}
-
-			field.SearchField.Converter = converter
-
-			k.searchFields[field.SearchField.SearchFieldName] = field.SearchField
-		}
-	}*/
 
 	return nil
 }
@@ -355,6 +253,12 @@ func (k *Kind) DeleteFromIndex(ctx context.Context, id string) error {
 	return index.Delete(ctx, id)
 }
 
+func (k *Kind) Handler() *Handler {
+	return &Handler{
+		Kind: k,
+	}
+}
+
 func (k *Kind) NewHolder() *Holder {
 	return &Holder{
 		Kind:  k,
@@ -380,23 +284,6 @@ func (k *Kind) RetrieveSearchParameter(parameterName string, value string, field
 		}
 	}
 	return fields, facets
-}
-
-// todo: implement {userId} for all methods
-// za get rabim ancestor/userId samo v primeru, da querijam oz. preverim, če id vsebuje ta ancestor
-// za post je ancestor in userId sign, da v key vključim ancestor
-// za put/delete je ancestor/userId sign, da preverim, če ima id key res tak ancestor ... Key.Ancestor.Matches(ancestorKey)
-func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		k.get(w, r)
-	case http.MethodPost:
-		k.post(w, r)
-	case http.MethodPut:
-		k.put(w, r)
-	case http.MethodDelete:
-		k.delete(w, r)
-	}
 }
 
 // todo: implement {userId}
@@ -548,7 +435,6 @@ func (k *Kind) get(w http.ResponseWriter, r *http.Request) {
 			for {
 				var h = k.NewHolder()
 				h.key, err = t.Next(h)
-				h.hasKey = true
 				if err == datastore.Done {
 					break
 				}
@@ -566,13 +452,15 @@ func (k *Kind) get(w http.ResponseWriter, r *http.Request) {
 func (k *Kind) post(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	ctx := NewContext(r)
-	_, userId, ancestor, err := getKeysFromRequest(ctx, vars)
+	_, ancestor, err := getKeysFromRequest(ctx, vars)
+	if err != nil {
+		ctx.PrintError(w, err, "error retrieving keys")
+		return
+	}
 
 	h := k.NewHolder()
 
-	if userId != nil {
-		h.SetKey(k.NewIncompleteKey(ctx, userId))
-	} else if ancestor != nil {
+	if ancestor != nil {
 		h.SetKey(k.NewIncompleteKey(ctx, ancestor))
 	}
 
@@ -627,7 +515,6 @@ func (k *Kind) put(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.SetKey(idKey)
-		h.SetAncestor(ancestorKey)
 
 		err = h.Update(ctx)
 		if err != nil {
@@ -725,7 +612,6 @@ func (k *Kind) Get(ctx context.Context, key *datastore.Key, ancestor *datastore.
 		for {
 			var h = k.NewHolder()
 			h.key, err = t.Next(h)
-			h.hasKey = true
 			if err == datastore.Done {
 				break
 			}
@@ -760,7 +646,7 @@ func getKeysFromRequest(ctx Context, vars map[string]string) (id *datastore.Key,
 		}
 	}
 
-	return id, ancestor, errors.ErrDecodingKey
+	return id, ancestor, nil
 }
 
 var queryFilters = regexp.MustCompile(`(?m)filters\[(?P<num>[^\]]+)\]\[(?P<nam>[^\]]+)\]`)

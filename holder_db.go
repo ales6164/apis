@@ -36,7 +36,6 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 	for {
 		var h = k.NewHolder()
 		h.key, err = t.Next(h)
-		h.hasKey = true
 		if err == datastore.Done {
 			break
 		}
@@ -80,6 +79,9 @@ func (h *Holder) Add(_ctx context.Context, key *datastore.Key) error {
 	return datastore.RunInTransaction(_ctx, func(tc context.Context) error {
 		h.SetKey(key)
 		var err error
+		if h.key == nil {
+			h.key = h.Kind.NewIncompleteKey(tc, nil)
+		}
 		if h.key.Incomplete() {
 			h.key, err = datastore.Put(tc, h.key, h)
 			if err != nil {

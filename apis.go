@@ -8,7 +8,8 @@ import (
 )
 
 type Apis struct {
-	*mux.Router
+	http.Handler
+	router              *mux.Router
 	options             *Options
 	allowedTranslations map[string]bool
 	modules             []module.Module
@@ -28,27 +29,11 @@ type Options struct {
 
 func New(opt *Options) (*Apis, error) {
 	a := &Apis{
-		Router:              mux.NewRouter(),
+		router:              mux.NewRouter(),
 		options:             opt,
 		allowedTranslations: map[string]bool{},
 		roles:               map[string][]string{},
 	}
-
-	a.Router.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if origin := r.Header.Get("Origin"); origin != "" {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-				w.Header().Set("Access-Control-Allow-Headers",
-					"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
-						"X-Requested-With")
-			}
-			if r.Method == "OPTIONS" {
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	})
 
 	// languages
 	for _, l := range opt.HasTranslationsFor {
@@ -56,6 +41,20 @@ func New(opt *Options) (*Apis, error) {
 	}
 
 	return a, nil
+}
+
+func (a *Apis) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if origin := req.Header.Get("Origin"); origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers",
+			"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
+				"X-Requested-With")
+	}
+	if req.Method == "OPTIONS" {
+		return
+	}
+	a.router.ServeHTTP(w, req)
 }
 
 func (a *Apis) RegisterRole(name string, scopes ...string) {
