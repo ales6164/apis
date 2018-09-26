@@ -9,7 +9,7 @@ import (
 
 type Apis struct {
 	http.Handler
-	router              *mux.Router
+	Root                *mux.Router
 	options             *Options
 	allowedTranslations map[string]bool
 	modules             []module.Module
@@ -29,7 +29,7 @@ type Options struct {
 
 func New(opt *Options) (*Apis, error) {
 	a := &Apis{
-		router:              mux.NewRouter(),
+		Root:                mux.NewRouter(),
 		options:             opt,
 		allowedTranslations: map[string]bool{},
 		roles:               map[string][]string{},
@@ -54,7 +54,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method == "OPTIONS" {
 		return
 	}
-	a.router.ServeHTTP(w, req)
+	a.Root.ServeHTTP(w, req)
 }
 
 func (a *Apis) RegisterRole(name string, scopes ...string) {

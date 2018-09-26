@@ -30,13 +30,13 @@ func init() {
 	api, _ := apis.New(&apis.Options{})
 	api.RegisterRole(subscriberRole, ObjectKind.ScopeFullControl)
 
-	api.Handle("/signin", emailPasswordProvider.SignInHandler(api)).Methods(http.MethodPost)
-	api.Handle("/signup", emailPasswordProvider.SignUpHandler(api, subscriberRole)).Methods(http.MethodPost)
+	api.Root.Handle("/signin", emailPasswordProvider.SignInHandler(api)).Methods(http.MethodPost)
+	api.Root.Handle("/signup", emailPasswordProvider.SignUpHandler(api, subscriberRole)).Methods(http.MethodPost)
 
-	api.Handle("/objects", authMiddleware.Handler(ObjectKind.Handler())).Methods(http.MethodPost)
+	api.Root.Handle("/objects", authMiddleware.Handler(ObjectKind.Handler())).Methods(http.MethodPost)
 	//api.Handle("/objects/{id}", ObjectKind.Handler().Middleware(authMiddleware.Handler)).Methods(http.MethodGet)
 
-	api.Handle("/search", authMiddleware.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	api.Root.Handle("/search", authMiddleware.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := apis.NewContext(r)
 		if ok := ctx.HasScope(ObjectKind.ScopeFullControl); !ok {
 			ctx.Print(w, ctx.Session.Scopes)
