@@ -66,7 +66,7 @@ func (p *EmailPasswordProvider) SignInHandler(rp client.RoleProvider) http.Handl
 			return
 		}
 
-		_, token, err := client.NewSession(ctx, identity, rp, user.Scopes...)
+		ss, token, err := client.NewSession(ctx, identity, rp, user.Scopes...)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -78,9 +78,12 @@ func (p *EmailPasswordProvider) SignInHandler(rp client.RoleProvider) http.Handl
 			return
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"user":  user,
-			"token": signedToken,
+		json.NewEncoder(w).Encode(&Response{
+			User: user,
+			Token: &Token{
+				Id:        signedToken,
+				ExpiresAt: ss.ExpiresAt,
+			},
 		})
 	})
 }
@@ -130,7 +133,7 @@ func (p *EmailPasswordProvider) SignUpHandler(rp client.RoleProvider, scopes ...
 			return
 		}
 
-		_, token, err := client.NewSession(ctx, identity, rp, user.Scopes...)
+		ss, token, err := client.NewSession(ctx, identity, rp, user.Scopes...)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -142,9 +145,12 @@ func (p *EmailPasswordProvider) SignUpHandler(rp client.RoleProvider, scopes ...
 			return
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"user":  user,
-			"token": signedToken,
+		json.NewEncoder(w).Encode(&Response{
+			User: user,
+			Token: &Token{
+				Id:        signedToken,
+				ExpiresAt: ss.ExpiresAt,
+			},
 		})
 	})
 }
