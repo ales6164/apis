@@ -14,7 +14,7 @@ type Filter struct {
 func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, filters []Filter, ancestor *datastore.Key) ([]*Holder, error) {
 	var hs []*Holder
 	var err error
-	q := datastore.NewQuery(k.Name)
+	q := datastore.NewQuery(k.name)
 	if len(order) > 0 {
 		q = q.Order(order)
 	}
@@ -47,15 +47,6 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 	return hs, nil
 }
 
-func (k *Kind) Delete(_ctx context.Context, key *datastore.Key) error {
-	return datastore.RunInTransaction(_ctx, func(tc context.Context) error {
-		err := datastore.Delete(tc, key)
-		if err != nil {
-			return err
-		}
-		return k.DeleteFromIndex(tc, key.Encode())
-	}, nil)
-}
 
 func GetMulti(ctx context.Context, kind *Kind, key ...*datastore.Key) ([]*Holder, error) {
 	var hs []*Holder
@@ -80,14 +71,14 @@ func (h *Holder) Add(_ctx context.Context, key *datastore.Key) error {
 		h.SetKey(key)
 		var err error
 		if h.key == nil {
-			h.key = h.Kind.NewIncompleteKey(tc, nil)
+			//h.key = h.Kind.NewIncompleteKey(tc, nil)
 		}
 		if h.key.Incomplete() {
 			h.key, err = datastore.Put(tc, h.key, h)
 			if err != nil {
 				return err
 			}
-			return h.SaveToIndex(tc)
+			/*return h.SaveToIndex(tc)*/
 		} else {
 			err = datastore.Get(tc, h.key, h)
 			if err != nil {
@@ -96,7 +87,7 @@ func (h *Holder) Add(_ctx context.Context, key *datastore.Key) error {
 					if err != nil {
 						return err
 					}
-					return h.SaveToIndex(tc)
+					/*return h.SaveToIndex(tc)*/
 				}
 				return err
 			}
@@ -116,7 +107,8 @@ func (h *Holder) Update(_ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		return h.SaveToIndex(tc)
+		/*return h.SaveToIndex(tc)*/
+		return nil
 	}, nil)
 }
 
@@ -126,6 +118,7 @@ func (h *Holder) Delete(_ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		return h.Kind.DeleteFromIndex(tc, h.key.Encode())
+		//return h.Kind.DeleteFromIndex(tc, h.key.Encode())
+		return nil
 	}, nil)
 }

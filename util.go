@@ -1,12 +1,11 @@
 package apis
 
 import (
-		"math/rand"
-	"time"
 	"golang.org/x/net/context"
-	"google.golang.org/appengine/datastore"
 	"google.golang.org/appengine/search"
-	)
+	"math/rand"
+	"time"
+)
 
 const LetterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 const LetterNumberBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -37,17 +36,6 @@ func RandStringBytesMaskImprSrc(letterBytes string, n int) string {
 	return string(b)
 }
 
-// purges datastore and search of all entries
-func ClearAllEntries(ctx context.Context, kind *Kind) error {
-	keys, _ := datastore.NewQuery(kind.Name).KeysOnly().GetAll(ctx, nil)
-	if len(keys) > 0 {
-		err := datastore.DeleteMulti(ctx, keys)
-		if err != nil {
-			return err
-		}
-	}
-	return ClearIndex(ctx, kind.Name)
-}
 
 // clears search index
 func ClearIndex(ctx context.Context, indexName string) error {

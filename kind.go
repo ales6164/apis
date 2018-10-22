@@ -1,262 +1,220 @@
 package apis
 
 import (
-	"fmt"
 	"github.com/ales6164/apis/errors"
-	"github.com/gorilla/mux"
-	"golang.org/x/net/context"
+	"github.com/asaskevich/govalidator"
 	"google.golang.org/appengine/datastore"
-	"google.golang.org/appengine/search"
-	"net/http"
 	"reflect"
-	"regexp"
-	"strconv"
 	"strings"
 )
 
 type Kind struct {
-	t           reflect.Type
-	MetaFields  []MetaField
-	MetaIdField MetaField
-	fields      []*Field
-	Name        string
+	i    interface{}
+	t    reflect.Type
+	name string
 
-	searchFields map[string]*SearchField // map of all fields
-
-	//todo: above searchFields - add additional fields and below mentioned functions for use in global search
-	// map[fieldName] or array of fields with appropriate convertion functions (pointer to a function)
-	// do we need to convert from search value back to original value when outputing??? - probably should? - this could mean trouble later on... maybe just fetch original datastore entries
-	// for output uses field json string
-
-	// add some meta tag to db entry to now when it was last synced with search?
-	ScopeFullControl string
-	ScopeReadOnly    string
-	ScopeReadWrite   string
-}
-
-type MetaField struct {
-	Type      string
-	FieldName string
+	fields map[string]*Field // map key is json representation for field name
 }
 
 type Field struct {
-	Name       string
-	DoStore    bool
-	IsRequired bool // moving this somewhere else?
-	Multiple   bool
-	NoIndex    bool
-
-	// search tag
-	SearchField *SearchField
-
-	MetaField   string
-	Label       string // json field name
-	Json        string // json field name
-	Type        string
-	StructField reflect.StructField
-
-	Kind *Kind
+	Name     string                                                 // real field name
+	Fields   map[string]*Field                                      // map key is json representation for field name
+	retrieve func(value reflect.Value, path []string) reflect.Value // if *datastore.Key, fetches and returns resource; if array, returns item at index; otherwise returns the value
+	Is       string
 }
 
-type SearchField struct {
-	Field           *Field
-	Enabled         bool
-	Multiple        bool
-	FieldName       string
-	SearchFieldName string
-	IsFacet         bool
-	ConvertType     reflect.Type
-	Converter       Converter
-}
-
-func NewKind(t reflect.Type) *Kind {
+func NewKind(name string, i interface{}) *Kind {
 	k := &Kind{
-		searchFields: map[string]*SearchField{},
+		i:    i,
+		t:    reflect.TypeOf(i),
+		name: name,
 	}
 
-	err := k.SetType(t)
-	if err != nil {
-		panic(err)
+	if len(name) == 0 || !govalidator.IsAlphanumeric(name) {
+		panic(errors.New("name must be at least one character and can contain only a-Z0-9"))
 	}
 
-	k.ScopeFullControl = k.Name + ".fullcontrol"
-	k.ScopeReadOnly = k.Name + ".readonly"
-	k.ScopeReadWrite = k.Name + ".readwrite"
+	if k.t == nil || k.t.Kind() != reflect.Struct {
+		panic(errors.New("type not of kind struct"))
+	}
+
+	k.fields = Lookup(k.t, map[string]*Field{})
+
+	// todo: create handler with all possible routes
+	// need to be able to parse different objects and stuff
+	//k.appendRoute("/"+name, k.t, false)
+
+	// retrieving
+
+	// tukaj rabim funkcijo, ki dobi array poti ... obdela kva rabi obdelat in kliče naprej isto funkcijo z zmanjšanim arrayem poti
+	// zadnji stavek je: return value
+	// value-ji se ne seštevajo, saj nas zanima le zadnji value, ki ga dobi zadnja funkcija
+
+	/*fields := k.fields
+	var fun = func(value reflect.Value, path []string) reflect.Value {
+		for _, jsonName := range path {
+			if field, ok := fields[jsonName]; ok {
+
+
+				if value.Kind() == reflect.Ptr {
+					value = value.Elem().FieldByName(field.name)
+				} else {
+					value = value.FieldByName(field.name)
+				}
+
+				return field.retrieve(value, path[1:])
+			} else {
+
+			}
+
+			// error
+		}
+
+
+		return value
+	}
+	// receives *datastore.Key as value
+	var fun2 = func(value reflect.Value, path []string) reflect.Value {
+		for _, jsonName := range path {
+			if field, ok := fields[jsonName]; ok {
+
+
+				if value.Kind() == reflect.Ptr {
+					value = value.Elem().FieldByName(field.name)
+				} else {
+					value = value.FieldByName(field.name)
+				}
+
+				return field.retrieve(value, path[1:])
+			}
+
+			// error
+		}
+
+
+		return value
+	}
+	// receives array as value
+	var fun3 = func(value reflect.Value, path []string) reflect.Value {
+		for _, jsonName := range path {
+			if field, ok := fields[jsonName]; ok {
+
+
+				if value.Kind() == reflect.Ptr {
+					value = value.Elem().FieldByName(field.name)
+				} else {
+					value = value.FieldByName(field.name)
+				}
+
+				return field.retrieve(value, path[1:])
+			}
+
+			// error
+		}
+
+
+		return value
+	}
+*/
+	// fun(Test{}, "fetchable/aghkZXZ-Tm9uZXIYCxIJZmV0Y2hhYmxlIglmZXRjaGFibGUM/array/0")
+	// fun2(*datastore.Key, "aghkZXZ-Tm9uZXIYCxIJZmV0Y2hhYmxlIglmZXRjaGFibGUM/array/0")
+	// fun(Fetchable{}, "array/0")
+	// fun3([]string{}, "0")
 
 	return k
 }
 
-func (k *Kind) SetType(t reflect.Type) error {
-	k.t = t
+var (
+	keyKind = reflect.TypeOf(&datastore.Key{}).Kind()
+)
 
-	if t == nil {
-		return errors.New("type not of kind struct")
-	}
+func Lookup(typ reflect.Type, fields map[string]*Field) map[string]*Field {
+loop:
+	for i := 0; i < typ.NumField(); i++ {
+		structField := typ.Field(i)
+		var jsonName = structField.Name
 
-	if t.Kind() != reflect.Struct {
-		return errors.New("type not of kind struct")
-	}
-
-	err := k.checkFields()
-	if err != nil {
-		return err
-	}
-
-	if len(k.Name) == 0 {
-		k.Name = t.Name()
-	}
-
-	return nil
-}
-
-func (k *Kind) Type() reflect.Type {
-	return k.t
-}
-
-func (k *Kind) SearchFields() map[string]*SearchField {
-	return k.searchFields
-}
-
-func (k *Kind) checkFields() error {
-	k.fields = []*Field{}
-	//var hasId, hasCreatedAt bool
-	for i := 0; i < k.t.NumField(); i++ {
-		structField := k.t.Field(i)
-		field := new(Field)
-		field.SearchField = &SearchField{
-			Field:           field,
-			FieldName:       structField.Name,
-			SearchFieldName: structField.Name,
-		}
-		field.StructField = structField
-		field.Type = structField.Type.String()
-		if val, ok := structField.Tag.Lookup("datastore"); ok {
-			for n, v := range strings.Split(val, ",") {
-				v = strings.TrimSpace(v)
-				switch n {
-				case 0:
-					if v == "-" {
-						field.DoStore = false
-					} else {
-						field.DoStore = true
-					}
-					field.Name = v
-				case 1:
-					field.NoIndex = v == "noindex"
-				}
-			}
-		} else {
-			field.DoStore = true
-			field.Name = structField.Name
-		}
 		if val, ok := structField.Tag.Lookup("json"); ok {
 			for n, v := range strings.Split(val, ",") {
 				v = strings.TrimSpace(v)
 				switch n {
 				case 0:
-					if v != "-" {
-						field.Json = v
+					if v == "-" {
+						continue loop
 					}
+					jsonName = v
 				}
 			}
-		} else {
-			field.Json = field.Name
 		}
-		if val, ok := structField.Tag.Lookup("label"); ok {
-			for n, v := range strings.Split(val, ",") {
-				v = strings.TrimSpace(v)
-				switch n {
-				case 0:
-					field.Label = v
-				}
+
+		var fun func(value reflect.Value, path []string) reflect.Value
+		var is string
+
+		switch structField.Type.Kind() {
+		case keyKind:
+			// receives *datastore.Key as value
+			// type struct that is fetched then with this value should be "registered" kind and somehow mapped to the api
+			// so that the value query can continue onwards
+			fun = func(value reflect.Value, path []string) reflect.Value {
+				return value
 			}
-		} else {
-			field.Label = structField.Name
-		}
-		if val, ok := structField.Tag.Lookup("apis"); ok {
-			for n, v := range strings.Split(val, ",") {
-				v = strings.TrimSpace(v)
-				v = strings.ToLower(v)
-				switch n {
-				case 0:
-					if v == "id" {
-						//hasId = true
-						k.MetaIdField = MetaField{
-							Type:      v,
-							FieldName: structField.Name,
+			is = "*datastore.Key{}"
+		case reflect.Slice:
+			// receives slice as value
+			fun = func(value reflect.Value, path []string) reflect.Value {
+				return value
+			}
+			is = "slice"
+		default:
+			fun = func(value reflect.Value, path []string) reflect.Value {
+				for _, jsonName := range path {
+					if field, ok := fields[jsonName]; ok {
+						if value.Kind() == reflect.Ptr {
+							value = value.Elem().FieldByName(field.Name)
+						} else {
+							value = value.FieldByName(field.Name)
 						}
+						return field.retrieve(value, path[1:])
 					} else {
-						if v == "createdat" {
-							//hasCreatedAt = true
-						}
-						k.MetaFields = append(k.MetaFields, MetaField{
-							Type:      v,
-							FieldName: structField.Name,
-						})
-					}
-					field.MetaField = v
 
-				}
-			}
-		}
-		if val, ok := structField.Tag.Lookup("search"); ok {
-			for n, v := range strings.Split(val, ",") {
-				v = strings.TrimSpace(v)
-				switch n {
-				case 0:
-					if len(v) > 0 && v != "-" {
-						field.SearchField.Enabled = true
-						field.SearchField.SearchFieldName = v
 					}
-				case 1:
-					field.SearchField.IsFacet = v == "facet"
-				case 2:
-					switch strings.TrimSpace(v) {
-					case "search.Atom":
-						field.SearchField.ConvertType = atomType
-					case "search.HTML":
-						field.SearchField.ConvertType = htmlType
-					case "float64":
-						field.SearchField.ConvertType = float64Type
-					case "string":
-						field.SearchField.ConvertType = stringType
-					case "time.Time":
-						field.SearchField.ConvertType = timeType
-					}
+					// error
 				}
+				return value
 			}
-		} else {
-			field.SearchField.Enabled = field.DoStore
+			is = "default"
 		}
 
-		if structField.Type.Kind() == reflect.Slice {
-			field.Multiple = true
-			field.SearchField.Multiple = true
+		var childFields map[string]*Field
+
+		if structField.Type.Kind() == reflect.Struct {
+			childFields = Lookup(structField.Type, map[string]*Field{})
 		}
-		k.fields = append(k.fields, field)
+
+		fields[jsonName] = &Field{
+			Fields:   childFields,
+			Name:     structField.Name,
+			retrieve: fun,
+			Is:       is,
+		}
 	}
-	/*if !(hasId && hasCreatedAt) {
-		return errors.New("kind " + k.Name + " requires id and createdAt fields")
-	}*/
-	return nil
+
+	return fields
+}
+
+/*
+HTTP GET http://www.appdomain.com/users
+HTTP GET http://www.appdomain.com/users?size=20&page=5
+HTTP GET http://www.appdomain.com/users/123
+HTTP GET http://www.appdomain.com/users/123/address
+ */
+
+func (k *Kind) Type() reflect.Type {
+	return k.t
 }
 
 func (k *Kind) New() interface{} {
 	return reflect.New(k.t).Interface()
-}
-
-func (k *Kind) DeleteFromIndex(ctx context.Context, id string) error {
-	index, err := search.Open(k.Name)
-	if err != nil {
-		return err
-	}
-	return index.Delete(ctx, id)
-}
-
-func (k *Kind) Handler() *Handler {
-	return &Handler{
-		Kind: k,
-	}
 }
 
 func (k *Kind) NewHolder() *Holder {
@@ -266,28 +224,7 @@ func (k *Kind) NewHolder() *Holder {
 	}
 }
 
-func (k *Kind) NewIncompleteKey(c context.Context, parent *datastore.Key) *datastore.Key {
-	return datastore.NewIncompleteKey(c, k.Name, parent)
-}
-
-func (k *Kind) NewKey(c context.Context, nameId string, parent *datastore.Key) *datastore.Key {
-	return datastore.NewKey(c, k.Name, nameId, 0, parent)
-}
-
-func (k *Kind) RetrieveSearchParameter(parameterName string, value string, fields []search.Field, facets []search.Facet) ([]search.Field, []search.Facet) {
-	if f, ok := k.searchFields[parameterName]; ok {
-		if f.IsFacet {
-			// todo: currently only supports facet type search.Atom
-			facets = append(facets, search.Facet{Name: parameterName, Value: search.Atom(value)})
-		} else {
-			fields = append(fields, search.Field{Name: parameterName, Value: value})
-		}
-	}
-	return fields, facets
-}
-
-// todo: implement {userId}
-func (k *Kind) get(w http.ResponseWriter, r *http.Request) {
+/*func (k *Kind) get(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	var err error
 	ctx := NewContext(r)
@@ -661,3 +598,4 @@ func getParams(url string) (paramsMap map[string]string) {
 	}
 	return
 }
+*/

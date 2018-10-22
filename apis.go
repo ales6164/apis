@@ -1,60 +1,56 @@
 package apis
 
 import (
-	"github.com/ales6164/apis/module"
+	"encoding/json"
 	"github.com/ales6164/client"
 	"github.com/gorilla/mux"
 	"net/http"
 )
 
 type Apis struct {
-	http.Handler
-	Root                *mux.Router
-	options             *Options
-	allowedTranslations map[string]bool
-	modules             []module.Module
-	roles               map[string][]string
+	router *mux.Router
+	kinds  map[string]*Kind
+	roles  map[string][]string
 	client.RoleProvider
 }
 
-type Options struct {
-	AppName                string
-	StorageBucket          string // required for file upload and media library
-	DefaultLanguage        string // fallback language
-	HasTranslationsFor     []string
-	AuthorizedOrigins      []string // not implemented
-	AuthorizedRedirectURIs []string // not implemented
-	RequireTrackingID      bool     // not implemented
+type Route struct {
+	pathPrefix string
+	router     *mux.Router
 }
 
-func New(opt *Options) (*Apis, error) {
+func New() *Apis {
 	a := &Apis{
-		Root:                mux.NewRouter(),
-		options:             opt,
-		allowedTranslations: map[string]bool{},
-		roles:               map[string][]string{},
+		router: mux.NewRouter(),
+		roles:  map[string][]string{},
+		kinds:  map[string]*Kind{},
 	}
 
-	// languages
-	for _, l := range opt.HasTranslationsFor {
-		a.allowedTranslations[l] = true
-	}
-
-	return a, nil
+	return a
 }
 
-func (a *Apis) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if origin := req.Header.Get("Origin"); origin != "" {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers",
-			"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
-				"X-Requested-With")
+func (a *Apis) Handle(path string, kind *Kind) *Route {
+	a.kinds[kind.name] = kind
+
+	r := &Route{
+		pathPrefix: path,
+		router:     a.router.PathPrefix(path).Subrouter(),
 	}
-	if req.Method == "OPTIONS" {
-		return
-	}
-	a.Root.ServeHTTP(w, req)
+
+	r.router.HandleFunc("", func(writer http.ResponseWriter, request *http.Request) {
+		//writer.Write([]byte(r.pathPrefix))
+		json.NewEncoder(writer).Encode(kind.fields)
+	})
+
+	r.router.HandleFunc("/{id}", func(writer http.ResponseWriter, request *http.Request) {
+		writer.Write([]byte(mux.Vars(request)["id"]))
+	})
+
+	return r
+}
+
+func (a *Apis) Handler() http.Handler {
+	return &Server{a.router}
 }
 
 func (a *Apis) RegisterRole(name string, scopes ...string) {
@@ -64,20 +60,3 @@ func (a *Apis) RegisterRole(name string, scopes ...string) {
 func (a *Apis) Roles() map[string][]string {
 	return a.roles
 }
-
-/*func (a *Apis) Module(module module.Module) {
-	if err := module.Init(); err != nil {
-		panic(module.Name() + ": " + err.Error())
-	}
-	a.modules = append(a.modules, module)
-}
-
-func (a *Apis) Handler() http.Handler {
-	// modules
-	for _, m := range a.modules {
-		modulePath := path.Join("/", "module", m.Name())
-		a.PathPrefix(modulePath).Handler(m.Router(modulePath))
-	}
-	return &Server{a.Router}
-}
-*/
