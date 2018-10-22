@@ -4,7 +4,11 @@ import (
 	"encoding/json"
 	"github.com/ales6164/client"
 	"github.com/gorilla/mux"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/datastore"
 	"net/http"
+	"reflect"
+	"strings"
 )
 
 type Apis struct {
@@ -32,21 +36,66 @@ func New() *Apis {
 func (a *Apis) Handle(path string, kind *Kind) *Route {
 	a.kinds[kind.name] = kind
 
-	r := &Route{
+	route := &Route{
 		pathPrefix: path,
 		router:     a.router.PathPrefix(path).Subrouter(),
 	}
 
-	r.router.HandleFunc("", func(writer http.ResponseWriter, request *http.Request) {
+	/*
+	TODO:
+	1. Use current handlers
+	2. Upgrade to use REST API standard flow
+	3. Add scopes
+
+	 */
+
+	// query
+	route.router.HandleFunc("", func(writer http.ResponseWriter, request *http.Request) {
 		//writer.Write([]byte(r.pathPrefix))
 		json.NewEncoder(writer).Encode(kind.fields)
 	})
 
-	r.router.HandleFunc("/{id}", func(writer http.ResponseWriter, request *http.Request) {
+	// get
+	route.router.HandleFunc("/{id}", func(writer http.ResponseWriter, request *http.Request) {
 		writer.Write([]byte(mux.Vars(request)["id"]))
 	})
 
-	return r
+	route.router.HandleFunc(`/{id}/{rest:[a-zA-Z0-9=\-\/]+}`, func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		ctx := appengine.NewContext(r)
+
+		key, err := datastore.DecodeKey(vars["id"])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		holder := kind.NewHolder()
+
+		err = datastore.Get(ctx, key, holder)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		value := reflect.ValueOf(holder)
+
+		for _, name := range strings.Split(vars["rest"], "/") {
+			if value.Kind() == reflect.Ptr {
+				value = value.Elem().FieldByName(name)
+			} else {
+				value = value.FieldByName(name)
+			}
+		}
+
+		json.NewEncoder(w).Encode(value.Interface())
+	})
+
+	return route
 }
 
 func (a *Apis) Handler() http.Handler {
