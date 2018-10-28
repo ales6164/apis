@@ -3,6 +3,9 @@ package apis
 import (
 	"encoding/json"
 	"google.golang.org/appengine/datastore"
+	"reflect"
+	"google.golang.org/appengine/log"
+	"github.com/ales6164/apis/errors"
 )
 
 type Holder struct {
@@ -14,6 +17,10 @@ type Holder struct {
 	rollbackProperties []datastore.Property
 }
 
+var (
+	keyType = reflect.TypeOf(&datastore.Key{})
+)
+
 func (h *Holder) Id() string {
 	if h.key != nil {
 		return h.key.Encode()
@@ -22,13 +29,17 @@ func (h *Holder) Id() string {
 }
 
 func (h *Holder) Value() interface{} {
-	/*if h.key != nil {
+	if h.Kind != nil && h.Kind.hasIdFieldName && h.key != nil {
 		v := reflect.ValueOf(h.value).Elem()
-		idField := v.FieldByName(h.Kind.MetaIdField.FieldName)
+		idField := v.FieldByName(h.Kind.idFieldName)
 		if idField.IsValid() && idField.CanSet() {
-			idField.Set(reflect.ValueOf(h.key))
+			if h.Kind.dsUseName {
+				idField.Set(reflect.ValueOf(h.key.StringID()))
+			} else {
+				idField.Set(reflect.ValueOf(h.key))
+			}
 		}
-	}*/
+	}
 	return h.value
 }
 
@@ -40,6 +51,52 @@ func (h *Holder) Parse(body []byte) error {
 	h.hasInputData = true
 	h.value = h.Kind.New()
 	return json.Unmarshal(body, &h.value)
+}
+
+func (h *Holder) Get(ctx Context, field string) (*Holder, error) {
+	var holder = new(Holder)
+
+	// get real field name (in case json field has different name)
+	if h.Kind != nil {
+		if f, ok := h.Kind.fields[field]; ok {
+			field = f.Name
+		}
+	}
+
+	log.Debugf(ctx, "%s", field)
+
+	// get field value
+	value := reflect.ValueOf(h.value)
+	if value.Kind() == reflect.Ptr {
+		value = value.Elem().FieldByName(field)
+	} else {
+		value = value.FieldByName(field)
+	}
+
+	// check value type
+	var holderType = value.Type()
+	switch value.Type() {
+	case keyType:
+		// fetch from datastore
+		key := value.Interface().(*datastore.Key)
+		if kind, ok := ctx.a.kinds[key.Kind()]; ok {
+			holder = kind.NewHolder(key)
+			if err := datastore.Get(ctx, value.Interface().(*datastore.Key), holder); err != nil {
+				return holder, err
+			}
+			holderType = reflect.TypeOf(holder.value)
+		} else {
+			return holder, errors.New("unregistered kind " + key.Kind())
+		}
+	default:
+		holder.value = value.Interface()
+	}
+
+	if kind, ok := ctx.a.types[holderType]; ok {
+		holder.Kind = kind
+	}
+
+	return holder, nil
 }
 
 func (h *Holder) Bytes() ([]byte, error) {

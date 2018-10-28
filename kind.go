@@ -6,12 +6,30 @@ import (
 	"google.golang.org/appengine/datastore"
 	"reflect"
 	"strings"
+	"golang.org/x/net/context"
 )
 
 type Kind struct {
 	i    interface{}
 	t    reflect.Type
 	name string
+
+	hasIdFieldName        bool
+	hasCreatedAtFieldName bool
+	hasUpdatedAtFieldName bool
+	hasVersionFieldName   bool
+	hasCreatedByFieldName bool
+	hasUpdatedByFieldName bool
+
+	idFieldName        string
+	createdAtFieldName string
+	updatedAtFieldName string
+	versionFieldName   string
+	createdByFieldName string
+	updatedByFieldName string
+
+	dsUseName       bool // default: false; if true, changes the way datastore Keys are generated
+	dsNameGenerator func(ctx context.Context, holder *Holder) string
 
 	fields map[string]*Field // map key is json representation for field name
 }
@@ -28,6 +46,9 @@ func NewKind(name string, i interface{}) *Kind {
 		i:    i,
 		t:    reflect.TypeOf(i),
 		name: name,
+		dsNameGenerator: func(ctx context.Context, holder *Holder) string {
+			return ""
+		},
 	}
 
 	if len(name) == 0 || !govalidator.IsAlphanumeric(name) {
@@ -38,88 +59,7 @@ func NewKind(name string, i interface{}) *Kind {
 		panic(errors.New("type not of kind struct"))
 	}
 
-	k.fields = Lookup(k.t, map[string]*Field{})
-
-	// todo: create handler with all possible routes
-	// need to be able to parse different objects and stuff
-	//k.appendRoute("/"+name, k.t, false)
-
-	// retrieving
-
-	// tukaj rabim funkcijo, ki dobi array poti ... obdela kva rabi obdelat in kliče naprej isto funkcijo z zmanjšanim arrayem poti
-	// zadnji stavek je: return value
-	// value-ji se ne seštevajo, saj nas zanima le zadnji value, ki ga dobi zadnja funkcija
-
-	/*fields := k.fields
-	var fun = func(value reflect.Value, path []string) reflect.Value {
-		for _, jsonName := range path {
-			if field, ok := fields[jsonName]; ok {
-
-
-				if value.Kind() == reflect.Ptr {
-					value = value.Elem().FieldByName(field.name)
-				} else {
-					value = value.FieldByName(field.name)
-				}
-
-				return field.retrieve(value, path[1:])
-			} else {
-
-			}
-
-			// error
-		}
-
-
-		return value
-	}
-	// receives *datastore.Key as value
-	var fun2 = func(value reflect.Value, path []string) reflect.Value {
-		for _, jsonName := range path {
-			if field, ok := fields[jsonName]; ok {
-
-
-				if value.Kind() == reflect.Ptr {
-					value = value.Elem().FieldByName(field.name)
-				} else {
-					value = value.FieldByName(field.name)
-				}
-
-				return field.retrieve(value, path[1:])
-			}
-
-			// error
-		}
-
-
-		return value
-	}
-	// receives array as value
-	var fun3 = func(value reflect.Value, path []string) reflect.Value {
-		for _, jsonName := range path {
-			if field, ok := fields[jsonName]; ok {
-
-
-				if value.Kind() == reflect.Ptr {
-					value = value.Elem().FieldByName(field.name)
-				} else {
-					value = value.FieldByName(field.name)
-				}
-
-				return field.retrieve(value, path[1:])
-			}
-
-			// error
-		}
-
-
-		return value
-	}
-*/
-	// fun(Test{}, "fetchable/aghkZXZ-Tm9uZXIYCxIJZmV0Y2hhYmxlIglmZXRjaGFibGUM/array/0")
-	// fun2(*datastore.Key, "aghkZXZ-Tm9uZXIYCxIJZmV0Y2hhYmxlIglmZXRjaGFibGUM/array/0")
-	// fun(Fetchable{}, "array/0")
-	// fun3([]string{}, "0")
+	k.fields = Lookup(k, k.t, map[string]*Field{})
 
 	return k
 }
@@ -128,11 +68,46 @@ var (
 	keyKind = reflect.TypeOf(&datastore.Key{}).Kind()
 )
 
-func Lookup(typ reflect.Type, fields map[string]*Field) map[string]*Field {
+const (
+	id        = "id"
+	createdat = "createdat"
+	updatedat = "updatedat"
+	version   = "version"
+	createdby = "createdby"
+	updatedby = "updatedby"
+)
+
+func Lookup(kind *Kind, typ reflect.Type, fields map[string]*Field) map[string]*Field {
 loop:
 	for i := 0; i < typ.NumField(); i++ {
 		structField := typ.Field(i)
 		var jsonName = structField.Name
+
+		if kind != nil {
+			if autoValue, ok := structField.Tag.Lookup("auto"); ok {
+				autoValue = strings.ToLower(autoValue)
+				switch autoValue {
+				case id:
+					kind.idFieldName = structField.Name
+					kind.hasIdFieldName = true
+				case createdat:
+					kind.createdAtFieldName = structField.Name
+					kind.hasCreatedAtFieldName = true
+				case updatedat:
+					kind.updatedAtFieldName = structField.Name
+					kind.hasUpdatedAtFieldName = true
+				case version:
+					kind.versionFieldName = structField.Name
+					kind.hasVersionFieldName = true
+				case createdby:
+					kind.createdByFieldName = structField.Name
+					kind.hasCreatedByFieldName = true
+				case updatedby:
+					kind.updatedByFieldName = structField.Name
+					kind.hasUpdatedByFieldName = true
+				}
+			}
+		}
 
 		if val, ok := structField.Tag.Lookup("json"); ok {
 			for n, v := range strings.Split(val, ",") {
@@ -188,7 +163,7 @@ loop:
 		var childFields map[string]*Field
 
 		if structField.Type.Kind() == reflect.Struct {
-			childFields = Lookup(structField.Type, map[string]*Field{})
+			childFields = Lookup(nil, structField.Type, map[string]*Field{})
 		}
 
 		fields[jsonName] = &Field{
@@ -209,6 +184,10 @@ HTTP GET http://www.appdomain.com/users/123
 HTTP GET http://www.appdomain.com/users/123/address
  */
 
+func (k *Kind) Name() string {
+	return k.name
+}
+
 func (k *Kind) Type() reflect.Type {
 	return k.t
 }
@@ -217,10 +196,11 @@ func (k *Kind) New() interface{} {
 	return reflect.New(k.t).Interface()
 }
 
-func (k *Kind) NewHolder() *Holder {
+func (k *Kind) NewHolder(key *datastore.Key) *Holder {
 	return &Holder{
 		Kind:  k,
 		value: k.New(),
+		key:   key,
 	}
 }
 

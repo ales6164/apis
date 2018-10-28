@@ -5,6 +5,7 @@ import (
 	"google.golang.org/appengine/search"
 	"math/rand"
 	"time"
+	"regexp"
 )
 
 const LetterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -58,4 +59,16 @@ func ClearIndex(ctx context.Context, indexName string) error {
 	}
 
 	return index.DeleteMulti(ctx, ids)
+}
+
+var queryFilters = regexp.MustCompile(`(?m)filters\[(?P<num>[^\]]+)\]\[(?P<nam>[^\]]+)\]`)
+func getParams(url string) (paramsMap map[string]string) {
+	match := queryFilters.FindStringSubmatch(url)
+	paramsMap = make(map[string]string)
+	for i, name := range queryFilters.SubexpNames() {
+		if i > 0 && i <= len(match) {
+			paramsMap[name] = match[i]
+		}
+	}
+	return
 }

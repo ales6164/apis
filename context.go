@@ -14,13 +14,14 @@ import (
 )
 
 type Context struct {
+	a           *Apis
 	*client.Client
 	context.Context
 	hasReadBody bool
 	body        []byte
 }
 
-func NewContext(r *http.Request) Context {
+func (a *Apis) NewContext(r *http.Request) Context {
 	// restore from request
 	if c1, ok := gContext.GetOk(r, "context"); ok {
 		if c, ok := c1.(Context); ok {
@@ -30,6 +31,7 @@ func NewContext(r *http.Request) Context {
 	gaeCtx := appengine.NewContext(r)
 	clientReq := client.New(gaeCtx, r)
 	return Context{
+		a:       a,
 		Client:  clientReq,
 		Context: gaeCtx,
 	}

@@ -2,59 +2,27 @@ package test
 
 import (
 	"github.com/ales6164/apis"
-	"github.com/ales6164/apis/errors"
-	"github.com/ales6164/apis/middleware"
-	"github.com/ales6164/apis/providers"
-	"google.golang.org/appengine/datastore"
-	"io/ioutil"
 	"net/http"
-	"reflect"
-)
-
-var ObjectKind = apis.NewKind(reflect.TypeOf(Object{}))
-
-var (
-	subscriberRole = "subscriber"
+	"google.golang.org/appengine/datastore"
 )
 
 func init() {
-	// read private key
-	signingKey, err := ioutil.ReadFile("key.txt")
-	if err != nil {
-		panic(err)
-	}
 
-	authMiddleware := middleware.AuthMiddleware(signingKey)
-	emailPasswordProvider := providers.WithEmailPasswordProvider(12, signingKey)
+	var parentKind = apis.NewKind("parent", Parent{})
+	var objectKind = apis.NewKind("object", Object{})
 
-	api, _ := apis.New(&apis.Options{})
-	api.RegisterRole(subscriberRole, ObjectKind.ScopeFullControl)
+	api := apis.New(parentKind, objectKind)
+	api.Handle("/objects", objectKind)
+	api.Handle("/parents", parentKind)
 
-	api.Root.Handle("/signin", emailPasswordProvider.SignInHandler(api)).Methods(http.MethodPost)
-	api.Root.Handle("/signup", emailPasswordProvider.SignUpHandler(api, subscriberRole)).Methods(http.MethodPost)
-
-	api.Root.Handle("/objects", authMiddleware.Handler(ObjectKind.Handler())).Methods(http.MethodPost)
-	//api.Handle("/objects/{id}", ObjectKind.Handler().Middleware(authMiddleware.Handler)).Methods(http.MethodGet)
-
-	api.Root.Handle("/search", authMiddleware.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := apis.NewContext(r)
-		if ok := ctx.HasScope(ObjectKind.ScopeFullControl); !ok {
-			ctx.Print(w, ctx.Session.Scopes)
-			return
-
-			http.Error(w, errors.ErrForbidden.Error(), http.StatusForbidden)
-			return
-		}
-
-		ctx.Print(w, "ok")
-	}))).Methods(http.MethodGet)
-
-	http.Handle("/", api)
+	http.Handle("/", api.Handler())
 }
 
-// todo: map kind fields with "apis" tag and make those available to use in api handle path -> /items/{id}/{someFieldTag}
+type Parent struct {
+	Id    *datastore.Key `auto:"id" json:"id"`
+	Child *datastore.Key `json:"child"`
+}
 
 type Object struct {
-	Id   *datastore.Key `datastore:"-" apis:"id"`
-	Name string
+	Name string `json:"name"`
 }
