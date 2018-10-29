@@ -19,10 +19,12 @@ func init() {
 }
 
 type Parent struct {
-	Id    *datastore.Key `auto:"id" json:"id"`
-	Child *datastore.Key `json:"child"`
+	Id     *datastore.Key `datastore:"-" auto:"id" json:"id,omitempty"`
+	Child  *datastore.Key `json:"child"`
+	Object Object         `json:"object"`
 }
 
 type Object struct {
-	Name string `json:"name"`
+	Id   *datastore.Key `datastore:"-" auto:"id" json:"id,omitempty"`
+	Name string         `json:"name"`
 }

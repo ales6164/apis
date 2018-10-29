@@ -2,19 +2,22 @@ package apis
 
 import (
 	"encoding/json"
-	"google.golang.org/appengine/datastore"
-	"reflect"
-	"google.golang.org/appengine/log"
 	"github.com/ales6164/apis/errors"
+	"google.golang.org/appengine/datastore"
+	"google.golang.org/appengine/log"
+	"reflect"
 )
 
 type Holder struct {
 	Kind               *Kind
 	key                *datastore.Key
-	value              interface{}
-	hasInputData       bool // when updating
+	value              interface{} // is pointer to struct -- normally
+	hasInputData       bool        // when updating
 	hasLoadedData      bool
 	rollbackProperties []datastore.Property
+
+	parent       *Holder // holder value reference
+	reflectValue reflect.Value
 }
 
 var (
@@ -55,38 +58,53 @@ func (h *Holder) Parse(body []byte) error {
 
 func (h *Holder) Get(ctx Context, field string) (*Holder, error) {
 	var holder = new(Holder)
+	if h.key != nil || h.parent == nil {
+		holder.parent = h
+	} else {
+		holder.parent = h.parent
+	}
 
+	var f *Field
 	// get real field name (in case json field has different name)
 	if h.Kind != nil {
-		if f, ok := h.Kind.fields[field]; ok {
+		var ok bool
+		if f, ok = h.Kind.fields[field]; ok {
 			field = f.Name
 		}
 	}
 
-	log.Debugf(ctx, "%s", field)
-
 	// get field value
-	value := reflect.ValueOf(h.value)
+	value := reflect.ValueOf(h.Value())
 	if value.Kind() == reflect.Ptr {
 		value = value.Elem().FieldByName(field)
 	} else {
 		value = value.FieldByName(field)
+
+		log.Debugf(ctx, "this is non pointer field: %s %s", field, value.String())
 	}
+
+	log.Debugf(ctx, "last")
 
 	// check value type
 	var holderType = value.Type()
 	switch value.Type() {
 	case keyType:
-		// fetch from datastore
-		key := value.Interface().(*datastore.Key)
-		if kind, ok := ctx.a.kinds[key.Kind()]; ok {
-			holder = kind.NewHolder(key)
-			if err := datastore.Get(ctx, value.Interface().(*datastore.Key), holder); err != nil {
-				return holder, err
-			}
-			holderType = reflect.TypeOf(holder.value)
+		// check if it's auto=id field
+		if f.IsAutoId {
+			holder.value = value.Interface()
 		} else {
-			return holder, errors.New("unregistered kind " + key.Kind())
+			// fetch from datastore
+			key := value.Interface().(*datastore.Key)
+			if kind, ok := ctx.a.kinds[key.Kind()]; ok {
+				holder = kind.NewHolder(key)
+				if err := datastore.Get(ctx, key, holder); err != nil {
+					return holder, err
+				}
+				value = reflect.ValueOf(holder.value)
+				holderType = value.Type()
+			} else {
+				return holder, errors.New("unregistered kind " + key.Kind())
+			}
 		}
 	default:
 		holder.value = value.Interface()
@@ -96,7 +114,52 @@ func (h *Holder) Get(ctx Context, field string) (*Holder, error) {
 		holder.Kind = kind
 	}
 
+	holder.reflectValue = value
+
 	return holder, nil
+}
+
+func (h *Holder) Delete(ctx Context) error {
+	if h.key != nil {
+		return datastore.Delete(ctx, h.key)
+	} else if h.parent != nil && h.parent.key != nil {
+
+		// delete field
+		/*switch h.reflectValue.Kind() {
+		case reflect.Bool:
+			h.reflectValue.SetBool(false)
+		case reflect.String:
+			reflect.Indirect(h.reflectValue).SetString("")
+			//h.reflectValue.SetString("")
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			h.reflectValue.SetInt(0)
+		case reflect.Float32, reflect.Float64:
+			h.reflectValue.SetFloat(0)
+		case reflect.Struct:
+			h.reflectValue.Set(reflect.Zero(h.reflectValue.Type()))
+
+		default:
+			return errors.New("unregistered kind " + h.reflectValue.Kind().String())
+		//todo: need more: https://cloud.google.com/appengine/docs/standard/go/datastore/reference
+		}*/
+
+		log.Debugf(ctx, "kind %s", h.reflectValue.Kind().String())
+		log.Debugf(ctx, "type %s", h.reflectValue.Type().String())
+		log.Debugf(ctx, "value interface %s", h.reflectValue.Interface())
+
+		log.Debugf(ctx, "this is value: %s", h.reflectValue.String())
+		if !h.reflectValue.CanAddr() {
+			log.Debugf(ctx, "this value is unaddressable")
+		}
+
+		h.reflectValue.Interface() = ""
+
+		//h.reflectValue.Set(reflect.Zero(h.reflectValue.Type()))
+
+		_, err := datastore.Put(ctx, h.parent.key, h.parent)
+		return err
+	}
+	return errors.New("can't resolve path")
 }
 
 func (h *Holder) Bytes() ([]byte, error) {

@@ -39,6 +39,8 @@ type Field struct {
 	Fields   map[string]*Field                                      // map key is json representation for field name
 	retrieve func(value reflect.Value, path []string) reflect.Value // if *datastore.Key, fetches and returns resource; if array, returns item at index; otherwise returns the value
 	Is       string
+
+	IsAutoId bool
 }
 
 func NewKind(name string, i interface{}) *Kind {
@@ -78,8 +80,10 @@ const (
 )
 
 func Lookup(kind *Kind, typ reflect.Type, fields map[string]*Field) map[string]*Field {
+
 loop:
 	for i := 0; i < typ.NumField(); i++ {
+		var isAutoId bool
 		structField := typ.Field(i)
 		var jsonName = structField.Name
 
@@ -90,6 +94,7 @@ loop:
 				case id:
 					kind.idFieldName = structField.Name
 					kind.hasIdFieldName = true
+					isAutoId = true
 				case createdat:
 					kind.createdAtFieldName = structField.Name
 					kind.hasCreatedAtFieldName = true
@@ -171,6 +176,7 @@ loop:
 			Name:     structField.Name,
 			retrieve: fun,
 			Is:       is,
+			IsAutoId: isAutoId,
 		}
 	}
 

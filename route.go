@@ -1,13 +1,12 @@
 package apis
 
 import (
-	"github.com/gorilla/mux"
-	"net/http"
 	"encoding/json"
+	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
-	"strings"
+	"net/http"
 	"strconv"
-	"google.golang.org/appengine/log"
+	"strings"
 )
 
 type Route struct {
@@ -163,15 +162,35 @@ func (r *Route) init() {
 
 		var err error
 		for _, name := range strings.Split(vars["rest"], "/") {
-			log.Debugf(ctx, "%s", name)
 			h, err = h.Get(ctx, name)
 			if err != nil {
 				ctx.PrintError(writer, err)
 				return
 			}
 		}
-		json.NewEncoder(writer).Encode(h.value)
+		json.NewEncoder(writer).Encode(h.Value())
 	}).Methods(http.MethodGet)
+
+	// POST
+	r.router.HandleFunc(``, func(writer http.ResponseWriter, request *http.Request) {
+		ctx := r.a.NewContext(request)
+
+		h := r.kind.NewHolder(nil)
+		if err := h.Parse(ctx.Body()); err != nil {
+			ctx.PrintError(writer, err)
+			return
+		}
+
+		var name = r.kind.dsNameGenerator(ctx, h)
+		var key = datastore.NewKey(ctx, r.kind.name, name, 0, nil)
+
+		var err error
+		if h.key, err = datastore.Put(ctx, key, h); err != nil {
+			ctx.PrintError(writer, err)
+			return
+		}
+		ctx.Print(writer, h.Value())
+	}).Methods(http.MethodPost)
 
 	// PUT
 	r.router.HandleFunc(`/{name}`, func(writer http.ResponseWriter, request *http.Request) {
@@ -203,4 +222,62 @@ func (r *Route) init() {
 		}
 		ctx.Print(writer, h.Value())
 	}).Methods(http.MethodPut)
+
+	// DELETE
+	r.router.HandleFunc(`/{name}`, func(writer http.ResponseWriter, request *http.Request) {
+		ctx := r.a.NewContext(request)
+		name := mux.Vars(request)["name"]
+		var key *datastore.Key
+		if r.kind.dsUseName {
+			key = datastore.NewKey(ctx, r.kind.name, name, 0, nil)
+		} else {
+			var err error
+			key, err = datastore.DecodeKey(name)
+			if err != nil {
+				ctx.PrintError(writer, err)
+				return
+			}
+		}
+		var err error
+		if err = datastore.Delete(ctx, key); err != nil {
+			ctx.PrintError(writer, err)
+			return
+		}
+		ctx.Print(writer, "success")
+	}).Methods(http.MethodDelete)
+
+	// DELETE FIELD
+	r.router.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
+		ctx := r.a.NewContext(request)
+		vars := mux.Vars(request)
+		var key *datastore.Key
+		if r.kind.dsUseName {
+			key = datastore.NewKey(ctx, r.kind.name, vars["name"], 0, nil)
+		} else {
+			var err error
+			key, err = datastore.DecodeKey(vars["name"])
+			if err != nil {
+				ctx.PrintError(writer, err)
+				return
+			}
+		}
+		h := r.kind.NewHolder(key)
+		if err := datastore.Get(ctx, key, h); err != nil {
+			ctx.PrintError(writer, err)
+			return
+		}
+		var err error
+		for _, name := range strings.Split(vars["rest"], "/") {
+			h, err = h.Get(ctx, name)
+			if err != nil {
+				ctx.PrintError(writer, err)
+				return
+			}
+		}
+		if err := h.Delete(ctx); err != nil {
+			ctx.PrintError(writer, err)
+			return
+		}
+		json.NewEncoder(writer).Encode(h.Value())
+	}).Methods(http.MethodDelete)
 }
