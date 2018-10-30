@@ -31,7 +31,7 @@ func (h *Holder) Id() string {
 	return ""
 }
 
-func (h *Holder) Value() interface{} {
+func (h *Holder) ReflectValue() {
 	if h.Kind != nil && h.Kind.hasIdFieldName && h.key != nil {
 		v := reflect.ValueOf(h.value).Elem()
 		idField := v.FieldByName(h.Kind.idFieldName)
@@ -43,17 +43,24 @@ func (h *Holder) Value() interface{} {
 			}
 		}
 	}
+}
+
+func (h *Holder) GetValue() interface{} {
+	h.ReflectValue()
 	return h.value
 }
 
 func (h *Holder) SetValue(v interface{}) {
 	h.value = v
+	h.reflectValue = reflect.ValueOf(h.value)
 }
 
 func (h *Holder) Parse(body []byte) error {
 	h.hasInputData = true
 	h.value = h.Kind.New()
-	return json.Unmarshal(body, &h.value)
+	err := json.Unmarshal(body, &h.value)
+	h.reflectValue = reflect.ValueOf(h.value)
+	return err
 }
 
 func (h *Holder) Get(ctx Context, field string) (*Holder, error) {
@@ -74,47 +81,48 @@ func (h *Holder) Get(ctx Context, field string) (*Holder, error) {
 	}
 
 	// get field value
-	value := reflect.ValueOf(h.Value())
-	if value.Kind() == reflect.Ptr {
-		value = value.Elem().FieldByName(field)
-	} else {
-		value = value.FieldByName(field)
+	h.ReflectValue()
 
-		log.Debugf(ctx, "this is non pointer field: %s %s", field, value.String())
+	if h.reflectValue.Kind() == reflect.Ptr {
+		holder.reflectValue = h.reflectValue.Elem().FieldByName(field)
+	} else {
+		holder.reflectValue = h.reflectValue.FieldByName(field)
+
+		log.Debugf(ctx, "this is non pointer field: %s %s", field, holder.reflectValue.String())
+		if !holder.reflectValue.CanAddr() {
+			log.Debugf(ctx, "this value is unaddressable")
+		}
 	}
 
 	log.Debugf(ctx, "last")
 
 	// check value type
-	var holderType = value.Type()
-	switch value.Type() {
+	var holderType = holder.reflectValue.Type()
+	switch holderType {
 	case keyType:
 		// check if it's auto=id field
 		if f.IsAutoId {
-			holder.value = value.Interface()
+			holder.value = holder.reflectValue.Interface()
 		} else {
 			// fetch from datastore
-			key := value.Interface().(*datastore.Key)
+			key := holder.reflectValue.Interface().(*datastore.Key)
 			if kind, ok := ctx.a.kinds[key.Kind()]; ok {
 				holder = kind.NewHolder(key)
 				if err := datastore.Get(ctx, key, holder); err != nil {
 					return holder, err
 				}
-				value = reflect.ValueOf(holder.value)
-				holderType = value.Type()
+				holderType = holder.reflectValue.Type()
 			} else {
 				return holder, errors.New("unregistered kind " + key.Kind())
 			}
 		}
 	default:
-		holder.value = value.Interface()
+		holder.value = holder.reflectValue.Interface()
 	}
 
 	if kind, ok := ctx.a.types[holderType]; ok {
 		holder.Kind = kind
 	}
-
-	holder.reflectValue = value
 
 	return holder, nil
 }
@@ -152,9 +160,7 @@ func (h *Holder) Delete(ctx Context) error {
 			log.Debugf(ctx, "this value is unaddressable")
 		}
 
-		h.reflectValue.Interface() = ""
-
-		//h.reflectValue.Set(reflect.Zero(h.reflectValue.Type()))
+		h.reflectValue.Set(reflect.Zero(h.reflectValue.Type()))
 
 		_, err := datastore.Put(ctx, h.parent.key, h.parent)
 		return err
@@ -163,7 +169,7 @@ func (h *Holder) Delete(ctx Context) error {
 }
 
 func (h *Holder) Bytes() ([]byte, error) {
-	return json.Marshal(h.Value())
+	return json.Marshal(h.GetValue())
 }
 
 func (h *Holder) SetKey(k *datastore.Key) {
@@ -188,7 +194,9 @@ func (h *Holder) Load(ps []datastore.Property) error {
 
 		return nil
 	}
-	return datastore.LoadStruct(h.value, ps)
+	err := datastore.LoadStruct(h.value, ps)
+	h.reflectValue = reflect.ValueOf(h.value)
+	return err
 }
 
 func (h *Holder) Save() ([]datastore.Property, error) {

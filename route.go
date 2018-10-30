@@ -107,7 +107,7 @@ func (r *Route) init() {
 				}
 				break
 			}
-			out = append(out, h.Value())
+			out = append(out, h.GetValue())
 		}
 		ctx.Print(writer, Results{
 			Count:   len(out),
@@ -136,7 +136,7 @@ func (r *Route) init() {
 			ctx.PrintError(writer, err)
 			return
 		}
-		ctx.Print(writer, h.Value())
+		ctx.Print(writer, h.GetValue())
 	}).Methods(http.MethodGet)
 
 	// GET FIELD
@@ -168,7 +168,7 @@ func (r *Route) init() {
 				return
 			}
 		}
-		json.NewEncoder(writer).Encode(h.Value())
+		json.NewEncoder(writer).Encode(h.GetValue())
 	}).Methods(http.MethodGet)
 
 	// POST
@@ -189,7 +189,7 @@ func (r *Route) init() {
 			ctx.PrintError(writer, err)
 			return
 		}
-		ctx.Print(writer, h.Value())
+		ctx.Print(writer, h.GetValue())
 	}).Methods(http.MethodPost)
 
 	// PUT
@@ -220,7 +220,43 @@ func (r *Route) init() {
 			ctx.PrintError(writer, err)
 			return
 		}
-		ctx.Print(writer, h.Value())
+		ctx.Print(writer, h.GetValue())
+	}).Methods(http.MethodPut)
+
+	// PUT FIELD
+	// todo:
+	r.router.HandleFunc(`/{name}`, func(writer http.ResponseWriter, request *http.Request) {
+		ctx := r.a.NewContext(request)
+		vars := mux.Vars(request)
+		var key *datastore.Key
+		if r.kind.dsUseName {
+			key = datastore.NewKey(ctx, r.kind.name, vars["name"], 0, nil)
+		} else {
+			var err error
+			key, err = datastore.DecodeKey(vars["name"])
+			if err != nil {
+				ctx.PrintError(writer, err)
+				return
+			}
+		}
+		h := r.kind.NewHolder(key)
+		if err := datastore.Get(ctx, key, h); err != nil {
+			ctx.PrintError(writer, err)
+			return
+		}
+		var err error
+		for _, name := range strings.Split(vars["rest"], "/") {
+			h, err = h.Get(ctx, name)
+			if err != nil {
+				ctx.PrintError(writer, err)
+				return
+			}
+		}
+		if err := h.Delete(ctx); err != nil {
+			ctx.PrintError(writer, err)
+			return
+		}
+		json.NewEncoder(writer).Encode(h.GetValue())
 	}).Methods(http.MethodPut)
 
 	// DELETE
@@ -278,6 +314,6 @@ func (r *Route) init() {
 			ctx.PrintError(writer, err)
 			return
 		}
-		json.NewEncoder(writer).Encode(h.Value())
+		json.NewEncoder(writer).Encode(h.GetValue())
 	}).Methods(http.MethodDelete)
 }
