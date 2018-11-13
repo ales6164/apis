@@ -11,22 +11,37 @@ type Apis struct {
 	types  map[reflect.Type]*Kind
 	kinds  map[string]*Kind
 	routes map[string]*Route
+	*Options
 }
 
-func New(kinds ...*Kind) *Apis {
+type Options struct {
+	NestedKinds []*Kind
+	Roles       map[string][]string
+}
+
+func New(options *Options) *Apis {
 	a := &Apis{
-		router: mux.NewRouter(),
-		routes: map[string]*Route{},
-		types:  map[reflect.Type]*Kind{},
-		kinds:  map[string]*Kind{},
+		Options: options,
+		router:  mux.NewRouter(),
+		routes:  map[string]*Route{},
+		types:   map[reflect.Type]*Kind{},
+		kinds:   map[string]*Kind{},
 	}
 
-	for _, k := range kinds {
+	if a.Roles == nil {
+		a.Roles = map[string][]string{}
+	}
+
+	for _, k := range options.NestedKinds {
 		a.types[k.t] = k
 		a.kinds[k.name] = k
 	}
 
 	return a
+}
+
+func (a *Apis) SetRole(name string, scopes ...string) {
+	a.Roles[name] = append(a.Roles[name], scopes...)
 }
 
 func (a *Apis) Handle(path string, kind *Kind) *Route {

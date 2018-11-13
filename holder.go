@@ -63,7 +63,8 @@ func (h *Holder) Parse(body []byte) error {
 	return err
 }
 
-func (h *Holder) Get(ctx Context, field string) (*Holder, error) {
+// TODO: Check scope before GET
+func (h *Holder) Get(a *Apis, ctx Context, field string) (*Holder, error) {
 	var holder = new(Holder)
 	if h.key != nil || h.parent == nil {
 		holder.parent = h
@@ -106,7 +107,7 @@ func (h *Holder) Get(ctx Context, field string) (*Holder, error) {
 		} else {
 			// fetch from datastore
 			key := holder.reflectValue.Interface().(*datastore.Key)
-			if kind, ok := ctx.a.kinds[key.Kind()]; ok {
+			if kind, ok := a.kinds[key.Kind()]; ok {
 				holder = kind.NewHolder(key)
 				if err := datastore.Get(ctx, key, holder); err != nil {
 					return holder, err
@@ -120,7 +121,7 @@ func (h *Holder) Get(ctx Context, field string) (*Holder, error) {
 		holder.value = holder.reflectValue.Interface()
 	}
 
-	if kind, ok := ctx.a.types[holderType]; ok {
+	if kind, ok := a.types[holderType]; ok {
 		holder.Kind = kind
 	}
 
@@ -154,7 +155,6 @@ func (h *Holder) Delete(ctx Context) error {
 		log.Debugf(ctx, "kind %s", h.reflectValue.Kind().String())
 		log.Debugf(ctx, "type %s", h.reflectValue.Type().String())
 		log.Debugf(ctx, "value interface %s", h.reflectValue.Interface())
-
 		log.Debugf(ctx, "this is value: %s", h.reflectValue.String())
 		if !h.reflectValue.CanAddr() {
 			log.Debugf(ctx, "this value is unaddressable")

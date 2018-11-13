@@ -38,7 +38,13 @@ func (r *Route) init() {
 	// QUERY
 	r.router.HandleFunc("", func(writer http.ResponseWriter, request *http.Request) {
 		var err error
-		ctx := r.a.NewContext(request)
+		ctx := NewContext(request)
+
+		if ok := ctx.HasScope(r.kind.ScopeReadOnly, r.kind.ScopeReadWrite, r.kind.ScopeFullControl); !ok {
+			http.Error(writer, "forbidden", http.StatusForbidden)
+			return
+		}
+
 		q := datastore.NewQuery(r.kind.name)
 		var filterMap = map[string]map[string]string{}
 		for name, values := range request.URL.Query() {
@@ -118,7 +124,13 @@ func (r *Route) init() {
 
 	// GET
 	r.router.HandleFunc("/{name}", func(writer http.ResponseWriter, request *http.Request) {
-		ctx := r.a.NewContext(request)
+		ctx := NewContext(request)
+
+		if ok := ctx.HasScope(r.kind.ScopeReadOnly, r.kind.ScopeReadWrite, r.kind.ScopeFullControl); !ok {
+			http.Error(writer, "forbidden", http.StatusForbidden)
+			return
+		}
+
 		name := mux.Vars(request)["name"]
 		var key *datastore.Key
 		if r.kind.dsUseName {
@@ -141,7 +153,13 @@ func (r *Route) init() {
 
 	// GET FIELD
 	r.router.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
-		ctx := r.a.NewContext(request)
+		ctx := NewContext(request)
+
+		if ok := ctx.HasScope(r.kind.ScopeReadOnly, r.kind.ScopeReadWrite, r.kind.ScopeFullControl); !ok {
+			http.Error(writer, "forbidden", http.StatusForbidden)
+			return
+		}
+
 		vars := mux.Vars(request)
 		var key *datastore.Key
 		if r.kind.dsUseName {
@@ -162,7 +180,7 @@ func (r *Route) init() {
 
 		var err error
 		for _, name := range strings.Split(vars["rest"], "/") {
-			h, err = h.Get(ctx, name)
+			h, err = h.Get(r.a, ctx, name)
 			if err != nil {
 				ctx.PrintError(writer, err)
 				return
@@ -173,7 +191,12 @@ func (r *Route) init() {
 
 	// POST
 	r.router.HandleFunc(``, func(writer http.ResponseWriter, request *http.Request) {
-		ctx := r.a.NewContext(request)
+		ctx := NewContext(request)
+
+		if ok := ctx.HasScope(r.kind.ScopeReadWrite, r.kind.ScopeFullControl); !ok {
+			http.Error(writer, "forbidden", http.StatusForbidden)
+			return
+		}
 
 		h := r.kind.NewHolder(nil)
 		if err := h.Parse(ctx.Body()); err != nil {
@@ -194,7 +217,13 @@ func (r *Route) init() {
 
 	// PUT
 	r.router.HandleFunc(`/{name}`, func(writer http.ResponseWriter, request *http.Request) {
-		ctx := r.a.NewContext(request)
+		ctx := NewContext(request)
+
+		if ok := ctx.HasScope(r.kind.ScopeReadWrite, r.kind.ScopeFullControl); !ok {
+			http.Error(writer, "forbidden", http.StatusForbidden)
+			return
+		}
+
 		name := mux.Vars(request)["name"]
 
 		var key *datastore.Key
@@ -208,6 +237,8 @@ func (r *Route) init() {
 				return
 			}
 		}
+
+		// TODO: Check scope before PUT
 
 		h := r.kind.NewHolder(key)
 		if err := h.Parse(ctx.Body()); err != nil {
@@ -226,7 +257,13 @@ func (r *Route) init() {
 	// PUT FIELD
 	// todo:
 	r.router.HandleFunc(`/{name}`, func(writer http.ResponseWriter, request *http.Request) {
-		ctx := r.a.NewContext(request)
+		ctx := NewContext(request)
+
+		if ok := ctx.HasScope(r.kind.ScopeReadWrite, r.kind.ScopeFullControl); !ok {
+			http.Error(writer, "forbidden", http.StatusForbidden)
+			return
+		}
+
 		vars := mux.Vars(request)
 		var key *datastore.Key
 		if r.kind.dsUseName {
@@ -246,7 +283,7 @@ func (r *Route) init() {
 		}
 		var err error
 		for _, name := range strings.Split(vars["rest"], "/") {
-			h, err = h.Get(ctx, name)
+			h, err = h.Get(r.a, ctx, name)
 			if err != nil {
 				ctx.PrintError(writer, err)
 				return
@@ -261,7 +298,13 @@ func (r *Route) init() {
 
 	// DELETE
 	r.router.HandleFunc(`/{name}`, func(writer http.ResponseWriter, request *http.Request) {
-		ctx := r.a.NewContext(request)
+		ctx := NewContext(request)
+
+		if ok := ctx.HasScope(r.kind.ScopeDelete, r.kind.ScopeFullControl); !ok {
+			http.Error(writer, "forbidden", http.StatusForbidden)
+			return
+		}
+
 		name := mux.Vars(request)["name"]
 		var key *datastore.Key
 		if r.kind.dsUseName {
@@ -284,7 +327,13 @@ func (r *Route) init() {
 
 	// DELETE FIELD
 	r.router.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
-		ctx := r.a.NewContext(request)
+		ctx := NewContext(request)
+
+		if ok := ctx.HasScope(r.kind.ScopeDelete, r.kind.ScopeFullControl); !ok {
+			http.Error(writer, "forbidden", http.StatusForbidden)
+			return
+		}
+
 		vars := mux.Vars(request)
 		var key *datastore.Key
 		if r.kind.dsUseName {
@@ -304,7 +353,7 @@ func (r *Route) init() {
 		}
 		var err error
 		for _, name := range strings.Split(vars["rest"], "/") {
-			h, err = h.Get(ctx, name)
+			h, err = h.Get(r.a, ctx, name)
 			if err != nil {
 				ctx.PrintError(writer, err)
 				return

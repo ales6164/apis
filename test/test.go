@@ -2,8 +2,8 @@ package test
 
 import (
 	"github.com/ales6164/apis"
-	"net/http"
 	"google.golang.org/appengine/datastore"
+	"net/http"
 )
 
 func init() {
@@ -11,12 +11,16 @@ func init() {
 	var parentKind = apis.NewKind("parent", Parent{})
 	var objectKind = apis.NewKind("object", Object{})
 
-	api := apis.New(parentKind, objectKind)
+	api := apis.New(&apis.Options{
+		NestedKinds: []*apis.Kind{parentKind, objectKind},
+	})
 	api.Handle("/objects", objectKind)
 	api.Handle("/parents", parentKind)
 
 	http.Handle("/", api.Handler())
 }
+
+// TODO: check scope on every handler operation (get, put, delete, post) - best to put checks inside handler functions
 
 type Parent struct {
 	Id     *datastore.Key `datastore:"-" auto:"id" json:"id,omitempty"`

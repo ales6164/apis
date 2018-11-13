@@ -3,10 +3,10 @@ package apis
 import (
 	"github.com/ales6164/apis/errors"
 	"github.com/asaskevich/govalidator"
+	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
 	"reflect"
 	"strings"
-	"golang.org/x/net/context"
 )
 
 type Kind struct {
@@ -27,6 +27,11 @@ type Kind struct {
 	versionFieldName   string
 	createdByFieldName string
 	updatedByFieldName string
+
+	ScopeFullControl string
+	ScopeReadOnly    string
+	ScopeReadWrite   string
+	ScopeDelete      string
 
 	dsUseName       bool // default: false; if true, changes the way datastore Keys are generated
 	dsNameGenerator func(ctx context.Context, holder *Holder) string
@@ -52,6 +57,11 @@ func NewKind(name string, i interface{}) *Kind {
 			return ""
 		},
 	}
+
+	k.ScopeFullControl = name + ".fullcontrol"
+	k.ScopeReadOnly = name + ".readonly"
+	k.ScopeReadWrite = name + ".readwrite"
+	k.ScopeDelete= name + ".delete"
 
 	if len(name) == 0 || !govalidator.IsAlphanumeric(name) {
 		panic(errors.New("name must be at least one character and can contain only a-Z0-9"))

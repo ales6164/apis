@@ -5,7 +5,6 @@ import (
 	"github.com/ales6164/apis/errors"
 	"github.com/ales6164/client"
 	gContext "github.com/gorilla/context"
-	"github.com/gorilla/mux"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/log"
@@ -14,14 +13,13 @@ import (
 )
 
 type Context struct {
-	a           *Apis
 	*client.Client
 	context.Context
 	hasReadBody bool
 	body        []byte
 }
 
-func (a *Apis) NewContext(r *http.Request) Context {
+func NewContext(r *http.Request) Context {
 	// restore from request
 	if c1, ok := gContext.GetOk(r, "context"); ok {
 		if c, ok := c1.(Context); ok {
@@ -31,7 +29,6 @@ func (a *Apis) NewContext(r *http.Request) Context {
 	gaeCtx := appengine.NewContext(r)
 	clientReq := client.New(gaeCtx, r)
 	return Context{
-		a:       a,
 		Client:  clientReq,
 		Context: gaeCtx,
 	}
@@ -51,7 +48,7 @@ func (ctx Context) User() (*client.User, error) {
 	return ctx.Client.Session.GetUser(ctx)
 }
 
-func (ctx Context) Id() string {
+/*func (ctx Context) Id() string {
 	return mux.Vars(ctx.Client.HttpRequest)["id"]
 }
 
@@ -59,7 +56,7 @@ func (ctx Context) SetNamespace(namespace string) (Context, error) {
 	var err error
 	ctx.Context, err = appengine.Namespace(ctx, namespace)
 	return ctx, err
-}
+}*/
 
 func (ctx Context) HasScope(scopes ...string) bool {
 	if len(scopes) == 0 {
