@@ -48,18 +48,8 @@ func (ctx Context) User() (*client.User, error) {
 	return ctx.Client.Session.GetUser(ctx)
 }
 
-/*func (ctx Context) Id() string {
-	return mux.Vars(ctx.Client.HttpRequest)["id"]
-}
-
-func (ctx Context) SetNamespace(namespace string) (Context, error) {
-	var err error
-	ctx.Context, err = appengine.Namespace(ctx, namespace)
-	return ctx, err
-}*/
-
 func (ctx Context) HasScope(scopes ...string) bool {
-	if len(scopes) == 0 {
+	if ctx.Client.IsPublic {
 		return true
 	}
 	for _, s := range scopes {
@@ -84,7 +74,9 @@ func (ctx *Context) Print(w http.ResponseWriter, result interface{}, headerPair 
 			headerKey = headerEl
 			continue
 		}
-		w.Header().Set(headerKey, headerEl)
+		if len(headerEl) > 0 {
+			w.Header().Set(headerKey, headerEl)
+		}
 	}
 	json.NewEncoder(w).Encode(result)
 }

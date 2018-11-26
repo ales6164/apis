@@ -2,20 +2,31 @@ package test
 
 import (
 	"github.com/ales6164/apis"
+	"github.com/ales6164/apis/middleware"
 	"google.golang.org/appengine/datastore"
+	"io/ioutil"
 	"net/http"
 )
 
 func init() {
+	// auth
+	signingKey, err := ioutil.ReadFile("key.txt")
+	if err != nil {
+		panic(err)
+	}
+	_ = middleware.AuthMiddleware(signingKey)
 
-	var parentKind = apis.NewKind("parent", Parent{})
-	var objectKind = apis.NewKind("object", Object{})
+	// kind provider
+	kindProvider := apis.NewKindProvider()
+
+	var parentKind = apis.NewKind("parent", Parent{}, kindProvider)
+	var objectKind = apis.NewKind("object", Object{}, kindProvider)
 
 	api := apis.New(&apis.Options{
-		NestedKinds: []*apis.Kind{parentKind, objectKind},
 	})
-	api.Handle("/objects", objectKind)
-	api.Handle("/parents", parentKind)
+
+	api.HandleKind("/objects", objectKind)
+	api.HandleKind("/parents", parentKind)
 
 	http.Handle("/", api.Handler())
 }

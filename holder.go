@@ -64,7 +64,7 @@ func (h *Holder) Parse(body []byte) error {
 }
 
 // TODO: Check scope before GET
-func (h *Holder) Get(a *Apis, ctx Context, field string) (*Holder, error) {
+func (h *Holder) Get(ctx Context, field string) (*Holder, error) {
 	var holder = new(Holder)
 	if h.key != nil || h.parent == nil {
 		holder.parent = h
@@ -107,7 +107,8 @@ func (h *Holder) Get(a *Apis, ctx Context, field string) (*Holder, error) {
 		} else {
 			// fetch from datastore
 			key := holder.reflectValue.Interface().(*datastore.Key)
-			if kind, ok := a.kinds[key.Kind()]; ok {
+			kind := h.Kind.GetNameKind(key.Kind())
+			if kind != nil {
 				holder = kind.NewHolder(key)
 				if err := datastore.Get(ctx, key, holder); err != nil {
 					return holder, err
@@ -121,7 +122,8 @@ func (h *Holder) Get(a *Apis, ctx Context, field string) (*Holder, error) {
 		holder.value = holder.reflectValue.Interface()
 	}
 
-	if kind, ok := a.types[holderType]; ok {
+	kind := h.Kind.GetTypeKind(holderType)
+	if kind != nil {
 		holder.Kind = kind
 	}
 
