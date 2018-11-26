@@ -45,41 +45,37 @@ func (r *Route) init() {
 			return
 		}
 
+		var paramPairs []string
+
+		var offset, limit int
+		limit = 25 //default
 		q := datastore.NewQuery(r.kind.name)
 		var filterMap = map[string]map[string]string{}
 		for name, values := range request.URL.Query() {
 			switch name {
 			case "order":
-				q = q.Order(values[len(values)-1])
+				v := values[len(values)-1]
+				q = q.Order(v)
+				paramPairs = append(paramPairs, "order="+v)
 			case "limit":
-				l, err := strconv.Atoi(values[len(values)-1])
+				v := values[len(values)-1]
+				l, err := strconv.Atoi(v)
 				if err != nil {
 					ctx.PrintError(writer, err)
 					return
 				}
-				q = q.Limit(l)
-			case "start":
-				curr, err := datastore.DecodeCursor(values[len(values)-1])
-				if err != nil {
-					ctx.PrintError(writer, err)
-					return
-				}
-				q = q.Start(curr)
-			case "end":
-				// ???
-				curr, err := datastore.DecodeCursor(values[len(values)-1])
-				if err != nil {
-					ctx.PrintError(writer, err)
-					return
-				}
-				q = q.End(curr)
+				limit = l
+				paramPairs = append(paramPairs, "limit="+v)
 			case "offset":
-				l, err := strconv.Atoi(values[len(values)-1])
+				v := values[len(values)-1]
+				l, err := strconv.Atoi(v)
 				if err != nil {
 					ctx.PrintError(writer, err)
 					return
 				}
 				q = q.Offset(l)
+				offset = l
+				paramPairs = append(paramPairs, "offset="+v)
 			default:
 				if strings.Split(name, "[")[0] == "filters" {
 					fm := getParams(name)
@@ -90,6 +86,8 @@ func (r *Route) init() {
 							var value = m["value"]
 							if len(filterStr) > 0 && len(value) > 0 {
 								q = q.Filter(filterStr, value)
+								paramPairs = append(paramPairs, "filters["+fm["num"]+"][filterStr]="+filterStr)
+								paramPairs = append(paramPairs, "filters["+fm["num"]+"][value]="+value)
 							}
 						} else {
 							filterMap[fm["num"]] = map[string]string{
@@ -100,26 +98,46 @@ func (r *Route) init() {
 				}
 			}
 		}
-		var cursor *Cursor
+		// set limit
+		q = q.Limit(limit)
+
+		var linkHeader []string
 		var out []interface{}
+		total, err := q.Count(ctx)
+		if err != nil {
+			http.Error(writer, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		t := q.Run(ctx)
 		for {
 			var h = r.kind.NewHolder(nil)
 			h.key, err = t.Next(h)
 			if err == datastore.Done {
-				if c, err := t.Cursor(); err == nil && len(c.String()) > 0 {
-					cursor = new(Cursor)
-					cursor.Next = c.String()
-				}
 				break
 			}
 			out = append(out, h.GetValue())
 		}
-		ctx.Print(writer, Results{
-			Count:   len(out),
-			Results: out,
-			Cursor:  cursor,
-		})
+
+		// pagination links
+		count := len(out)
+		if (total - offset - count) > 0 {
+			// has more items to fetch
+			linkHeader = append(linkHeader, "<"+getHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(offset+count)), "&")+`>; rel="next"`)
+			if (total - offset - count - limit) > 0 {
+				// next is not last
+				linkHeader = append(linkHeader, "<"+getHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(total-limit)), "&")+`>; rel="last"`)
+			}
+		}
+		if offset > 0 {
+			// get previous link
+			linkHeader = append(linkHeader, "<"+getHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(offset+count)), "&")+`>; rel="prev"`)
+			if offset-limit > 0 {
+				// previous is not first
+				linkHeader = append(linkHeader, "<"+getHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset=0"), "&")+`>; rel="first"`)
+			}
+		}
+
+		ctx.Print(writer, out, "X-Total-Count", strconv.Itoa(total), "Link", strings.Join(linkHeader, ","))
 	}).Methods(http.MethodGet)
 
 	// GET

@@ -4,6 +4,8 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/search"
 	"math/rand"
+	"net/http"
+	"strings"
 	"time"
 	"regexp"
 )
@@ -71,4 +73,17 @@ func getParams(url string) (paramsMap map[string]string) {
 		}
 	}
 	return
+}
+
+// getHost tries its best to return the request host.
+func getHost(r *http.Request) string {
+	if r.URL.IsAbs() {
+		host := r.Host
+		// Slice off any port information.
+		if i := strings.Index(host, ":"); i != -1 {
+			host = host[:i]
+		}
+		return host
+	}
+	return r.URL.Host
 }
