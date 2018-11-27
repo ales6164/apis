@@ -25,8 +25,12 @@ func init() {
 	api := apis.New(&apis.Options{
 	})
 
-	api.HandleKind("/objects", objectKind)
-	api.HandleKind("/parents", parentKind)
+	api.HandleFunc("/hi", func(writer http.ResponseWriter, request *http.Request) {
+		writer.Write([]byte("Hello"))
+	})
+
+	objectKind.Attach(api, "/objects") // auth middleware
+	parentKind.Attach(api, "/parents")
 
 	http.Handle("/", api.Handler())
 }

@@ -39,10 +39,6 @@ func (a *Apis) HandleFunc(path string, f func(http.ResponseWriter, *http.Request
 	a.router.HandleFunc(path, f)
 }
 
-func (a *Apis) HandleKind(path string, k *Kind) {
-	k.AttachToRouter(a.router.PathPrefix(path).Subrouter())
-}
-
 func (a *Apis) Handler() http.Handler {
 	return &Server{a.router}
 }

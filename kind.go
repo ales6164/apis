@@ -106,7 +106,8 @@ const (
 	updatedby = "updatedby"
 )
 
-func (k *Kind) AttachToRouter(r *mux.Router) {
+func (k *Kind) Attach(a *Apis, pathPrefix string) {
+	r := a.router.PathPrefix(pathPrefix).Subrouter()
 	r.HandleFunc("", func(writer http.ResponseWriter, request *http.Request) {
 		var err error
 		ctx := NewContext(request)
@@ -448,6 +449,7 @@ func (k *Kind) AttachToRouter(r *mux.Router) {
 		json.NewEncoder(writer).Encode(h.GetValue())
 	}).Methods(http.MethodDelete)
 }
+
 
 func Lookup(kind *Kind, typ reflect.Type, fields map[string]*Field) map[string]*Field {
 
