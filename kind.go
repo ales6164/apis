@@ -195,18 +195,18 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 		count := len(out)
 		if (total - offset - count) > 0 {
 			// has more items to fetch
-			linkHeader = append(linkHeader, "<"+getHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(offset+count)), "&")+`>; rel="next"`)
+			linkHeader = append(linkHeader, "<"+getSchemeAndHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(offset+count)), "&")+`>; rel="next"`)
 			if (total - offset - count - limit) > 0 {
 				// next is not last
-				linkHeader = append(linkHeader, "<"+getHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(total-limit)), "&")+`>; rel="last"`)
+				linkHeader = append(linkHeader, "<"+getSchemeAndHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(total-limit)), "&")+`>; rel="last"`)
 			}
 		}
 		if offset > 0 {
 			// get previous link
-			linkHeader = append(linkHeader, "<"+getHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(offset-limit)), "&")+`>; rel="prev"`)
+			linkHeader = append(linkHeader, "<"+getSchemeAndHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(offset-limit)), "&")+`>; rel="prev"`)
 			if offset-limit > 0 {
 				// previous is not first
-				linkHeader = append(linkHeader, "<"+getHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset=0"), "&")+`>; rel="first"`)
+				linkHeader = append(linkHeader, "<"+getSchemeAndHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset=0"), "&")+`>; rel="first"`)
 			}
 		}
 

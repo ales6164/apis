@@ -2,12 +2,13 @@ package apis
 
 import (
 	"golang.org/x/net/context"
+	"google.golang.org/appengine"
 	"google.golang.org/appengine/search"
 	"math/rand"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
-	"regexp"
 )
 
 const LetterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -39,7 +40,6 @@ func RandStringBytesMaskImprSrc(letterBytes string, n int) string {
 	return string(b)
 }
 
-
 // clears search index
 func ClearIndex(ctx context.Context, indexName string) error {
 	index, err := search.Open(indexName)
@@ -64,6 +64,7 @@ func ClearIndex(ctx context.Context, indexName string) error {
 }
 
 var queryFilters = regexp.MustCompile(`(?m)filters\[(?P<num>[^\]]+)\]\[(?P<nam>[^\]]+)\]`)
+
 func getParams(url string) (paramsMap map[string]string) {
 	match := queryFilters.FindStringSubmatch(url)
 	paramsMap = make(map[string]string)
@@ -77,13 +78,25 @@ func getParams(url string) (paramsMap map[string]string) {
 
 // getHost tries its best to return the request host.
 func getHost(r *http.Request) string {
+	var host = r.URL.Host
 	if r.URL.IsAbs() {
-		host := r.Host
+		host = r.Host
 		// Slice off any port information.
 		if i := strings.Index(host, ":"); i != -1 {
 			host = host[:i]
 		}
-		return host
 	}
-	return r.URL.Host
+	if len(host) == 0 {
+		if appengine.IsDevAppServer() {
+			host = appengine.DefaultVersionHostname(appengine.NewContext(r))
+		}
+	}
+	return host
+}
+
+func getSchemeAndHost(r *http.Request) string {
+	if r.Header.Get("X-AppEngine-Https") == "on" {
+		return "https://" + getHost(r)
+	}
+	return "http://" + getHost(r)
 }

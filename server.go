@@ -16,7 +16,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers",
 			"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
-				"X-Requested-With")
+				"X-Requested-With, X-Total-Count, Link")
+		w.Header().Set("Access-Control-Expose-Headers",
+			"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
+				"X-Requested-With, X-Total-Count, Link")
 	}
 	if req.Method == "OPTIONS" {
 		return
