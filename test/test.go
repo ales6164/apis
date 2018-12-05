@@ -20,7 +20,7 @@ func init() {
 	kindProvider := apis.NewKindProvider()
 
 	var parentKind = apis.NewKind("parent", Parent{}, kindProvider)
-	var objectKind = apis.NewKind("object", Object{}, kindProvider)
+	var objectKind = apis.NewKind("child", Child{}, kindProvider)
 
 	api := apis.New(&apis.Options{
 	})
@@ -29,7 +29,7 @@ func init() {
 		writer.Write([]byte("Hello"))
 	})
 
-	objectKind.Attach(api, "/objects") // auth middleware
+	objectKind.Attach(api, "/children") // auth middleware?
 	parentKind.Attach(api, "/parents")
 
 	http.Handle("/", api.Handler())
@@ -38,12 +38,15 @@ func init() {
 // TODO: check scope on every handler operation (get, put, delete, post) - best to put checks inside handler functions
 
 type Parent struct {
-	Id     *datastore.Key `datastore:"-" auto:"id" json:"id,omitempty"`
-	Child  *datastore.Key `json:"child"`
-	Object Object         `json:"object"`
+	Id        *datastore.Key   `datastore:"-" auto:"id" json:"id,omitempty"`
+	Name      string           `json:"name"`
+	ChildRef  *datastore.Key   `json:"childRef"`
+	ChildRefs []*datastore.Key `json:"childRefs"`
+	Child     Child            `json:"child"`
+	Children  []Child          `json:"children"`
 }
 
-type Object struct {
+type Child struct {
 	Id   *datastore.Key `datastore:"-" auto:"id" json:"id,omitempty"`
 	Name string         `json:"name"`
 }

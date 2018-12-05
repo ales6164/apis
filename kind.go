@@ -1,7 +1,6 @@
 package apis
 
 import (
-	"encoding/json"
 	"github.com/ales6164/apis/errors"
 	"github.com/asaskevich/govalidator"
 	"github.com/gorilla/mux"
@@ -106,6 +105,12 @@ const (
 	updatedby = "updatedby"
 )
 
+func (k *Kind) Get(ctx Context, key *datastore.Key) (h *Holder, err error) {
+	h = k.NewHolder(key)
+	err = datastore.Get(ctx, key, h)
+	return h, err
+}
+
 func (k *Kind) Attach(a *Apis, pathPrefix string) {
 	r := a.router.PathPrefix(pathPrefix).Subrouter()
 	r.HandleFunc("", func(writer http.ResponseWriter, request *http.Request) {
@@ -132,7 +137,7 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 				v := values[len(values)-1]
 				l, err := strconv.Atoi(v)
 				if err != nil {
-					ctx.PrintError(writer, err)
+					ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 					return
 				}
 				limit = l
@@ -141,7 +146,7 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 				v := values[len(values)-1]
 				l, err := strconv.Atoi(v)
 				if err != nil {
-					ctx.PrintError(writer, err)
+					ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 					return
 				}
 				offset = l
@@ -214,12 +219,6 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 	}).Methods(http.MethodGet)
 	r.HandleFunc("/{name}", func(writer http.ResponseWriter, request *http.Request) {
 		ctx := NewContext(request)
-
-		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			http.Error(writer, "forbidden", http.StatusForbidden)
-			return
-		}
-
 		name := mux.Vars(request)["name"]
 		var key *datastore.Key
 		if k.dsUseName {
@@ -228,15 +227,22 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 			var err error
 			key, err = datastore.DecodeKey(name)
 			if err != nil {
-				ctx.PrintError(writer, err)
+				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
-		h := k.NewHolder(key)
-		if err := datastore.Get(ctx, key, h); err != nil {
-			ctx.PrintError(writer, err)
+
+		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); !ok {
+			ctx.PrintError(writer, "forbidden", http.StatusForbidden)
 			return
 		}
+
+		h, err := k.Get(ctx, key)
+		if err != nil {
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		ctx.Print(writer, h.GetValue())
 	}).Methods(http.MethodGet)
 	r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
@@ -255,26 +261,24 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 			var err error
 			key, err = datastore.DecodeKey(vars["name"])
 			if err != nil {
-				ctx.PrintError(writer, err)
+				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
 		h := k.NewHolder(key)
 		if err := datastore.Get(ctx, key, h); err != nil {
-			ctx.PrintError(writer, err)
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		var err error
-		for _, name := range strings.Split(vars["rest"], "/") {
-			h, err = h.Get(ctx, name)
-			if err != nil {
-				ctx.PrintError(writer, err)
-				return
-			}
+		h, value, err := h.Get(ctx, strings.Split(vars["rest"], "/")...)
+		if err != nil {
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+			return
 		}
-		json.NewEncoder(writer).Encode(h.GetValue())
+		ctx.Print(writer, value)
 	}).Methods(http.MethodGet)
+
 	r.HandleFunc("", func(writer http.ResponseWriter, request *http.Request) {
 		ctx := NewContext(request)
 
@@ -285,7 +289,7 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 
 		h := k.NewHolder(nil)
 		if err := h.Parse(ctx.Body()); err != nil {
-			ctx.PrintError(writer, err)
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -294,7 +298,7 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 
 		var err error
 		if h.key, err = datastore.Put(ctx, key, h); err != nil {
-			ctx.PrintError(writer, err)
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -302,6 +306,7 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 
 		ctx.Print(writer, h.GetValue())
 	}).Methods(http.MethodPost)
+
 	r.HandleFunc(`/{name}`, func(writer http.ResponseWriter, request *http.Request) {
 		ctx := NewContext(request)
 
@@ -319,7 +324,7 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 			var err error
 			key, err = datastore.DecodeKey(name)
 			if err != nil {
-				ctx.PrintError(writer, err)
+				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
@@ -328,18 +333,18 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 
 		h := k.NewHolder(key)
 		if err := h.Parse(ctx.Body()); err != nil {
-			ctx.PrintError(writer, err)
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		var err error
 		if h.key, err = datastore.Put(ctx, key, h); err != nil {
-			ctx.PrintError(writer, err)
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		ctx.Print(writer, h.GetValue())
 	}).Methods(http.MethodPut)
-	r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
+	/*r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
 		ctx := NewContext(request)
 
 		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); !ok {
@@ -355,29 +360,37 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 			var err error
 			key, err = datastore.DecodeKey(vars["name"])
 			if err != nil {
-				ctx.PrintError(writer, err)
+				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
 		h := k.NewHolder(key)
 		if err := datastore.Get(ctx, key, h); err != nil {
-			ctx.PrintError(writer, err)
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
 		var err error
-		for _, name := range strings.Split(vars["rest"], "/") {
-			h, err = h.Get(ctx, name)
-			if err != nil {
-				ctx.PrintError(writer, err)
-				return
-			}
-		}
-		if err := h.Delete(ctx); err != nil {
-			ctx.PrintError(writer, err)
+		h, value, err := h.Get(ctx, strings.Split(vars["rest"], "/")...)
+		if err != nil {
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(writer).Encode(h.GetValue())
-	}).Methods(http.MethodPut)
+
+		err = json.Unmarshal(ctx.Body(), &h.value)
+		if err != nil {
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		h.reflectValue = reflect.ValueOf(h.value)
+
+		if h.key, err = datastore.Put(ctx, key, h); err != nil {
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		ctx.Print(writer, h.GetValue())
+	}).Methods(http.MethodPut)*/
+
 	r.HandleFunc(`/{name}`, func(writer http.ResponseWriter, request *http.Request) {
 		ctx := NewContext(request)
 
@@ -394,13 +407,13 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 			var err error
 			key, err = datastore.DecodeKey(name)
 			if err != nil {
-				ctx.PrintError(writer, err)
+				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
 		var err error
 		if err = datastore.Delete(ctx, key); err != nil {
-			ctx.PrintError(writer, err)
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -408,7 +421,7 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 
 		ctx.Print(writer, "success")
 	}).Methods(http.MethodDelete)
-	r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
+	/*r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
 		ctx := NewContext(request)
 
 		if ok := ctx.HasScope(k.ScopeDelete, k.ScopeFullControl); !ok {
@@ -424,32 +437,31 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 			var err error
 			key, err = datastore.DecodeKey(vars["name"])
 			if err != nil {
-				ctx.PrintError(writer, err)
+				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
 		h := k.NewHolder(key)
 		if err := datastore.Get(ctx, key, h); err != nil {
-			ctx.PrintError(writer, err)
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		var err error
 		for _, name := range strings.Split(vars["rest"], "/") {
 			h, err = h.Get(ctx, name)
 			if err != nil {
-				ctx.PrintError(writer, err)
+				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
 		if err := h.Delete(ctx); err != nil {
-			ctx.PrintError(writer, err)
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		json.NewEncoder(writer).Encode(h.GetValue())
-	}).Methods(http.MethodDelete)
+	}).Methods(http.MethodDelete)*/
 }
-
 
 func Lookup(kind *Kind, typ reflect.Type, fields map[string]*Field) map[string]*Field {
 
@@ -570,15 +582,15 @@ func (k *Kind) Type() reflect.Type {
 	return k.t
 }
 
-func (k *Kind) New() interface{} {
-	return reflect.New(k.t).Interface()
+func (k *Kind) New() reflect.Value {
+	return reflect.New(k.t)
 }
 
 func (k *Kind) NewHolder(key *datastore.Key) *Holder {
 	return &Holder{
-		Kind:  k,
-		value: k.New(),
-		key:   key,
+		Kind:         k,
+		reflectValue: k.New(),
+		key:          key,
 	}
 }
 

@@ -4,19 +4,17 @@ import (
 	"encoding/json"
 	"github.com/ales6164/apis/errors"
 	"google.golang.org/appengine/datastore"
-	"google.golang.org/appengine/log"
 	"reflect"
+	"strconv"
 )
 
 type Holder struct {
 	Kind               *Kind
 	key                *datastore.Key
-	value              interface{} // is pointer to struct -- normally
-	hasInputData       bool        // when updating
+	hasInputData       bool // when updating
 	hasLoadedData      bool
 	rollbackProperties []datastore.Property
 
-	parent       *Holder // holder value reference
 	reflectValue reflect.Value
 }
 
@@ -33,7 +31,7 @@ func (h *Holder) Id() string {
 
 func (h *Holder) ReflectValue() {
 	if h.Kind != nil && h.Kind.hasIdFieldName && h.key != nil {
-		v := reflect.ValueOf(h.value).Elem()
+		v := h.reflectValue.Elem()
 		idField := v.FieldByName(h.Kind.idFieldName)
 		if idField.IsValid() && idField.CanSet() {
 			if h.Kind.dsUseName {
@@ -47,127 +45,91 @@ func (h *Holder) ReflectValue() {
 
 func (h *Holder) GetValue() interface{} {
 	h.ReflectValue()
-	return h.value
+	return h.reflectValue.Interface()
 }
 
 func (h *Holder) SetValue(v interface{}) {
-	h.value = v
-	h.reflectValue = reflect.ValueOf(h.value)
+	h.reflectValue = reflect.ValueOf(v)
 }
 
 func (h *Holder) Parse(body []byte) error {
 	h.hasInputData = true
-	h.value = h.Kind.New()
-	err := json.Unmarshal(body, &h.value)
-	h.reflectValue = reflect.ValueOf(h.value)
+	var value = h.Kind.New().Interface()
+	err := json.Unmarshal(body, &value)
+	h.reflectValue = reflect.ValueOf(value)
 	return err
 }
 
-// TODO: Check scope before GET
-func (h *Holder) Get(ctx Context, field string) (*Holder, error) {
-	var holder = new(Holder)
-	if h.key != nil || h.parent == nil {
-		holder.parent = h
-	} else {
-		holder.parent = h.parent
-	}
-
-	var f *Field
-	// get real field name (in case json field has different name)
-	if h.Kind != nil {
-		var ok bool
-		if f, ok = h.Kind.fields[field]; ok {
-			field = f.Name
-		}
-	}
-
-	// get field value
-	h.ReflectValue()
-
-	if h.reflectValue.Kind() == reflect.Ptr {
-		holder.reflectValue = h.reflectValue.Elem().FieldByName(field)
-	} else {
-		holder.reflectValue = h.reflectValue.FieldByName(field)
-
-		log.Debugf(ctx, "this is non pointer field: %s %s", field, holder.reflectValue.String())
-		if !holder.reflectValue.CanAddr() {
-			log.Debugf(ctx, "this value is unaddressable")
-		}
-	}
-
-	log.Debugf(ctx, "last")
-
-	// check value type
-	var holderType = holder.reflectValue.Type()
-	switch holderType {
-	case keyType:
-		// check if it's auto=id field
-		if f.IsAutoId {
-			holder.value = holder.reflectValue.Interface()
-		} else {
-			// fetch from datastore
-			key := holder.reflectValue.Interface().(*datastore.Key)
-			kind := h.Kind.GetNameKind(key.Kind())
-			if kind != nil {
-				holder = kind.NewHolder(key)
-				if err := datastore.Get(ctx, key, holder); err != nil {
-					return holder, err
-				}
-				holderType = holder.reflectValue.Type()
-			} else {
-				return holder, errors.New("unregistered kind " + key.Kind())
+func (h *Holder) get(ctx Context, fields ...string) (*Holder, reflect.Value, error) {
+	var valueHolder = h.reflectValue
+	for i, field := range fields {
+		var f *Field
+		// get real field name (in case json field has different name)
+		if h.Kind != nil {
+			var ok bool
+			if f, ok = h.Kind.fields[field]; ok {
+				field = f.Name
 			}
 		}
-	default:
-		holder.value = holder.reflectValue.Interface()
+
+		// do stuff before switching to new value
+
+		// is it array?
+		switch valueHolder.Kind() {
+		case reflect.Slice, reflect.Array:
+			if index, err := strconv.Atoi(field); err == nil {
+				valueHolder = valueHolder.Index(index)
+			} else {
+				return h, valueHolder, errors.New("error converting string to slice index")
+			}
+		default:
+			if valueHolder.Kind() == reflect.Ptr {
+				valueHolder = valueHolder.Elem().FieldByName(field)
+			} else {
+				valueHolder = valueHolder.FieldByName(field)
+			}
+		}
+
+		// do stuff after we have value
+
+		// check valueHolder kind to know if it's of kind *datastore.Key, in that case we get that object from datastore
+		switch valueHolder.Type() {
+		case keyType:
+			if key, ok := valueHolder.Interface().(*datastore.Key); ok {
+				if keyKind := h.Kind.GetNameKind(key.Kind()); keyKind != nil {
+					if ok := ctx.HasScope(keyKind.ScopeReadOnly, keyKind.ScopeReadWrite, keyKind.ScopeFullControl); !ok {
+						return h, valueHolder, errors.New("unauthorized access: value out of scope")
+					}
+					h2, err := keyKind.Get(ctx, key)
+					if err != nil {
+						return h, valueHolder, err
+					}
+					if i == len(field)-1 {
+						h2.ReflectValue()
+						return h2, h2.reflectValue, nil
+					}
+					return h2.get(ctx, fields[i+1:]...)
+				} else {
+					return h, valueHolder, errors.New("field of type *datastore.Key but it's kind is not registered in kind provider")
+				}
+			} else {
+				return h, valueHolder, errors.New("error reflecting field of type *datastore.Key")
+			}
+		default:
+
+		}
 	}
 
-	kind := h.Kind.GetTypeKind(holderType)
-	if kind != nil {
-		holder.Kind = kind
-	}
+	return h, valueHolder, nil
+}
 
-	return holder, nil
+func (h *Holder) Get(ctx Context, fields ...string) (*Holder, interface{}, error) {
+	h2, v, err := h.get(ctx, fields...)
+	return h2, v.Interface(), err
 }
 
 func (h *Holder) Delete(ctx Context) error {
-	if h.key != nil {
-		return datastore.Delete(ctx, h.key)
-	} else if h.parent != nil && h.parent.key != nil {
-
-		// delete field
-		/*switch h.reflectValue.Kind() {
-		case reflect.Bool:
-			h.reflectValue.SetBool(false)
-		case reflect.String:
-			reflect.Indirect(h.reflectValue).SetString("")
-			//h.reflectValue.SetString("")
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			h.reflectValue.SetInt(0)
-		case reflect.Float32, reflect.Float64:
-			h.reflectValue.SetFloat(0)
-		case reflect.Struct:
-			h.reflectValue.Set(reflect.Zero(h.reflectValue.Type()))
-
-		default:
-			return errors.New("unregistered kind " + h.reflectValue.Kind().String())
-		//todo: need more: https://cloud.google.com/appengine/docs/standard/go/datastore/reference
-		}*/
-
-		log.Debugf(ctx, "kind %s", h.reflectValue.Kind().String())
-		log.Debugf(ctx, "type %s", h.reflectValue.Type().String())
-		log.Debugf(ctx, "value interface %s", h.reflectValue.Interface())
-		log.Debugf(ctx, "this is value: %s", h.reflectValue.String())
-		if !h.reflectValue.CanAddr() {
-			log.Debugf(ctx, "this value is unaddressable")
-		}
-
-		h.reflectValue.Set(reflect.Zero(h.reflectValue.Type()))
-
-		_, err := datastore.Put(ctx, h.parent.key, h.parent)
-		return err
-	}
-	return errors.New("can't resolve path")
+	return datastore.Delete(ctx, h.key)
 }
 
 func (h *Holder) Bytes() ([]byte, error) {
@@ -187,17 +149,16 @@ func (h *Holder) Load(ps []datastore.Property) error {
 	h.rollbackProperties = ps
 	if h.hasInputData {
 		// replace only empty fields
-		n := h.Kind.New()
+		n := h.Kind.New().Interface()
 		if err := datastore.LoadStruct(n, ps); err != nil {
 			return err
 		}
 
-		h.value = n
+		h.reflectValue = reflect.ValueOf(n)
 
 		return nil
 	}
-	err := datastore.LoadStruct(h.value, ps)
-	h.reflectValue = reflect.ValueOf(h.value)
+	err := datastore.LoadStruct(h.reflectValue.Interface(), ps)
 	return err
 }
 
@@ -217,5 +178,5 @@ func (h *Holder) Save() ([]datastore.Property, error) {
 			}
 		}
 	}*/
-	return datastore.SaveStruct(h.value)
+	return datastore.SaveStruct(h.reflectValue.Interface())
 }

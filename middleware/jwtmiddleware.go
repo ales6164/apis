@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/ales6164/apis"
 
-	"github.com/ales6164/apis/errors"
 	"log"
 	"net/http"
 	"strings"
@@ -117,7 +116,7 @@ func (m *JWTMiddleware) HandlerWithNext(w http.ResponseWriter, r *http.Request, 
 	ctx := apis.NewContext(r)
 
 	if !ctx.IsAuthenticated {
-		ctx.PrintError(w, errors.ErrUnathorized)
+		ctx.PrintError(w, "unathorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -143,13 +142,13 @@ func (m *JWTMiddleware) Handler(h http.Handler) http.Handler {
 			if len(m.Options.RedirectOnError) > 0 {
 				redirect(w, r, m.Options.RedirectOnError)
 			} else {
-				ctx.PrintError(w, errors.ErrUnathorized)
+				ctx.PrintError(w, "unathorized", http.StatusUnauthorized)
 			}
 			return
 		}
 
 		if !ctx.IsAuthenticated {
-			ctx.PrintError(w, errors.ErrUnathorized)
+			ctx.PrintError(w, "unathorized", http.StatusUnauthorized)
 			return
 		}
 

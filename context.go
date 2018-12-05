@@ -2,7 +2,6 @@ package apis
 
 import (
 	"encoding/json"
-	"github.com/ales6164/apis/errors"
 	"github.com/ales6164/client"
 	gContext "github.com/gorilla/context"
 	"golang.org/x/net/context"
@@ -91,29 +90,13 @@ func (ctx *Context) PrintResult(w http.ResponseWriter, result map[string]interfa
 
 	bs, err := json.Marshal(result)
 	if err != nil {
-		ctx.PrintError(w, err)
+		ctx.PrintError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Write(bs)
 }
 
-func (ctx *Context) PrintError(w http.ResponseWriter, err error, descriptors ...string) {
-	/*ctx.ClientRequest.Error = err.Error()
-	for i, d := range descriptors {
-		ctx.ClientRequest.Error += `\n[descriptor"` + strconv.Itoa(i) + `","` + d + `"]`
-	}
-	log.Errorf(ctx, "context error: %s", ctx.ClientRequest.Error)
-	ctx.ClientRequest.Body = ctx.Body()
-	datastore.Put(ctx, ctx.clientRequestKey, ctx.ClientRequest)*/
+func (ctx *Context) PrintError(w http.ResponseWriter, err string, code int, descriptors ...string) {
 	log.Errorf(ctx, "context error: %s", err, descriptors)
-	if err == errors.ErrUnathorized {
-		w.WriteHeader(http.StatusUnauthorized)
-	} else if err == errors.ErrForbidden {
-		w.WriteHeader(http.StatusForbidden)
-	} else if _, ok := err.(*errors.Error); ok {
-		w.WriteHeader(http.StatusBadRequest)
-	} else {
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-	w.Write([]byte(err.Error()))
+	http.Error(w, err, code)
 }
