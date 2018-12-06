@@ -294,10 +294,10 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 		}
 
 		var name = k.dsNameGenerator(ctx, h)
-		var key = datastore.NewKey(ctx, k.name, name, 0, nil)
+		h.key = datastore.NewKey(ctx, k.Name(), name, 0, nil)
 
 		var err error
-		if h.key, err = datastore.Put(ctx, key, h); err != nil {
+		if h.key, err = datastore.Put(ctx, h.key, h); err != nil {
 			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}

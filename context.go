@@ -19,13 +19,14 @@ type Context struct {
 }
 
 func NewContext(r *http.Request) Context {
+	gaeCtx := appengine.NewContext(r)
 	// restore from request
 	if c1, ok := gContext.GetOk(r, "context"); ok {
 		if c, ok := c1.(Context); ok {
+			c.Context = gaeCtx
 			return c
 		}
 	}
-	gaeCtx := appengine.NewContext(r)
 	clientReq := client.New(gaeCtx, r)
 	return Context{
 		Client:  clientReq,
