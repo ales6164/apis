@@ -47,6 +47,7 @@ type Parent struct {
 }
 
 type Child struct {
-	Id   *datastore.Key `datastore:"-" auto:"id" json:"id,omitempty"`
-	Name string         `json:"name"`
+	Id     *datastore.Key `datastore:"-" auto:"id" json:"id,omitempty"`
+	Name   string         `json:"name"`
+	Reason string         `json:"reason"`
 }

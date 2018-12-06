@@ -271,7 +271,7 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 			return
 		}
 
-		h, value, err := h.Get(ctx, strings.Split(vars["rest"], "/")...)
+		h, value, err := h.Get(ctx, strings.Split(vars["rest"], "/"))
 		if err != nil {
 			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
@@ -344,10 +344,10 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 		}
 		ctx.Print(writer, h.GetValue())
 	}).Methods(http.MethodPut)
-	/*r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
+	r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
 		ctx := NewContext(request)
 
-		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); !ok {
+		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); !ok {
 			http.Error(writer, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -370,26 +370,20 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 			return
 		}
 
-		var err error
-		h, value, err := h.Get(ctx, strings.Split(vars["rest"], "/")...)
+		h, err := h.Set(ctx, strings.Split(vars["rest"], "/"), ctx.Body())
 		if err != nil {
 			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		err = json.Unmarshal(ctx.Body(), &h.value)
+		_, err = datastore.Put(ctx, h.key, h)
 		if err != nil {
 			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		h.reflectValue = reflect.ValueOf(h.value)
 
-		if h.key, err = datastore.Put(ctx, key, h); err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
 		ctx.Print(writer, h.GetValue())
-	}).Methods(http.MethodPut)*/
+	}).Methods(http.MethodPut)
 
 	r.HandleFunc(`/{name}`, func(writer http.ResponseWriter, request *http.Request) {
 		ctx := NewContext(request)
@@ -421,7 +415,7 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 
 		ctx.Print(writer, "success")
 	}).Methods(http.MethodDelete)
-	/*r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
+	r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
 		ctx := NewContext(request)
 
 		if ok := ctx.HasScope(k.ScopeDelete, k.ScopeFullControl); !ok {
@@ -446,21 +440,21 @@ func (k *Kind) Attach(a *Apis, pathPrefix string) {
 			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		var err error
-		for _, name := range strings.Split(vars["rest"], "/") {
-			h, err = h.Get(ctx, name)
-			if err != nil {
-				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-		if err := h.Delete(ctx); err != nil {
+
+		h, err := h.Delete(ctx, strings.Split(vars["rest"], "/"))
+		if err != nil {
 			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		json.NewEncoder(writer).Encode(h.GetValue())
-	}).Methods(http.MethodDelete)*/
+		_, err = datastore.Put(ctx, h.key, h)
+		if err != nil {
+			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		ctx.Print(writer, h.GetValue())
+	}).Methods(http.MethodDelete)
 }
 
 func Lookup(kind *Kind, typ reflect.Type, fields map[string]*Field) map[string]*Field {

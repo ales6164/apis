@@ -60,9 +60,9 @@ func (h *Holder) Parse(body []byte) error {
 	return err
 }
 
-func (h *Holder) get(ctx Context, fields ...string) (*Holder, reflect.Value, error) {
+func (h *Holder) get(ctx Context, fields []string) (*Holder, reflect.Value, error) {
 	var valueHolder = h.reflectValue
-	for i, field := range fields {
+	for _, field := range fields {
 		var f *Field
 		// get real field name (in case json field has different name)
 		if h.Kind != nil {
@@ -93,7 +93,7 @@ func (h *Holder) get(ctx Context, fields ...string) (*Holder, reflect.Value, err
 		// do stuff after we have value
 
 		// check valueHolder kind to know if it's of kind *datastore.Key, in that case we get that object from datastore
-		switch valueHolder.Type() {
+		/*switch valueHolder.Type() {
 		case keyType:
 			if key, ok := valueHolder.Interface().(*datastore.Key); ok {
 				if keyKind := h.Kind.GetNameKind(key.Kind()); keyKind != nil {
@@ -108,7 +108,7 @@ func (h *Holder) get(ctx Context, fields ...string) (*Holder, reflect.Value, err
 						h2.ReflectValue()
 						return h2, h2.reflectValue, nil
 					}
-					return h2.get(ctx, fields[i+1:]...)
+					return h2.get(ctx, fields[i+1:])
 				} else {
 					return h, valueHolder, errors.New("field of type *datastore.Key but it's kind is not registered in kind provider")
 				}
@@ -117,19 +117,86 @@ func (h *Holder) get(ctx Context, fields ...string) (*Holder, reflect.Value, err
 			}
 		default:
 
-		}
+		}*/
 	}
 
 	return h, valueHolder, nil
 }
 
-func (h *Holder) Get(ctx Context, fields ...string) (*Holder, interface{}, error) {
-	h2, v, err := h.get(ctx, fields...)
-	return h2, v.Interface(), err
+func (h *Holder) Set(ctx Context, fields []string, value []byte) (*Holder, error) {
+	h2, v, err := h.get(ctx, fields)
+	if err != nil {
+		return h2, err
+	}
+
+	if v.CanSet() {
+		inputValue := reflect.New(v.Type()).Interface()
+		err = json.Unmarshal(value, &inputValue)
+		if err != nil {
+			return h2, err
+		}
+		v.Set(reflect.ValueOf(inputValue).Elem())
+	} else {
+		return h2, errors.New("field value can't be set")
+	}
+
+	return h2, nil
 }
 
-func (h *Holder) Delete(ctx Context) error {
-	return datastore.Delete(ctx, h.key)
+func (h *Holder) Delete(ctx Context, fields []string) (*Holder, error) {
+	var valueHolder = h.reflectValue
+	for i, field := range fields {
+		var f *Field
+		// get real field name (in case json field has different name)
+		if h.Kind != nil {
+			var ok bool
+			if f, ok = h.Kind.fields[field]; ok {
+				field = f.Name
+			}
+		}
+
+		// do stuff before switching to new value
+
+		// is it array?
+		switch valueHolder.Kind() {
+		case reflect.Slice, reflect.Array:
+			if index, err := strconv.Atoi(field); err == nil {
+				if i == len(fields)-1 {
+					if valueHolder.CanSet() {
+						// todo: check for index out of bounds
+						valueHolder.Set(reflect.AppendSlice(valueHolder.Slice(0, index), valueHolder.Slice(index+1, valueHolder.Len())))
+					} else {
+						return h, errors.New("field value can't be set")
+					}
+					return h, nil
+				} else {
+					valueHolder = valueHolder.Index(index)
+				}
+			} else {
+				return h, errors.New("error converting string to slice index")
+			}
+		default:
+			if valueHolder.Kind() == reflect.Ptr {
+				valueHolder = valueHolder.Elem().FieldByName(field)
+			} else {
+				valueHolder = valueHolder.FieldByName(field)
+			}
+		}
+		// do stuff after we have value
+	}
+
+	if valueHolder.CanSet() {
+		valueHolder.Set(reflect.Zero(valueHolder.Type()))
+	} else {
+		return h, errors.New("field value can't be set")
+	}
+
+	return h, nil
+}
+
+func (h *Holder) Get(ctx Context, fields []string) (*Holder, interface{}, error) {
+	h2, v, err := h.get(ctx, fields)
+	return h2, v.Interface(), err
 }
 
 func (h *Holder) Bytes() ([]byte, error) {
