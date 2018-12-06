@@ -66,7 +66,7 @@ func (ctx Context) HasScope(scopes ...string) bool {
 RESPONSE
 */
 
-func (ctx *Context) Print(w http.ResponseWriter, result interface{}, headerPair ...string) {
+func (ctx *Context) Print(w http.ResponseWriter, result interface{}, statusCode int, headerPair ...string) {
 	w.Header().Set("Content-Type", "application/json")
 	var headerKey string
 	for i, headerEl := range headerPair {
@@ -78,6 +78,7 @@ func (ctx *Context) Print(w http.ResponseWriter, result interface{}, headerPair 
 			w.Header().Set(headerKey, headerEl)
 		}
 	}
+	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(result)
 }
 

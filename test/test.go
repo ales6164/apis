@@ -20,7 +20,7 @@ func init() {
 	kindProvider := apis.NewKindProvider()
 
 	var parentKind = apis.NewKind("parent", Parent{}, kindProvider)
-	var objectKind = apis.NewKind("child", Child{}, kindProvider)
+	var childKind = apis.NewKind("child", Child{}, kindProvider)
 
 	api := apis.New(&apis.Options{
 	})
@@ -29,8 +29,12 @@ func init() {
 		writer.Write([]byte("Hello"))
 	})
 
-	objectKind.Attach(api, "/children") // auth middleware?
-	parentKind.Attach(api, "/parents")
+	api.Handle(`/children`, childKind)
+	api.Handle(`/children/{key}`, childKind)
+	api.Handle(`/children/{key}/{path:[a-zA-Z0-9=\-\/]+}`, childKind)
+	api.Handle(`/parents`, parentKind)
+	api.Handle(`/parents/{key}`, parentKind)
+	api.Handle(`/parents/{key}/{path:[a-zA-Z0-9=\-\/]+}`, parentKind)
 
 	http.Handle("/", api.Handler())
 }

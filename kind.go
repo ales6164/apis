@@ -41,6 +41,7 @@ type Kind struct {
 
 	fields map[string]*Field // map key is json representation for field name
 
+	http.Handler
 	*KindProvider
 }
 
@@ -105,356 +106,272 @@ const (
 	updatedby = "updatedby"
 )
 
-func (k *Kind) Get(ctx Context, key *datastore.Key) (h *Holder, err error) {
+func (k *Kind) Get(ctx context.Context, key *datastore.Key) (h *Holder, err error) {
 	h = k.NewHolder(key)
 	err = datastore.Get(ctx, key, h)
 	return h, err
 }
 
-func (k *Kind) Attach(a *Apis, pathPrefix string) {
-	r := a.router.PathPrefix(pathPrefix).Subrouter()
-	r.HandleFunc("", func(writer http.ResponseWriter, request *http.Request) {
-		var err error
-		ctx := NewContext(request)
+func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	var err error
+	var h *Holder
+	var path []string
+	var key *datastore.Key
+	var hasPath, hasKey bool
+	if encodedKey, ok := vars["key"]; ok {
+		if key, err = datastore.DecodeKey(encodedKey); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		} else {
+			hasKey = true
+		}
+	}
+	if _path, ok := vars["path"]; ok {
+		path = strings.Split(_path, "/")
+		hasPath = len(path) > 0
+	}
 
+	ctx := NewContext(r)
+
+	switch r.Method {
+	case http.MethodGet:
 		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			http.Error(writer, "forbidden", http.StatusForbidden)
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 
-		var paramPairs []string
-		var offset, limit int
-		limit = 25 //default
-		q := datastore.NewQuery(k.name)
-		var filterMap = map[string]map[string]string{}
-		for name, values := range request.URL.Query() {
-			switch name {
-			case "order":
-				v := values[len(values)-1]
-				q = q.Order(v)
-				paramPairs = append(paramPairs, "order="+v)
-			case "limit":
-				v := values[len(values)-1]
-				l, err := strconv.Atoi(v)
+		if hasKey {
+			h, err := k.Get(ctx, key)
+			if err != nil {
+				ctx.PrintError(w, "not found", http.StatusNotFound, err.Error())
+				return
+			}
+
+			if hasPath {
+				var value interface{}
+				h, value, err = h.Get(ctx, path)
 				if err != nil {
-					ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+					ctx.PrintError(w, "not found", http.StatusNotFound, err.Error())
 					return
 				}
-				limit = l
-				paramPairs = append(paramPairs, "limit="+v)
-			case "offset":
-				v := values[len(values)-1]
-				l, err := strconv.Atoi(v)
-				if err != nil {
-					ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				offset = l
-			default:
-				if strings.Split(name, "[")[0] == "filters" {
-					fm := getParams(name)
-					if len(fm["num"]) > 0 && len(fm["nam"]) > 0 {
-						if m, ok := filterMap[fm["num"]]; ok {
-							m[fm["nam"]] = values[len(values)-1]
-							var filterStr = m["filterStr"]
-							var value = m["value"]
-							if len(filterStr) > 0 && len(value) > 0 {
-								q = q.Filter(filterStr, value)
-								paramPairs = append(paramPairs, "filters["+fm["num"]+"][filterStr]="+filterStr)
-								paramPairs = append(paramPairs, "filters["+fm["num"]+"][value]="+value)
-							}
-						} else {
-							filterMap[fm["num"]] = map[string]string{
-								fm["nam"]: values[len(values)-1],
+				ctx.Print(w, value, http.StatusOK)
+			} else {
+				ctx.Print(w, h.GetValue(), http.StatusOK)
+			}
+		} else {
+			// DO QUERY
+			var paramPairs []string
+			var offset, limit int
+			limit = 25 //default
+			q := datastore.NewQuery(k.name)
+			var filterMap = map[string]map[string]string{}
+			for name, values := range r.URL.Query() {
+				switch name {
+				case "order":
+					v := values[len(values)-1]
+					q = q.Order(v)
+					paramPairs = append(paramPairs, "order="+v)
+				case "limit":
+					v := values[len(values)-1]
+					l, err := strconv.Atoi(v)
+					if err != nil {
+						ctx.PrintError(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+					limit = l
+					paramPairs = append(paramPairs, "limit="+v)
+				case "offset":
+					v := values[len(values)-1]
+					l, err := strconv.Atoi(v)
+					if err != nil {
+						ctx.PrintError(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+					offset = l
+				default:
+					if strings.Split(name, "[")[0] == "filters" {
+						fm := getParams(name)
+						if len(fm["num"]) > 0 && len(fm["nam"]) > 0 {
+							if m, ok := filterMap[fm["num"]]; ok {
+								m[fm["nam"]] = values[len(values)-1]
+								var filterStr = m["filterStr"]
+								var value = m["value"]
+								if len(filterStr) > 0 && len(value) > 0 {
+									q = q.Filter(filterStr, value)
+									paramPairs = append(paramPairs, "filters["+fm["num"]+"][filterStr]="+filterStr)
+									paramPairs = append(paramPairs, "filters["+fm["num"]+"][value]="+value)
+								}
+							} else {
+								filterMap[fm["num"]] = map[string]string{
+									fm["nam"]: values[len(values)-1],
+								}
 							}
 						}
 					}
 				}
 			}
-		}
 
-		// set limit
-		q = q.Limit(limit)
-		// set offset
-		q = q.Offset(offset)
+			// set limit
+			q = q.Limit(limit)
+			// set offset
+			q = q.Offset(offset)
 
-		total, err := Count(ctx, k.Name())
-		if err != nil {
-			http.Error(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		var linkHeader []string
-		var out = []interface{}{}
-		t := q.Run(ctx)
-		for {
-			var h = k.NewHolder(nil)
-			h.key, err = t.Next(h)
-			if err == datastore.Done {
-				break
-			}
-			out = append(out, h.GetValue())
-		}
-
-		// pagination links
-		count := len(out)
-		if (total - offset - count) > 0 {
-			// has more items to fetch
-			linkHeader = append(linkHeader, "<"+getSchemeAndHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(offset+count)), "&")+`>; rel="next"`)
-			if (total - offset - count - limit) > 0 {
-				// next is not last
-				linkHeader = append(linkHeader, "<"+getSchemeAndHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(total-limit)), "&")+`>; rel="last"`)
-			}
-		}
-		if offset > 0 {
-			// get previous link
-			linkHeader = append(linkHeader, "<"+getSchemeAndHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(offset-limit)), "&")+`>; rel="prev"`)
-			if offset-limit > 0 {
-				// previous is not first
-				linkHeader = append(linkHeader, "<"+getSchemeAndHost(request)+request.URL.Path+"?"+strings.Join(append(paramPairs, "offset=0"), "&")+`>; rel="first"`)
-			}
-		}
-
-		ctx.Print(writer, out, "X-Total-Count", strconv.Itoa(total), "Link", strings.Join(linkHeader, ","))
-	}).Methods(http.MethodGet)
-	r.HandleFunc("/{name}", func(writer http.ResponseWriter, request *http.Request) {
-		ctx := NewContext(request)
-		name := mux.Vars(request)["name"]
-		var key *datastore.Key
-		if k.dsUseName {
-			key = datastore.NewKey(ctx, k.name, name, 0, nil)
-		} else {
-			var err error
-			key, err = datastore.DecodeKey(name)
+			total, err := Count(ctx, k.Name())
 			if err != nil {
-				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-		}
 
-		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			ctx.PrintError(writer, "forbidden", http.StatusForbidden)
-			return
-		}
-
-		h, err := k.Get(ctx, key)
-		if err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		ctx.Print(writer, h.GetValue())
-	}).Methods(http.MethodGet)
-	r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
-		ctx := NewContext(request)
-
-		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			http.Error(writer, "forbidden", http.StatusForbidden)
-			return
-		}
-
-		vars := mux.Vars(request)
-		var key *datastore.Key
-		if k.dsUseName {
-			key = datastore.NewKey(ctx, k.name, vars["name"], 0, nil)
-		} else {
-			var err error
-			key, err = datastore.DecodeKey(vars["name"])
-			if err != nil {
-				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-				return
+			var linkHeader []string
+			var out = []interface{}{}
+			t := q.Run(ctx)
+			for {
+				var h = k.NewHolder(nil)
+				h.key, err = t.Next(h)
+				if err == datastore.Done {
+					break
+				}
+				out = append(out, h.GetValue())
 			}
-		}
-		h := k.NewHolder(key)
-		if err := datastore.Get(ctx, key, h); err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
 
-		h, value, err := h.Get(ctx, strings.Split(vars["rest"], "/"))
-		if err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
+			// pagination links
+			count := len(out)
+			if (total - offset - count) > 0 {
+				// has more items to fetch
+				linkHeader = append(linkHeader, "<"+getSchemeAndHost(r)+r.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(offset+count)), "&")+`>; rel="next"`)
+				if (total - offset - count - limit) > 0 {
+					// next is not last
+					linkHeader = append(linkHeader, "<"+getSchemeAndHost(r)+r.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(total-limit)), "&")+`>; rel="last"`)
+				}
+			}
+			if offset > 0 {
+				// get previous link
+				linkHeader = append(linkHeader, "<"+getSchemeAndHost(r)+r.URL.Path+"?"+strings.Join(append(paramPairs, "offset="+strconv.Itoa(offset-limit)), "&")+`>; rel="prev"`)
+				if offset-limit > 0 {
+					// previous is not first
+					linkHeader = append(linkHeader, "<"+getSchemeAndHost(r)+r.URL.Path+"?"+strings.Join(append(paramPairs, "offset=0"), "&")+`>; rel="first"`)
+				}
+			}
+
+			ctx.Print(w, out, http.StatusOK, "X-Total-Count", strconv.Itoa(total), "Link", strings.Join(linkHeader, ","))
 		}
-		ctx.Print(writer, value)
-	}).Methods(http.MethodGet)
-
-	r.HandleFunc("", func(writer http.ResponseWriter, request *http.Request) {
-		ctx := NewContext(request)
-
+	case http.MethodPost:
 		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			http.Error(writer, "forbidden", http.StatusForbidden)
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 
-		h := k.NewHolder(nil)
+		if hasPath || hasKey {
+			http.Error(w, "not implemented", http.StatusNotImplemented)
+			return
+		}
+
+		h = k.NewHolder(nil)
 		if err := h.Parse(ctx.Body()); err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+			ctx.PrintError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		var name = k.dsNameGenerator(ctx, h)
 		h.key = datastore.NewKey(ctx, k.Name(), name, 0, nil)
 
-		var err error
-		if h.key, err = datastore.Put(ctx, h.key, h); err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
+		if h.key.Incomplete() {
+			h.key, err = datastore.Put(ctx, h.key, h)
+		} else {
+			err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
+				if _, err := k.Get(tc, h.key); err != nil {
+					if err == datastore.ErrNoSuchEntity {
+						h.key, err = datastore.Put(tc, h.key, h)
+						return err
+					}
+					return err
+				}
+				return errors.New("entry already exists")
+			}, nil)
+		}
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 
 		_ = Increment(ctx, k.Name())
 
-		ctx.Print(writer, h.GetValue())
-	}).Methods(http.MethodPost)
+		var location string
+		locationUrl, err := mux.CurrentRoute(r).URL()
+		if err == nil {
+			location = strings.Join(append(strings.Split(locationUrl.Path, "/"), h.key.Encode()), "/")
+		}
 
-	r.HandleFunc(`/{name}`, func(writer http.ResponseWriter, request *http.Request) {
-		ctx := NewContext(request)
-
+		ctx.Print(w, h.GetValue(), http.StatusCreated, "Location", location)
+	case http.MethodPut:
 		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			http.Error(writer, "forbidden", http.StatusForbidden)
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 
-		name := mux.Vars(request)["name"]
-
-		var key *datastore.Key
-		if k.dsUseName {
-			key = datastore.NewKey(ctx, k.name, name, 0, nil)
-		} else {
-			var err error
-			key, err = datastore.DecodeKey(name)
+		if hasKey {
+			h, err = k.Get(ctx, key)
 			if err != nil {
-				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+				ctx.PrintError(w, "not found", http.StatusNotFound, err.Error())
 				return
 			}
-		}
-
-		// TODO: Check scope before PUT
-
-		h := k.NewHolder(key)
-		if err := h.Parse(ctx.Body()); err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		var err error
-		if h.key, err = datastore.Put(ctx, key, h); err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		ctx.Print(writer, h.GetValue())
-	}).Methods(http.MethodPut)
-	r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
-		ctx := NewContext(request)
-
-		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			http.Error(writer, "forbidden", http.StatusForbidden)
-			return
-		}
-
-		vars := mux.Vars(request)
-		var key *datastore.Key
-		if k.dsUseName {
-			key = datastore.NewKey(ctx, k.name, vars["name"], 0, nil)
-		} else {
-			var err error
-			key, err = datastore.DecodeKey(vars["name"])
+			h, err = h.Set(ctx, path, ctx.Body())
 			if err != nil {
-				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+				ctx.PrintError(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-		}
-		h := k.NewHolder(key)
-		if err := datastore.Get(ctx, key, h); err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+			if h.key, err = datastore.Put(ctx, key, h); err != nil {
+				ctx.PrintError(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			ctx.Print(w, h.GetValue(), http.StatusOK)
+		} else {
+			r.Method = http.MethodPost
+			k.ServeHTTP(w, r)
 			return
 		}
-
-		h, err := h.Set(ctx, strings.Split(vars["rest"], "/"), ctx.Body())
-		if err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		_, err = datastore.Put(ctx, h.key, h)
-		if err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		ctx.Print(writer, h.GetValue())
-	}).Methods(http.MethodPut)
-
-	r.HandleFunc(`/{name}`, func(writer http.ResponseWriter, request *http.Request) {
-		ctx := NewContext(request)
-
+	case http.MethodDelete:
 		if ok := ctx.HasScope(k.ScopeDelete, k.ScopeFullControl); !ok {
-			http.Error(writer, "forbidden", http.StatusForbidden)
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 
-		name := mux.Vars(request)["name"]
-		var key *datastore.Key
-		if k.dsUseName {
-			key = datastore.NewKey(ctx, k.name, name, 0, nil)
-		} else {
-			var err error
-			key, err = datastore.DecodeKey(name)
-			if err != nil {
-				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-				return
+		if hasKey {
+			if hasPath {
+				if h, err = k.Get(ctx, key); err != nil {
+					ctx.PrintError(w, "not found", http.StatusNotFound, err.Error())
+					return
+				}
+
+				h, err = h.Delete(ctx, path)
+				if err != nil {
+					ctx.PrintError(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+
+				_, err = datastore.Put(ctx, h.key, h)
+				if err != nil {
+					ctx.PrintError(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+
+				ctx.Print(w, h.GetValue(), http.StatusOK)
+			} else {
+				if err = datastore.Delete(ctx, key); err != nil {
+					ctx.PrintError(w, "not found", http.StatusNotFound, err.Error())
+					return
+				}
+
+				_ = Decrement(ctx, k.Name())
+
+				ctx.Print(w, "ok", http.StatusOK)
 			}
-		}
-		var err error
-		if err = datastore.Delete(ctx, key); err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		_ = Decrement(ctx, k.Name())
-
-		ctx.Print(writer, "success")
-	}).Methods(http.MethodDelete)
-	r.HandleFunc(`/{name}/{rest:[a-zA-Z0-9=\-\/]+}`, func(writer http.ResponseWriter, request *http.Request) {
-		ctx := NewContext(request)
-
-		if ok := ctx.HasScope(k.ScopeDelete, k.ScopeFullControl); !ok {
-			http.Error(writer, "forbidden", http.StatusForbidden)
-			return
-		}
-
-		vars := mux.Vars(request)
-		var key *datastore.Key
-		if k.dsUseName {
-			key = datastore.NewKey(ctx, k.name, vars["name"], 0, nil)
 		} else {
-			var err error
-			key, err = datastore.DecodeKey(vars["name"])
-			if err != nil {
-				ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-		h := k.NewHolder(key)
-		if err := datastore.Get(ctx, key, h); err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
+			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
-
-		h, err := h.Delete(ctx, strings.Split(vars["rest"], "/"))
-		if err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		_, err = datastore.Put(ctx, h.key, h)
-		if err != nil {
-			ctx.PrintError(writer, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		ctx.Print(writer, h.GetValue())
-	}).Methods(http.MethodDelete)
+	}
 }
 
 func Lookup(kind *Kind, typ reflect.Type, fields map[string]*Field) map[string]*Field {
