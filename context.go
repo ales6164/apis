@@ -2,8 +2,7 @@ package apis
 
 import (
 	"encoding/json"
-	"github.com/ales6164/client"
-	gContext "github.com/gorilla/context"
+	gorilla "github.com/gorilla/context"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/log"
@@ -12,48 +11,59 @@ import (
 )
 
 type Context struct {
-	*client.Client
 	context.Context
-	hasReadBody bool
-	body        []byte
+	request      *http.Request
+	scopes       []string
+	hasScopes    bool
+	isProtected  bool
+	namespace    string
+	hasNamespace bool
+	hasReadBody  bool
+	body         []byte
 }
 
-func NewContext(r *http.Request) Context {
-	gaeCtx := appengine.NewContext(r)
-	// restore from request
-	if c1, ok := gContext.GetOk(r, "context"); ok {
-		if c, ok := c1.(Context); ok {
-			c.Context = gaeCtx
-			return c
+func NewContext(r *http.Request) (ctx Context) {
+	var err error
+	ctx = Context{request: r}
+
+	if _scopes, ok := gorilla.GetOk(r, "scopes"); ok {
+		ctx.isProtected=true
+		if scopes, ok := _scopes.([]string); ok {
+			ctx.scopes = scopes
+			ctx.hasScopes = true
 		}
 	}
-	clientReq := client.New(gaeCtx, r)
-	return Context{
-		Client:  clientReq,
-		Context: gaeCtx,
+
+	if _namespace, ok := gorilla.GetOk(r, "namespace"); ok {
+		if namespace, ok := _namespace.(string); ok && len(namespace) > 0 {
+			gaeCtx := appengine.NewContext(r)
+			if ctx.Context, err = appengine.Namespace(gaeCtx, namespace); err == nil {
+				ctx.Context = gaeCtx
+				ctx.namespace = namespace
+				ctx.hasNamespace = true
+			}
+		}
 	}
+
+	return ctx
 }
 
 // reads body once and stores contents
 func (ctx Context) Body() []byte {
 	if !ctx.hasReadBody {
-		ctx.body, _ = ioutil.ReadAll(ctx.HttpRequest.Body)
-		ctx.HttpRequest.Body.Close()
+		ctx.body, _ = ioutil.ReadAll(ctx.request.Body)
+		ctx.request.Body.Close()
 		ctx.hasReadBody = true
 	}
 	return ctx.body
 }
 
-func (ctx Context) User() (*client.User, error) {
-	return ctx.Client.Session.GetUser(ctx)
-}
-
 func (ctx Context) HasScope(scopes ...string) bool {
-	if ctx.Client.IsPublic {
+	if !ctx.isProtected {
 		return true
 	}
-	for _, s := range scopes {
-		for _, r := range ctx.Client.Session.Scopes {
+ 	for _, s := range scopes {
+		for _, r := range ctx.scopes {
 			if r == s {
 				return true
 			}
