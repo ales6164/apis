@@ -45,6 +45,12 @@ type Kind struct {
 	*KindProvider
 }
 
+type KindOptions struct {
+	// control entry access
+	// even if field is false gotta store who created entry? so that is switched to true, creators still have access - if no owner is stored nobody has access
+	EnableEntryScope bool
+}
+
 type Field struct {
 	Name     string                                                 // real field name
 	Fields   map[string]*Field                                      // map key is json representation for field name
@@ -52,10 +58,6 @@ type Field struct {
 	Is       string
 
 	IsAutoId bool
-}
-
-func (k *Kind) HandleWith() {
-
 }
 
 func NewKind(name string, i interface{}, provider *KindProvider) *Kind {

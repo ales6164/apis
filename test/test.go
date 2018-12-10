@@ -2,20 +2,30 @@ package test
 
 import (
 	"github.com/ales6164/apis"
+	"github.com/ales6164/auth"
+	"github.com/dgrijalva/jwt-go"
 	"google.golang.org/appengine/datastore"
+	"io/ioutil"
 	"net/http"
 )
 
 func init() {
 	// auth
-	/*signingKey, err := ioutil.ReadFile("key.txt")
+	signingKey, err := ioutil.ReadFile("key.txt")
 	if err != nil {
 		panic(err)
 	}
-	_ = middleware.AuthMiddleware(signingKey)*/
 
 	// custom auth middleware + login/registration/session library
 	// user profile? private entities with scope access? like projects and user profile
+
+	a := auth.New(&auth.Options{
+		SigningKey:          signingKey,
+		Extractors:          []auth.TokenExtractor{auth.FromAuthHeader},
+		CredentialsOptional: false,
+		SigningMethod:       jwt.SigningMethodHS256,
+	})
+	middleware := a.Middleware()
 
 	// kind provider
 	kindProvider := apis.NewKindProvider()
@@ -30,7 +40,7 @@ func init() {
 		writer.Write([]byte("Hello"))
 	})
 
-	api.Handle(`/children`, childKind)
+	api.Handle(`/children`, middleware.Handler(auth.UserKeyMiddleware(childKind)))
 	api.Handle(`/children/{key}`, childKind)
 	api.Handle(`/children/{key}/{path:[a-zA-Z0-9=\-\/]+}`, childKind)
 	api.Handle(`/parents`, parentKind)
