@@ -32,6 +32,7 @@ func init() {
 
 	var parentKind = apis.NewKind("parent", Parent{}, kindProvider)
 	var childKind = apis.NewKind("child", Child{}, kindProvider)
+	var project = apis.NewKind("project", GroupProject{}, kindProvider)
 
 	api := apis.New(&apis.Options{
 	})
@@ -39,6 +40,10 @@ func init() {
 	api.HandleFunc("/hi", func(writer http.ResponseWriter, request *http.Request) {
 		writer.Write([]byte("Hello"))
 	})
+
+	// create projects and edit project details
+	api.Handle(`/projects`, project)
+	// project key can be used to manage project collection
 
 	api.Handle(`/children`, middleware.Handler(auth.UserKeyMiddleware(childKind)))
 	api.Handle(`/children/{key}`, childKind)
@@ -51,6 +56,11 @@ func init() {
 }
 
 // TODO: check scope on every handler operation (get, put, delete, post) - best to put checks inside handler functions
+
+type GroupProject struct {
+	Id        *datastore.Key   `datastore:"-" auto:"id" json:"id,omitempty"`
+	Name      string           `json:"name"`
+}
 
 type Parent struct {
 	Id        *datastore.Key   `datastore:"-" auto:"id" json:"id,omitempty"`
