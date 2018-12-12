@@ -1,4 +1,4 @@
-package apis
+package kind
 
 import (
 	"golang.org/x/net/context"

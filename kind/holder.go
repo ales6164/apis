@@ -1,8 +1,8 @@
-package apis
+package kind
 
 import (
 	"encoding/json"
-	"github.com/ales6164/apis/errors"
+	"errors"
 	"google.golang.org/appengine/datastore"
 	"reflect"
 	"strconv"
