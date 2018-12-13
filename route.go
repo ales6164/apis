@@ -1,14 +1,14 @@
 package apis
 
 import (
+	"github.com/gorilla/mux"
+	"google.golang.org/appengine/datastore"
+	"gopkg.in/ales6164/apis.v2/errors"
 	"gopkg.in/ales6164/apis.v2/kind"
 	"net/http"
-	"google.golang.org/appengine/datastore"
+	"regexp"
 	"strconv"
 	"strings"
-	"gopkg.in/ales6164/apis.v2/errors"
-	"regexp"
-	"github.com/gorilla/mux"
 )
 
 type Route struct {
@@ -179,7 +179,11 @@ func (R *Route) getHandler() http.HandlerFunc {
 
 		err = h.Get(ctx, key)
 		if err != nil {
-			ctx.PrintError(w, err)
+			if err == datastore.ErrNoSuchEntity {
+				http.Error(w, "not found", http.StatusNotFound)
+			} else {
+				ctx.PrintError(w, err)
+			}
 			return
 		}
 
