@@ -235,7 +235,11 @@ func (R *Route) queryHandler() http.HandlerFunc {
 
 				hs, err := kind.GetMulti(ctx, R.kind, keys...)
 				if err != nil {
-					ctx.PrintError(w, err)
+					if err == datastore.ErrNoSuchEntity {
+						http.Error(w, "not found", http.StatusNotFound)
+					} else {
+						ctx.PrintError(w, err)
+					}
 					return
 				}
 
