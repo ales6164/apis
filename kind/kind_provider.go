@@ -2,13 +2,13 @@ package kind
 
 import "reflect"
 
-type KindProvider struct {
+type Provider struct {
 	kinds map[string]*Kind
 	types map[reflect.Type]*Kind
 }
 
-func NewKindProvider(kinds ...*Kind) *KindProvider {
-	p := new(KindProvider)
+func NewProvider(kinds ...*Kind) *Provider {
+	p := new(Provider)
 	p.kinds = map[string]*Kind{}
 	p.types = map[reflect.Type]*Kind{}
 	for _, k := range kinds {
@@ -18,7 +18,7 @@ func NewKindProvider(kinds ...*Kind) *KindProvider {
 	return p
 }
 
-func (p *KindProvider) RegisterKind(k *Kind) {
+func (p *Provider) RegisterKind(k *Kind) {
 	if p.kinds == nil {
 		p.kinds = map[string]*Kind{}
 	}
@@ -29,10 +29,10 @@ func (p *KindProvider) RegisterKind(k *Kind) {
 	p.types[k.Type()] = k
 }
 
-func (p *KindProvider) GetNameKind(name string) *Kind {
+func (p *Provider) GetNameKind(name string) *Kind {
 	return p.kinds[name]
 }
 
-func (p *KindProvider) GetTypeKind(typ reflect.Type) *Kind {
+func (p *Provider) GetTypeKind(typ reflect.Type) *Kind {
 	return p.types[typ]
 }

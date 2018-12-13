@@ -27,7 +27,7 @@ func NewContext(r *http.Request) (ctx Context) {
 	ctx = Context{request: r}
 
 	if _scopes, ok := gorilla.GetOk(r, "scopes"); ok {
-		ctx.isProtected=true
+		ctx.isProtected = true
 		if scopes, ok := _scopes.([]string); ok {
 			ctx.scopes = scopes
 			ctx.hasScopes = true
@@ -62,7 +62,7 @@ func (ctx Context) HasScope(scopes ...string) bool {
 	if !ctx.isProtected {
 		return true
 	}
- 	for _, s := range scopes {
+	for _, s := range scopes {
 		for _, r := range ctx.scopes {
 			if r == s {
 				return true
@@ -102,13 +102,13 @@ func (ctx *Context) PrintResult(w http.ResponseWriter, result map[string]interfa
 
 	bs, err := json.Marshal(result)
 	if err != nil {
-		ctx.PrintError(w, err.Error(), http.StatusInternalServerError)
+		ctx.PrintError(w, http.StatusInternalServerError)
 		return
 	}
 	w.Write(bs)
 }
 
-func (ctx *Context) PrintError(w http.ResponseWriter, err string, code int, descriptors ...string) {
-	log.Errorf(ctx, "context error: %s", err, descriptors)
-	http.Error(w, err, code)
+func (ctx *Context) PrintError(w http.ResponseWriter, code int, descriptors ...string) {
+	log.Errorf(ctx, "context error: ", descriptors)
+	http.Error(w, http.StatusText(code), code)
 }

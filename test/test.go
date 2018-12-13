@@ -28,57 +28,37 @@ func init() {
 	})
 	middleware := a.Middleware()
 
-	// kind provider
-	kindProvider := kind.NewKindProvider()
-
 	var parentKind = kind.New(&kind.Options{
-		Name:         "parent",
-		Type:         Parent{},
-		KindProvider: kindProvider,
+		Name: "parent",
+		Type: Parent{},
 	})
 	var childKind = kind.New(&kind.Options{
-		Name:         "child",
-		Type:         Child{},
-		KindProvider: kindProvider,
+		Name: "child",
+		Type: Child{},
 	})
 	var projectKind = kind.New(&kind.Options{
 		Name:         "project",
 		Type:         Project{},
-		KindProvider: kindProvider,
-		IsCollection: true, // creates /collections/{key} - can change roles, rules       -- OR -- could change how /projects/{key} ... or both
+		IsCollection: true,
+		KindProvider: kind.NewProvider(childKind, parentKind),
 	})
 
 	api := apis.New(&apis.Options{
 	})
 
-	api.HandleFunc("/hi", func(writer http.ResponseWriter, request *http.Request) {
-		writer.Write([]byte("Hello"))
-	})
-
-	api.Handle(`/children`, middleware.Handler(childKind))
-	api.Handle(`/children/{key}`, childKind)
-	api.Handle(`/children/{key}/{path:[a-zA-Z0-9=\-\/]+}`, childKind)
-	api.Handle(`/parents`, parentKind)
-	api.Handle(`/parents/{key}`, parentKind)
-	api.Handle(`/parents/{key}/{path:[a-zA-Z0-9=\-\/]+}`, parentKind)
-
-	// create projects and edit project details
-	api.Handle(`/projects`, projectKind)
-	api.Handle(`/projects/{key}`, projectKind)
-	api.Handle(`/projects/{key}/{path:[a-zA-Z0-9=\-\/]+}`, projectKind)
-	// project key can be used to manage project collection
+	api.Handle("/children", middleware.Handler(childKind))
+	api.Handle("/parents", middleware.Handler(parentKind))
+	api.Handle("/projects", middleware.Handler(projectKind))
 
 	// kater collection je nas zanima samo ob POST metodi
 	// postanje v collection bi lahko bilo urejeno tako:
-	api.Handle(`/projects`, projectKind)                                                    // ustvarjanje projektov
-	api.Handle(`/projects/{key}`, projectKind)                                              // urejanje projektov
-	api.Handle(`/projects/{collection}/{kind}`, projectKind)                                // postanje endpointov v projekt
-	api.Handle(`/projects/{collection}/{kind}/{key}`, projectKind)                          // urejanje entrijev v endpointu v projektu
-	api.Handle(`/projects/{collection}/{kind}/{key}/{path:[a-zA-Z0-9=\-\/]+}`, projectKind) // ...
+	//api.Handle(`/projects`, projectKind)                                                     // ustvarjanje projektov
+	//api.Handle(`/projects/{key}`, projectKind)                                               // urejanje projektov
+	//api.Handle(`/projects/{collection}/{kind}`, projectKind)                                // postanje endpointov v projekt
+	//api.Handle(`/projects/{collection}/{kind}/{key}`, projectKind)                          // urejanje entrijev v endpointu v projektu
+	//api.Handle(`/projects/{collection}/{kind}/{key}/{path:[a-zA-Z0-9=\-\/]+}`, projectKind) // ...
 
-	api.Handle(`/{collection}/parents`, middleware.Handler(auth.CollectionMiddleware(parentKind)))
-	api.Handle(`/{collection}/parents/{key}`, middleware.Handler(auth.CollectionMiddleware(parentKind)))
-	api.Handle(`/{collection}/parents/{key}/{path:[a-zA-Z0-9=\-\/]+}`, middleware.Handler(auth.CollectionMiddleware(parentKind)))
+	//api.Handle(`/collections/{collection}`)
 
 	http.Handle("/", api.Handler())
 }
