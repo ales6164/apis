@@ -21,6 +21,11 @@ type QueryResult struct {
 	StatusCode int
 }
 
+type CollectionRelationship struct {
+	Member string
+	Scopes []string
+}
+
 /*
 Valid params are order, limit, offset, name, id, and filters.
 Filters param is an array of filter pairs:
@@ -140,13 +145,21 @@ func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, erro
 	return r, nil
 }
 
+/*
+/kinds QUERY, POST
+/kinds/{key} GET, PUT
+/kinds/{key}/{path} GET, PUT
+ */
+
 func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var err error
+	var ok bool
 	var h *Holder
 
-	var key *datastore.Key
+	var encodedCollection string
+	var key, collection *datastore.Key
 	var path []string
-	var hasKey, hasPath bool
+	var hasKey, hasPath, hasCollection bool
 
 	vars := mux.Vars(r)
 
@@ -158,12 +171,42 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			hasKey = true
 		}
 	}
+	if encodedCollection, ok = vars["collection"]; ok {
+		if collection, err = datastore.DecodeKey(encodedCollection); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		} else {
+			hasCollection = true
+		}
+	}
 	if _path, ok := vars["path"]; ok {
 		path = strings.Split(_path, "/")
 		hasPath = len(path) > 0
 	}
 
 	ctx := NewContext(r)
+
+	// todo: if has collection ...
+	if hasCollection {
+		if hasKey && key.Namespace() != encodedCollection {
+			// key namespace doesn't match collection
+			ctx.PrintError(w, http.StatusConflict, "key namespace doesn't match collection")
+			return
+		}
+
+		// collection key + user key
+		datastore.Get(ctx, collection)
+
+		// 1. Get collection permission datastore table and check if user has entry (also check if allUsers has access)
+		// 2. Load collection permissions to context for future scope checks
+		// 3. Update context namespace
+	} else {
+		if hasKey && len(key.Namespace()) > 0 {
+			// key namespace doesn't match collection
+			ctx.PrintError(w, http.StatusConflict, "key namespace doesn't match collection")
+			return
+		}
+	}
 
 	switch r.Method {
 	case http.MethodGet:

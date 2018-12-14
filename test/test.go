@@ -39,8 +39,8 @@ func init() {
 	var projectKind = kind.New(&kind.Options{
 		Name:         "project",
 		Type:         Project{},
-		IsCollection: true,
-		KindProvider: kind.NewProvider(childKind, parentKind),
+		/*IsCollection: true,*/
+		/*KindProvider: kind.NewProvider(childKind, parentKind),*/
 	})
 
 	api := apis.New(&apis.Options{
@@ -52,13 +52,11 @@ func init() {
 
 	// kater collection je nas zanima samo ob POST metodi
 	// postanje v collection bi lahko bilo urejeno tako:
-	//api.Handle(`/projects`, projectKind)                                                     // ustvarjanje projektov
-	//api.Handle(`/projects/{key}`, projectKind)                                               // urejanje projektov
-	//api.Handle(`/projects/{collection}/{kind}`, projectKind)                                // postanje endpointov v projekt
-	//api.Handle(`/projects/{collection}/{kind}/{key}`, projectKind)                          // urejanje entrijev v endpointu v projektu
-	//api.Handle(`/projects/{collection}/{kind}/{key}/{path:[a-zA-Z0-9=\-\/]+}`, projectKind) // ...
-
-	//api.Handle(`/collections/{collection}`)
+	// api.Handle(`/projects`, projectKind)                                                  	// ustvarjanje projektov
+	// api.Handle(`/projects/{key}`, projectKind)                                             	// urejanje projektov
+	// api.Handle(`/projects/{collection}/{kind}`, projectKind)                            		// postanje endpointov v projekt
+	// api.Handle(`/projects/{collection}/{kind}/{key}`, projectKind)                        	// urejanje entrijev v endpointu v projektu
+	// api.Handle(`/projects/{collection}/{kind}/{key}/{path:[a-zA-Z0-9=\-\/]+}`, projectKind)	// ...
 
 	http.Handle("/", api.Handler())
 }

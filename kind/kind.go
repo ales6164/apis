@@ -111,7 +111,6 @@ func (k *Kind) Get(ctx context.Context, key *datastore.Key) (h *Holder, err erro
 }
 
 func Lookup(kind *Kind, typ reflect.Type, fields map[string]*Field) map[string]*Field {
-
 loop:
 	for i := 0; i < typ.NumField(); i++ {
 		var isAutoId bool

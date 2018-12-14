@@ -33,14 +33,20 @@ func (a *Apis) SetRole(name string, scopes ...string) {
 
 func (a *Apis) Handle(path string, h http.Handler) {
 	a.router.Handle(path, h)
+	a.router.Handle(path+`/{key}`, h)
 	a.router.Handle(path+`/{key}/{path:[a-zA-Z0-9=\-\/]+}`, h)
-	a.router.Handle(path+`/{path:[a-zA-Z0-9=\-\/]+}`, h)
+	a.router.Handle("{collection}"+path, h)
+	a.router.Handle("{collection}"+path+`/{key}`, h)
+	a.router.Handle("{collection}"+path+`/{key}/{path:[a-zA-Z0-9=\-\/]+}`, h)
 }
 
 func (a *Apis) HandleFunc(path string, f func(http.ResponseWriter, *http.Request)) {
 	a.router.HandleFunc(path, f)
+	a.router.HandleFunc(path+`/{key}`, f)
 	a.router.HandleFunc(path+`/{key}/{path:[a-zA-Z0-9=\-\/]+}`, f)
-	a.router.HandleFunc(path+`/{path:[a-zA-Z0-9=\-\/]+}`, f)
+	a.router.HandleFunc("{collection}"+path, f)
+	a.router.HandleFunc("{collection}"+path+`/{key}`, f)
+	a.router.HandleFunc("{collection}"+path+`/{key}/{path:[a-zA-Z0-9=\-\/]+}`, f)
 }
 
 func (a *Apis) Handler() http.Handler {
