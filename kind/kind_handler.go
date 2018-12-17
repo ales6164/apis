@@ -21,11 +21,6 @@ type QueryResult struct {
 	StatusCode int
 }
 
-type CollectionRelationship struct {
-	Member string
-	Scopes []string
-}
-
 /*
 Valid params are order, limit, offset, name, id, and filters.
 Filters param is an array of filter pairs:
@@ -95,7 +90,7 @@ func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, erro
 	t := q.Run(ctx)
 	for {
 		var h = k.NewHolder(nil)
-		h.key, err = t.Next(h)
+		h.Key, err = t.Next(h)
 
 		if err == datastore.Done {
 			break
@@ -201,11 +196,13 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// 2. Load collection permissions to context for future scope checks
 		// 3. Update context namespace
 	} else {
-		if hasKey && len(key.Namespace()) > 0 {
+		/*if hasKey && len(key.Namespace()) > 0 {
 			// key namespace doesn't match collection
 			ctx.PrintError(w, http.StatusConflict, "key namespace doesn't match collection")
 			return
-		}
+		}*/
+
+		// 1. Check if key has namespace and if so check access
 	}
 
 	switch r.Method {
@@ -266,22 +263,34 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var name = k.dsNameGenerator(ctx, h)
-		h.key = datastore.NewKey(ctx, k.Name, name, 0, nil)
+		h.Key = datastore.NewKey(ctx, k.Name, name, 0, nil)
 
-		if h.key.Incomplete() {
-			h.key, err = datastore.Put(ctx, h.key, h)
-		} else {
-			err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-				if _, err := k.Get(tc, h.key); err != nil {
+		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			if h.Key.Incomplete() {
+				h.Key, err = datastore.Put(tc, h.Key, h)
+				if err != nil {
+					return err
+				}
+			} else {
+				if _, err := k.Get(tc, h.Key); err != nil {
 					if err == datastore.ErrNoSuchEntity {
-						h.key, err = datastore.Put(tc, h.key, h)
-						return err
+						h.Key, err = datastore.Put(tc, h.Key, h)
+						if err != nil {
+							return err
+						}
 					}
 					return err
 				}
-				return errors.New("entry already exists")
-			}, nil)
-		}
+			}
+
+			// create iam entry
+			iam := IAMKind.NewHolder(nil)
+			iam.Key = datastore.NewKey(tc, iam.Kind.Name, )
+
+			return errors.New("entry already exists")
+		}, nil)
+
+
 
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -292,7 +301,7 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var location string
 		locationUrl, err := mux.CurrentRoute(r).URL()
 		if err == nil {
-			location = strings.Join(append(strings.Split(locationUrl.Path, "/"), h.key.Encode()), "/")
+			location = strings.Join(append(strings.Split(locationUrl.Path, "/"), h.Key.Encode()), "/")
 		}
 
 		ctx.Print(w, h.GetValue(), http.StatusCreated, "Location", location)
@@ -313,7 +322,7 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				ctx.PrintError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			if h.key, err = datastore.Put(ctx, key, h); err != nil {
+			if h.Key, err = datastore.Put(ctx, key, h); err != nil {
 				ctx.PrintError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
@@ -342,7 +351,7 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-				_, err = datastore.Put(ctx, h.key, h)
+				_, err = datastore.Put(ctx, h.Key, h)
 				if err != nil {
 					ctx.PrintError(w, http.StatusInternalServerError, err.Error())
 					return

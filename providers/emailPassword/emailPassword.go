@@ -1,17 +1,25 @@
-package providers
+package emailpassword
 
 import (
 	"encoding/json"
-	"github.com/ales6164/apis"
-	"github.com/ales6164/apis/errors"
+	"errors"
+	"github.com/ales6164/apis/kind"
+	"github.com/ales6164/apis/providers"
 	"github.com/ales6164/client"
 	"github.com/asaskevich/govalidator"
+	"github.com/buger/jsonparser"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/net/context"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/datastore"
+	"io/ioutil"
 	"net/http"
 )
 
-const EmailPasswordProviderName = "email"
-const COST = 12
+var (
+	EmailPasswordProviderName     = "emailpassword"
+	EmailPasswordProviderKindName = "_provider_emailpassword"
+)
 
 var (
 	ErrEmailUndefined    = errors.New("email undefined")
@@ -22,21 +30,41 @@ var (
 	ErrPasswordTooShort  = errors.New("password must be at least 6 characters long")
 )
 
-type EmailPasswordProvider struct {
+type emailPassword struct {
+	*Options
+	*providers.Provider
+}
+
+type Options struct {
 	Cost       int
 	SigningKey []byte
 }
 
-func (p *EmailPasswordProvider) SignInHandler(rp client.RoleProvider) http.Handler {
+type Entry struct {
+	Email string `datastore:",noindex"`
+	Hash  []byte `datastore:",noindex"`
+}
+
+func New(options *Options) *emailPassword {
+	return &emailPassword{
+		Options:  options,
+		Provider: &providers.Provider{Name: EmailPasswordProviderName},
+	}
+}
+
+func (p *emailPassword) SignInHandler(rp client.RoleProvider) http.Handler {
 	type InputCredentials struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := apis.NewContext(r)
+		ctx := appengine.NewContext(r)
+
+		body, _ := ioutil.ReadAll(r.Body)
+		r.Body.Close()
 
 		var inputCredentials = new(InputCredentials)
-		err := json.Unmarshal(ctx.Body(), inputCredentials)
+		err := json.Unmarshal(body, inputCredentials)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -88,32 +116,59 @@ func (p *EmailPasswordProvider) SignInHandler(rp client.RoleProvider) http.Handl
 	})
 }
 
-func (p *EmailPasswordProvider) SignUpHandler(rp client.RoleProvider, scopes ...string) http.Handler {
-	type InputCredentials struct {
-		Email    string                 `json:"email"`
-		Password string                 `json:"password"`
-		Profile  map[string]interface{} `json:"profile"`
-	}
+func (p *emailPassword) SignUpHandler(rp client.RoleProvider, scopes ...string) http.Handler {
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := apis.NewContext(r)
+		ctx := appengine.NewContext(r)
 
-		var inputCredentials = new(InputCredentials)
-		err := json.Unmarshal(ctx.Body(), inputCredentials)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+		body, _ := ioutil.ReadAll(r.Body)
+		r.Body.Close()
 
-		err = checkEmail(inputCredentials.Email)
+		email, _ := jsonparser.GetString(body, "email")
+		password, _ := jsonparser.GetString(body, "password")
+		userData, _, _, _ := jsonparser.Get(body, "user")
+
+		err := p.checkEmail(email)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		if inputCredentials.Profile == nil {
-			inputCredentials.Profile = map[string]interface{}{}
+		err = p.checkPassword(password)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-		inputCredentials.Profile["email"] = inputCredentials.Email
+
+		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			// check if user exists
+			emailPasswordEntryKey := datastore.NewKey(tc, EmailPasswordProviderKindName, email, 0, nil)
+			emailPasswordEntry := new(Entry)
+			err = datastore.Get(tc, emailPasswordEntryKey, emailPasswordEntry)
+			if err == nil {
+				return errors.New("user already exists")
+			}
+			if err != nil && err != datastore.ErrNoSuchEntity {
+				return err
+			}
+
+			// create password hash
+			emailPasswordEntry.Hash, err = p.crypt([]byte(password))
+			if err != nil {
+				return err
+			}
+
+			// create user entry
+			emailPasswordEntryKey, err = datastore.Put(tc, emailPasswordEntryKey, emailPasswordEntry)
+			if err != nil {
+				return err
+			}
+
+			// connect identity to account
+			p.ConnectUser(ctx, emailPasswordEntryKey, userData)
+
+			return nil
+		}, &datastore.TransactionOptions{XG: true})
 
 		user, err := client.NewUser(ctx, inputCredentials.Email, inputCredentials.Profile, scopes...)
 		if err != nil {
@@ -155,7 +210,7 @@ func (p *EmailPasswordProvider) SignUpHandler(rp client.RoleProvider, scopes ...
 	})
 }
 
-func checkEmail(v string) error {
+func (p *emailPassword) checkEmail(v string) error {
 	if len(v) == 0 {
 		return ErrEmailUndefined
 	}
@@ -169,7 +224,7 @@ func checkEmail(v string) error {
 	return nil
 }
 
-func checkPassword(v string) error {
+func (p *emailPassword) checkPassword(v string) error {
 	if len(v) == 0 {
 		return ErrPasswordUndefined
 	}
@@ -188,9 +243,9 @@ func decrypt(hash []byte, password []byte) error {
 	return bcrypt.CompareHashAndPassword(hash, password)
 }
 
-func crypt(password []byte) ([]byte, error) {
+func (p *emailPassword) crypt(password []byte) ([]byte, error) {
 	defer clear(password)
-	return bcrypt.GenerateFromPassword(password, COST)
+	return bcrypt.GenerateFromPassword(password, p.Cost)
 }
 
 func clear(b []byte) {

@@ -5,6 +5,7 @@ import (
 	gorilla "github.com/gorilla/context"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
+	"google.golang.org/appengine/datastore"
 	"google.golang.org/appengine/log"
 	"io/ioutil"
 	"net/http"
@@ -19,6 +20,7 @@ type Context struct {
 	namespace    string
 	hasNamespace bool
 	hasReadBody  bool
+	userKey      *datastore.Key
 	body         []byte
 }
 
@@ -26,7 +28,7 @@ func NewContext(r *http.Request) (ctx Context) {
 	var err error
 	ctx = Context{request: r}
 
-	if _scopes, ok := gorilla.GetOk(r, "scopes"); ok {
+	/*if _scopes, ok := gorilla.GetOk(r, "scopes"); ok {
 		ctx.isProtected = true
 		if scopes, ok := _scopes.([]string); ok {
 			ctx.scopes = scopes
@@ -43,7 +45,7 @@ func NewContext(r *http.Request) (ctx Context) {
 				ctx.hasNamespace = true
 			}
 		}
-	}
+	}*/
 
 	return ctx
 }
@@ -70,6 +72,10 @@ func (ctx Context) HasScope(scopes ...string) bool {
 		}
 	}
 	return false
+}
+
+func (ctx Context) User() *datastore.Key {
+
 }
 
 /**

@@ -10,7 +10,7 @@ import (
 
 type Holder struct {
 	Kind               *Kind
-	key                *datastore.Key
+	Key                *datastore.Key
 	hasInputData       bool // when updating
 	hasLoadedData      bool
 	rollbackProperties []datastore.Property
@@ -23,21 +23,21 @@ var (
 )
 
 func (h *Holder) Id() string {
-	if h.key != nil {
-		return h.key.Encode()
+	if h.Key != nil {
+		return h.Key.Encode()
 	}
 	return ""
 }
 
 func (h *Holder) ReflectValue() {
-	if h.Kind != nil && h.Kind.hasIdFieldName && h.key != nil {
+	if h.Kind != nil && h.Kind.hasIdFieldName && h.Key != nil {
 		v := h.reflectValue.Elem()
 		idField := v.FieldByName(h.Kind.idFieldName)
 		if idField.IsValid() && idField.CanSet() {
 			if h.Kind.dsUseName {
-				idField.Set(reflect.ValueOf(h.key.StringID()))
+				idField.Set(reflect.ValueOf(h.Key.StringID()))
 			} else {
-				idField.Set(reflect.ValueOf(h.key))
+				idField.Set(reflect.ValueOf(h.Key))
 			}
 		}
 	}
@@ -201,14 +201,6 @@ func (h *Holder) Get(ctx Context, fields []string) (*Holder, interface{}, error)
 
 func (h *Holder) Bytes() ([]byte, error) {
 	return json.Marshal(h.GetValue())
-}
-
-func (h *Holder) SetKey(k *datastore.Key) {
-	h.key = k
-}
-
-func (h *Holder) GetKey() *datastore.Key {
-	return h.key
 }
 
 func (h *Holder) Load(ps []datastore.Property) error {
