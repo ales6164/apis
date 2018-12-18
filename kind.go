@@ -44,8 +44,7 @@ type KindOptions struct {
 	// control entry access
 	// even if field is false gotta store who created entry? so that is switched to true, creators still have access - if no owner is stored nobody has access
 	EnableEntryScope bool
-	Name             string
-	KindProvider     *Provider
+	Path             string
 	IsCollection     bool
 	Type             interface{}
 	t                reflect.Type
@@ -73,14 +72,14 @@ func NewKind(opt *KindOptions) *Kind {
 		},
 	}
 
-	if len(opt.Name) == 0 || !govalidator.IsAlphanumeric(opt.Name) {
-		panic(errors.New("name must be at least one character and can contain only a-Z0-9"))
+	if len(opt.Path) == 0 || !govalidator.IsAlphanumeric(opt.Path) {
+		panic(errors.New("type name must be at least one character and can contain only a-Z0-9"))
 	}
 
-	k.ScopeFullControl = opt.Name + ".fullcontrol"
-	k.ScopeReadOnly = opt.Name + ".readonly"
-	k.ScopeReadWrite = opt.Name + ".readwrite"
-	k.ScopeDelete = opt.Name + ".delete"
+	k.ScopeFullControl = opt.Path + ".fullcontrol"
+	k.ScopeReadOnly = opt.Path + ".readonly"
+	k.ScopeReadWrite = opt.Path + ".readwrite"
+	k.ScopeDelete = opt.Path + ".delete"
 
 	if k.t == nil || k.t.Kind() != reflect.Struct {
 		panic(errors.New("type not of kind struct"))
@@ -217,7 +216,7 @@ loop:
 func (k *Kind) Create(ctx context.Context, h *Holder) error {
 	var err error
 	if h.Key == nil {
-		h.Key = datastore.NewIncompleteKey(ctx, k.Name, nil)
+		h.Key = datastore.NewIncompleteKey(ctx, k.Path, nil)
 	}
 	if h.Key.Incomplete() {
 		h.Key, err = datastore.Put(ctx, h.Key, h)
@@ -237,7 +236,7 @@ func (k *Kind) Create(ctx context.Context, h *Holder) error {
 func (k *Kind) Put(ctx context.Context, h *Holder) error {
 	var err error
 	if h.Key == nil {
-		h.Key = datastore.NewIncompleteKey(ctx, k.Name, nil)
+		h.Key = datastore.NewIncompleteKey(ctx, k.Path, nil)
 	}
 	h.Key, err = datastore.Put(ctx, h.Key, h)
 	return err

@@ -100,3 +100,7 @@ func getSchemeAndHost(r *http.Request) string {
 	}
 	return "http://" + getHost(r)
 }
+
+func joinPath(p ...string) string {
+	return "/" + strings.Join(p, "/")
+}

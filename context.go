@@ -14,21 +14,25 @@ import (
 
 type Context struct {
 	context.Context
-	request     *http.Request
-	hasReadBody bool
-	body        []byte
-	auth        *Auth
-	session     *Session
+	r               *http.Request
+	w               http.ResponseWriter
+	hasReadBody     bool
+	body            []byte
+	auth            *Auth
+	session         *Session
+	isAuthenticated bool
 }
 
-func NewContext(r *http.Request) (ctx Context) {
-	ctx = Context{Context: appengine.NewContext(r), request: r}
+func NewContext(w http.ResponseWriter, r *http.Request) (ctx Context) {
+	ctx = Context{Context: appengine.NewContext(r), w: w, r: r}
 	if _auth, ok := gorilla.GetOk(r, "auth"); ok {
 		if a, ok := _auth.(*Auth); ok {
 			ctx.auth = a
 			if _token, ok := gorilla.GetOk(r, "token"); ok {
 				if token, ok := _token.(*jwt.Token); ok {
-					ctx.session, _ = GetSession(ctx, token)
+					var err error
+					ctx.session, err = GetSession(ctx, token)
+					ctx.isAuthenticated = err == nil
 				}
 			}
 		}
@@ -39,14 +43,17 @@ func NewContext(r *http.Request) (ctx Context) {
 // reads body once and stores contents
 func (ctx Context) Body() []byte {
 	if !ctx.hasReadBody {
-		ctx.body, _ = ioutil.ReadAll(ctx.request.Body)
-		ctx.request.Body.Close()
+		ctx.body, _ = ioutil.ReadAll(ctx.r.Body)
+		ctx.r.Body.Close()
 		ctx.hasReadBody = true
 	}
 	return ctx.body
 }
 
 func (ctx Context) HasScope(scopes ...string) bool {
+	if ctx.isAuthenticated {
+
+	}
 	return ctx.session.HasScope(scopes...)
 }
 
@@ -58,8 +65,8 @@ func (ctx Context) User() *datastore.Key {
 RESPONSE
 */
 
-func (ctx *Context) Print(w http.ResponseWriter, result interface{}, statusCode int, headerPair ...string) {
-	w.Header().Set("Content-Type", "application/json")
+func (ctx *Context) PrintJSON(result interface{}, statusCode int, headerPair ...string) {
+	ctx.w.Header().Set("Content-Type", "application/json")
 	var headerKey string
 	for i, headerEl := range headerPair {
 		if i%2 == 0 {
@@ -67,30 +74,20 @@ func (ctx *Context) Print(w http.ResponseWriter, result interface{}, statusCode 
 			continue
 		}
 		if len(headerEl) > 0 {
-			w.Header().Set(headerKey, headerEl)
+			ctx.w.Header().Set(headerKey, headerEl)
 		}
 	}
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(result)
+	ctx.w.WriteHeader(statusCode)
+	json.NewEncoder(ctx.w).Encode(result)
 }
 
-func (ctx *Context) PrintBytes(w http.ResponseWriter, result []byte) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(result)
-}
-
-func (ctx *Context) PrintResult(w http.ResponseWriter, result map[string]interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-
-	bs, err := json.Marshal(result)
-	if err != nil {
-		ctx.PrintError(w, http.StatusInternalServerError)
-		return
-	}
-	w.Write(bs)
-}
-
-func (ctx *Context) PrintError(w http.ResponseWriter, code int, descriptors ...string) {
+func (ctx *Context) PrintStatus(s string, c int, descriptors ...string) {
 	log.Errorf(ctx, "context error: ", descriptors)
-	http.Error(w, http.StatusText(code), code)
+	ctx.w.WriteHeader(c)
+	ctx.w.Write([]byte(s))
+}
+
+func (ctx *Context) PrintError(s string, c int, descriptors ...string) {
+	log.Errorf(ctx, "context error: ", descriptors)
+	http.Error(ctx.w, s, c)
 }

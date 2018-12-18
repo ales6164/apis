@@ -2,13 +2,41 @@ package test
 
 import (
 	"github.com/ales6164/apis"
-	"github.com/ales6164/apis/providers/emailPassword"
+	"github.com/ales6164/apis/providers/emailpassword"
 	"github.com/dgrijalva/jwt-go"
 	"google.golang.org/appengine/datastore"
 	"io/ioutil"
 	"net/http"
 )
 
+var (
+	parentKind = apis.NewKind(&apis.KindOptions{
+		Path: "parents",
+		Type: Parent{},
+	})
+	childKind = apis.NewKind(&apis.KindOptions{
+		Path: "children",
+		Type: Child{},
+	})
+	projectKind = apis.NewKind(&apis.KindOptions{
+		Path: "projects",
+		Type: Project{},
+		/*IsCollection: true,*/
+		/*KindProvider: kind.NewProvider(childKind, parentKind),*/
+	})
+)
+
+
+
+const (
+	subscriber = "subscriber"
+)
+
+/*
+TODO: 1. auth handler -- apis needs to know what roles have what scopes.. maybe move roles to apis? And GetSessiong (in context) must always receive a session...
+TODO: 2. collection creator is by default it's owner (scope is owner)
+TODO: 3. collections
+ */
 func init() {
 	// auth
 	signingKey, err := ioutil.ReadFile("key.txt")
@@ -16,48 +44,28 @@ func init() {
 		panic(err)
 	}
 
-	var userKind = apis.NewKind(&apis.KindOptions{
-		Name: "user",
-		Type: User{},
-	})
-	var parentKind = apis.NewKind(&apis.KindOptions{
-		Name: "parent",
-		Type: Parent{},
-	})
-	var childKind = apis.NewKind(&apis.KindOptions{
-		Name: "child",
-		Type: Child{},
-	})
-	var projectKind = apis.NewKind(&apis.KindOptions{
-		Name: "project",
-		Type: Project{},
-		/*IsCollection: true,*/
-		/*KindProvider: kind.NewProvider(childKind, parentKind),*/
-	})
-
-	a := apis.NewAuth(&apis.AuthOptions{
+	auth := apis.NewAuth(&apis.AuthOptions{
 		SigningKey:          signingKey,
 		Extractors:          []apis.TokenExtractor{apis.FromAuthHeader},
 		CredentialsOptional: false,
-		DefaultScopes:       []string{parentKind.ScopeFullControl},
-		SigningMethod:       jwt.SigningMethodHS256,
+		DefaultScopes:       []string{subscriber},
+
+		SigningMethod:  jwt.SigningMethodHS256,
+		TokenExpiresIn: 60 * 60 * 24 * 7,
 	})
-	middleware := a.Middleware()
-
-	provider := emailpassword.New(a, &emailpassword.Options{
-		UserKind: userKind,
-		Cost:     12,
-	})
-
-
+	auth.RegisterProvider(emailpassword.New(&emailpassword.Config{}))
 
 	api := apis.New(&apis.Options{
+		Roles: map[string][]string{
+			subscriber:    {parentKind.ScopeFullControl},
+			apis.AllUsers: {},
+		},
 	})
 
-	api.Handle("/auth/signup", provider.SignUpHandler())
-	api.HandleKind("/children", middleware.Handler(childKind))
-	api.HandleKind("/parents", middleware.Handler(parentKind))
-	api.HandleKind("/projects", middleware.Handler(projectKind))
+	//api.Handle("/auth/signup", provider.SignUpHandler())
+	api.RegisterKind(childKind)
+	api.RegisterKind(parentKind)
+	api.RegisterKind(projectKind)
 
 	// kater collection je nas zanima samo ob POST metodi
 	// postanje v collection bi lahko bilo urejeno tako:
@@ -67,14 +75,7 @@ func init() {
 	// api.Handle(`/projects/{collection}/{kind}/{key}`, projectKind)                        	// urejanje entrijev v endpointu v projektu
 	// api.Handle(`/projects/{collection}/{kind}/{key}/{path:[a-zA-Z0-9=\-\/]+}`, projectKind)	// ...
 
-	http.Handle("/", api.Handler())
-}
-
-// TODO: check scope on every handler operation (get, put, delete, post) - best to put checks inside handler functions
-
-type User struct {
-	FirstName string `json:"firstName"`
-	LastName  string `json:"lastName"`
+	http.Handle("/", api)
 }
 
 type Project struct {

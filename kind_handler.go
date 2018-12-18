@@ -33,7 +33,7 @@ func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, erro
 		Items: []interface{}{},
 	}
 
-	q := datastore.NewQuery(k.Name)
+	q := datastore.NewQuery(k.Path)
 	var filterMap = map[string]map[string]string{}
 	for name, values := range params {
 		switch name {
@@ -82,7 +82,7 @@ func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, erro
 	q = q.Offset(r.Offset)
 
 	var err error
-	r.Total, err = Count(ctx, k.Name)
+	r.Total, err = Count(ctx, k.Path)
 	if err != nil {
 		return r, err
 	}
@@ -109,29 +109,29 @@ func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, erro
 	var linkHeader []string
 	if (r.Total - r.Offset - r.Count) > 0 {
 		// has more items to fetch
-		q := ctx.request.URL.Query()
+		q := ctx.r.URL.Query()
 		q.Set("offset", strconv.Itoa(r.Offset+r.Count))
-		linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.request)+ctx.request.URL.Path+"?"+q.Encode()+`>; rel="next"`)
+		linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.r)+ctx.r.URL.Path+"?"+q.Encode()+`>; rel="next"`)
 		if (r.Total - r.Offset - r.Count - r.Limit) > 0 {
 			// next is not last
-			q := ctx.request.URL.Query()
+			q := ctx.r.URL.Query()
 			q.Set("offset", strconv.Itoa(r.Total+r.Limit))
-			linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.request)+ctx.request.URL.Path+"?"+q.Encode()+`>; rel="last"`)
+			linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.r)+ctx.r.URL.Path+"?"+q.Encode()+`>; rel="last"`)
 		}
 	}
 	if r.Offset > 0 {
 		// get previous link
-		q := ctx.request.URL.Query()
+		q := ctx.r.URL.Query()
 		offset := r.Offset - r.Limit
 		if offset < 0 {
 			offset = 0
 		}
 		q.Set("offset", strconv.Itoa(r.Offset-r.Limit))
-		linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.request)+ctx.request.URL.Path+"?"+q.Encode()+`>; rel="prev"`)
+		linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.r)+ctx.r.URL.Path+"?"+q.Encode()+`>; rel="prev"`)
 		if offset > 0 {
 			// previous is not first
 			q.Set("offset", "0")
-			linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.request)+ctx.request.URL.Path+"?"+q.Encode()+`>; rel="first"`)
+			linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.r)+ctx.r.URL.Path+"?"+q.Encode()+`>; rel="first"`)
 		}
 	}
 
@@ -145,6 +145,15 @@ func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, erro
 /kinds/{key} GET, PUT
 /kinds/{key}/{path} GET, PUT
  */
+
+func (k *Kind) QueryHandler(ctx Context) {
+	queryResults, err := k.Query(ctx, ctx.r.URL.Query())
+	if err != nil {
+		ctx.PrintError(err.Error(), http.StatusBadRequest)
+		return
+	}
+	ctx.PrintJSON(queryResults.Items, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
+}
 
 func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var err error
@@ -182,13 +191,13 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		hasPath = len(path) > 0
 	}
 
-	ctx := NewContext(r)
+	ctx := NewContext(w, r)
 
 	// todo: if has collection ...
 	if hasCollection {
 		if hasKey && key.Namespace() != encodedCollection {
 			// key namespace doesn't match collection
-			ctx.PrintError(w, http.StatusConflict, "key namespace doesn't match collection")
+			ctx.PrintError("key namespace doesn't match collection", http.StatusConflict)
 			return
 		}
 
@@ -211,17 +220,17 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusInternalServerError)
 			return
 		}
 		if hasKey {
 			h, err := k.Get(ctx, key)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
-					ctx.PrintError(w, http.StatusNotFound)
+					ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
 					return
 				}
-				ctx.PrintError(w, http.StatusInternalServerError, err.Error())
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
 			if hasPath {
@@ -229,28 +238,28 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				h, value, err = h.Get(ctx, path)
 				if err != nil {
 					if err == datastore.ErrNoSuchEntity {
-						ctx.PrintError(w, http.StatusNotFound)
+						ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
 						return
 					}
-					ctx.PrintError(w, http.StatusInternalServerError, err.Error())
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
 					return
 				}
-				ctx.Print(w, value, http.StatusOK)
+				ctx.PrintJSON(value, http.StatusOK)
 			} else {
-				ctx.Print(w, h.GetValue(), http.StatusOK)
+				ctx.PrintJSON(h.GetValue(), http.StatusOK)
 			}
 		} else {
 			// DO QUERY
 			queryResults, err := k.Query(ctx, r.URL.Query())
 			if err != nil {
-				ctx.PrintError(w, http.StatusBadRequest, err.Error())
+				ctx.PrintError(err.Error(), http.StatusBadRequest)
 				return
 			}
-			ctx.Print(w, queryResults.Items, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
+			ctx.PrintJSON(queryResults.Items, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
 		}
 	case http.MethodPost:
 		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			http.Error(w, "forbidden", http.StatusForbidden)
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusInternalServerError)
 			return
 		}
 
@@ -261,12 +270,12 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		h = k.NewHolder(nil)
 		if err := h.Parse(ctx.Body()); err != nil {
-			ctx.PrintError(w, http.StatusInternalServerError, err.Error())
+			ctx.PrintError(err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		var name = k.dsNameGenerator(ctx, h)
-		h.Key = datastore.NewKey(ctx, k.Name, name, 0, nil)
+		h.Key = datastore.NewKey(ctx, k.Path, name, 0, nil)
 
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
 			err = k.Create(tc, h)
@@ -281,13 +290,11 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return errors.New("entry already exists")
 		}, nil)
 
-
-
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 
-		_ = Increment(ctx, k.Name)
+		_ = Increment(ctx, k.Path)
 
 		var location string
 		locationUrl, err := mux.CurrentRoute(r).URL()
@@ -295,29 +302,29 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			location = strings.Join(append(strings.Split(locationUrl.Path, "/"), h.Key.Encode()), "/")
 		}
 
-		ctx.Print(w, h.GetValue(), http.StatusCreated, "Location", location)
+		ctx.PrintJSON(h.GetValue(), http.StatusCreated, "Location", location)
 	case http.MethodPut:
 		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			http.Error(w, "forbidden", http.StatusForbidden)
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusInternalServerError)
 			return
 		}
 
 		if hasKey {
 			h, err = k.Get(ctx, key)
 			if err != nil {
-				ctx.PrintError(w, http.StatusNotFound, err.Error())
+				ctx.PrintError(err.Error(), http.StatusNotFound)
 				return
 			}
 			h, err = h.Set(ctx, path, ctx.Body())
 			if err != nil {
-				ctx.PrintError(w, http.StatusInternalServerError, err.Error())
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
 			if h.Key, err = datastore.Put(ctx, key, h); err != nil {
-				ctx.PrintError(w, http.StatusInternalServerError, err.Error())
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
-			ctx.Print(w, h.GetValue(), http.StatusOK)
+			ctx.PrintJSON(h.GetValue(), http.StatusOK)
 		} else {
 			r.Method = http.MethodPost
 			k.ServeHTTP(w, r)
@@ -325,39 +332,39 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case http.MethodDelete:
 		if ok := ctx.HasScope(k.ScopeDelete, k.ScopeFullControl); !ok {
-			http.Error(w, "forbidden", http.StatusForbidden)
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusInternalServerError)
 			return
 		}
 
 		if hasKey {
 			if hasPath {
 				if h, err = k.Get(ctx, key); err != nil {
-					ctx.PrintError(w, http.StatusNotFound, err.Error())
+					ctx.PrintError(err.Error(), http.StatusNotFound)
 					return
 				}
 
 				h, err = h.Delete(ctx, path)
 				if err != nil {
-					ctx.PrintError(w, http.StatusInternalServerError, err.Error())
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
 					return
 				}
 
 				_, err = datastore.Put(ctx, h.Key, h)
 				if err != nil {
-					ctx.PrintError(w, http.StatusInternalServerError, err.Error())
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
 					return
 				}
 
-				ctx.Print(w, h.GetValue(), http.StatusOK)
+				ctx.PrintJSON(h.GetValue(), http.StatusOK)
 			} else {
 				if err = datastore.Delete(ctx, key); err != nil {
-					ctx.PrintError(w, http.StatusNotFound, err.Error())
+					ctx.PrintError(err.Error(), http.StatusNotFound)
 					return
 				}
 
-				_ = Decrement(ctx, k.Name)
+				_ = Decrement(ctx, k.Path)
 
-				ctx.Print(w, "ok", http.StatusOK)
+				ctx.PrintStatus(http.StatusText(http.StatusOK), http.StatusOK)
 			}
 		} else {
 			http.Error(w, "not found", http.StatusNotFound)

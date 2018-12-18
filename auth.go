@@ -22,14 +22,18 @@ type AuthOptions struct {
 	// These scopes are assigned to new users
 	DefaultScopes []string
 	SigningMethod jwt.SigningMethod
-	// How long until it expires in seconds
+	// How long until it expires in seconds. Default is 7 days.
 	TokenExpiresIn int64
 	TokenIssuer    string
 	TokenAudience  string
 	// Doesn't set token exp; Expiration is managed through sessions
 	AutoExtendToken bool
+	// Default is 12
+	HashingCost int
 
 	Roles map[string][]string
+
+	providers []Provider
 }
 
 type Token struct {
@@ -43,6 +47,15 @@ type AuthResponse struct {
 }
 
 func NewAuth(opt *AuthOptions) *Auth {
+	if opt == nil {
+		opt = &AuthOptions{}
+	}
+	if opt.HashingCost <= 0 {
+		opt.HashingCost = 12
+	}
+	if opt.TokenExpiresIn <= 0 {
+		opt.TokenExpiresIn = 60 * 60 * 24 * 7
+	}
 	auth := &Auth{AuthOptions: opt}
 	return auth
 }
@@ -64,45 +77,6 @@ func (a *Auth) NewSession(ctx context.Context, providerIdentity *datastore.Key, 
 
 func (a *Auth) SignedToken(s *Session) (string, error) {
 	return s.token.SignedString(a.SigningKey)
-}
-
-const AccountKind = "_account"
-
-type Account struct {
-	Id   *datastore.Key `datastore:"-"`
-	User *datastore.Key
-	// Email is always required
-	Email  string   `json:"email"`
-	Scopes []string `json:"scopes"`
-}
-
-// Connects provider identity with user account. Creates account if it doesn't exist. Should be run inside a transaction.
-func (a *Auth) ConnectUser(ctx context.Context, providerIdentityKey *datastore.Key, userEmail string, userHolder *Holder) (*Account, error) {
-	var account = new(Account)
-
-	err := userHolder.Kind.Put(ctx, userHolder)
-	if err != nil {
-		return account, err
-	}
-
-	accountKey := datastore.NewKey(ctx, AccountKind, userEmail, 0, nil)
-	err = datastore.Get(ctx, accountKey, account)
-	if err != nil {
-		if err == datastore.ErrNoSuchEntity {
-			account.User = userHolder.Key
-			account.Email = userEmail
-			account.Scopes = a.DefaultScopes
-			_, err = datastore.Put(ctx, accountKey, account)
-			if err != nil {
-				return account, err
-			}
-		} else {
-			return account, err
-		}
-	}
-	account.Id = accountKey
-
-	return account, err
 }
 
 // when project selected - switch namespace

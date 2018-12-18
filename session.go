@@ -77,6 +77,7 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, s
 	return s, nil
 }
 
+// TODO: needs to create a session even if token is not provided -- in this case it is a public session with role AllUsers
 func GetSession(ctx context.Context, token *jwt.Token) (*Session, error) {
 	var s = new(Session)
 	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
