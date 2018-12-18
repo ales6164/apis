@@ -1,7 +1,8 @@
-package kind
+package apis
 
 import (
 	"encoding/json"
+	"github.com/dgrijalva/jwt-go"
 	gorilla "github.com/gorilla/context"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
@@ -13,40 +14,25 @@ import (
 
 type Context struct {
 	context.Context
-	request      *http.Request
-	scopes       []string
-	hasScopes    bool
-	isProtected  bool
-	namespace    string
-	hasNamespace bool
-	hasReadBody  bool
-	userKey      *datastore.Key
-	body         []byte
+	request     *http.Request
+	hasReadBody bool
+	body        []byte
+	auth        *Auth
+	session     *Session
 }
 
 func NewContext(r *http.Request) (ctx Context) {
-	var err error
-	ctx = Context{request: r}
-
-	/*if _scopes, ok := gorilla.GetOk(r, "scopes"); ok {
-		ctx.isProtected = true
-		if scopes, ok := _scopes.([]string); ok {
-			ctx.scopes = scopes
-			ctx.hasScopes = true
-		}
-	}
-
-	if _namespace, ok := gorilla.GetOk(r, "namespace"); ok {
-		if namespace, ok := _namespace.(string); ok && len(namespace) > 0 {
-			gaeCtx := appengine.NewContext(r)
-			if ctx.Context, err = appengine.Namespace(gaeCtx, namespace); err == nil {
-				ctx.Context = gaeCtx
-				ctx.namespace = namespace
-				ctx.hasNamespace = true
+	ctx = Context{Context: appengine.NewContext(r), request: r}
+	if _auth, ok := gorilla.GetOk(r, "auth"); ok {
+		if a, ok := _auth.(*Auth); ok {
+			ctx.auth = a
+			if _token, ok := gorilla.GetOk(r, "token"); ok {
+				if token, ok := _token.(*jwt.Token); ok {
+					ctx.session, _ = GetSession(ctx, token)
+				}
 			}
 		}
-	}*/
-
+	}
 	return ctx
 }
 
@@ -61,21 +47,11 @@ func (ctx Context) Body() []byte {
 }
 
 func (ctx Context) HasScope(scopes ...string) bool {
-	if !ctx.isProtected {
-		return true
-	}
-	for _, s := range scopes {
-		for _, r := range ctx.scopes {
-			if r == s {
-				return true
-			}
-		}
-	}
-	return false
+	return ctx.session.HasScope(scopes...)
 }
 
 func (ctx Context) User() *datastore.Key {
-
+	return ctx.session.Subject
 }
 
 /**

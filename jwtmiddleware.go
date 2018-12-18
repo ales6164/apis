@@ -1,4 +1,4 @@
-package auth
+package apis
 
 import (
 	"fmt"
@@ -30,8 +30,12 @@ type MiddlewareOptions struct {
 	ValidationKeyGetter jwt.Keyfunc
 	// The name of the property in the request where the auth information
 	// from the JWT will be stored.
-	// Default value: "auth"
+	// Default value: "token"
 	UserProperty string
+	// The name of the property in the request where the auth object
+	// will be stored.
+	// Default value: "auth"
+	AuthProperty string
 	// The function that will be called when there's an error validating the token
 	// Default value:
 	ErrorHandler errorHandler
@@ -55,6 +59,7 @@ type MiddlewareOptions struct {
 }
 
 type JWTMiddleware struct {
+	Auth    *Auth
 	Options MiddlewareOptions
 }
 
@@ -63,7 +68,7 @@ func OnError(w http.ResponseWriter, r *http.Request, err string) {
 }
 
 // New constructs a new Secure instance with supplied options.
-func middleware(options ...MiddlewareOptions) *JWTMiddleware {
+func middleware(a *Auth, options ...MiddlewareOptions) *JWTMiddleware {
 	var opts MiddlewareOptions
 	if len(options) == 0 {
 		opts = MiddlewareOptions{}
@@ -72,7 +77,7 @@ func middleware(options ...MiddlewareOptions) *JWTMiddleware {
 	}
 
 	if opts.UserProperty == "" {
-		opts.UserProperty = "auth"
+		opts.UserProperty = "token"
 	}
 
 	if opts.ErrorHandler == nil {
@@ -84,6 +89,7 @@ func middleware(options ...MiddlewareOptions) *JWTMiddleware {
 	}
 
 	return &JWTMiddleware{
+		Auth:    a,
 		Options: opts,
 	}
 }
@@ -96,6 +102,7 @@ func (m *JWTMiddleware) logf(format string, args ...interface{}) {
 
 // Special implementation for Negroni, but could be used elsewhere.
 func (m *JWTMiddleware) HandlerWithNext(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+	context.Set(r, m.Options.AuthProperty, m.Auth)
 	err := m.CheckJWT(w, r)
 
 	// If there was an error, do not call next.
@@ -113,6 +120,7 @@ func (m *JWTMiddleware) HandlerWithNext(w http.ResponseWriter, r *http.Request, 
 
 func (m *JWTMiddleware) Handler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		context.Set(r, m.Options.AuthProperty, m.Auth)
 		// Let secure process the request. If it returns an error,
 		// that indicates the request should not continue.
 		err := m.CheckJWT(w, r)
@@ -237,7 +245,7 @@ func (m *JWTMiddleware) CheckJWT(w http.ResponseWriter, r *http.Request) error {
 	// Now parse the token
 	parser := new(jwt.Parser)
 	parser.SkipClaimsValidation = true
-	parsedToken, err := parser.ParseWithClaims(token, &jwt.StandardClaims{}, m.Options.ValidationKeyGetter)
+	parsedToken, err := parser.ParseWithClaims(token, &Claims{}, m.Options.ValidationKeyGetter)
 
 	// Check if there was an error in parsing...
 	if err != nil {

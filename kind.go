@@ -1,4 +1,4 @@
-package kind
+package apis
 
 import (
 	"errors"
@@ -37,10 +37,10 @@ type Kind struct {
 	fields map[string]*Field // map key is json representation for field name
 
 	http.Handler
-	*Options
+	*KindOptions
 }
 
-type Options struct {
+type KindOptions struct {
 	// control entry access
 	// even if field is false gotta store who created entry? so that is switched to true, creators still have access - if no owner is stored nobody has access
 	EnableEntryScope bool
@@ -60,14 +60,14 @@ type Field struct {
 	IsAutoId bool
 }
 
-func New(opt *Options) *Kind {
+func NewKind(opt *KindOptions) *Kind {
 	if opt == nil {
 		panic(errors.New("kind options can't be nil"))
 	}
 
 	k := &Kind{
-		Options: opt,
-		t:       reflect.TypeOf(opt.Type),
+		KindOptions: opt,
+		t:           reflect.TypeOf(opt.Type),
 		dsNameGenerator: func(ctx context.Context, holder *Holder) string {
 			return ""
 		},
@@ -213,6 +213,36 @@ loop:
 	return fields
 }
 
+// Creates new entry. It fails if entry already exists.
+func (k *Kind) Create(ctx context.Context, h *Holder) error {
+	var err error
+	if h.Key == nil {
+		h.Key = datastore.NewIncompleteKey(ctx, k.Name, nil)
+	}
+	if h.Key.Incomplete() {
+		h.Key, err = datastore.Put(ctx, h.Key, h)
+	} else {
+		if _, err := k.Get(ctx, h.Key); err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				h.Key, err = datastore.Put(ctx, h.Key, h)
+			}
+			return err
+		}
+		return errors.New("entry already exists")
+	}
+	return err
+}
+
+// Updates or creates new entry
+func (k *Kind) Put(ctx context.Context, h *Holder) error {
+	var err error
+	if h.Key == nil {
+		h.Key = datastore.NewIncompleteKey(ctx, k.Name, nil)
+	}
+	h.Key, err = datastore.Put(ctx, h.Key, h)
+	return err
+}
+
 func (k *Kind) Type() reflect.Type {
 	return k.t
 }
@@ -225,6 +255,6 @@ func (k *Kind) NewHolder(key *datastore.Key) *Holder {
 	return &Holder{
 		Kind:         k,
 		reflectValue: k.New(),
-		key:          key,
+		Key:          key,
 	}
 }

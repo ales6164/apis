@@ -1,4 +1,4 @@
-package kind
+package apis
 
 import (
 	"errors"
@@ -172,6 +172,9 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		} else {
 			hasCollection = true
+			if collection != nil {
+				//remove this if
+			}
 		}
 	}
 	if _path, ok := vars["path"]; ok {
@@ -190,7 +193,7 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// collection key + user key
-		datastore.Get(ctx, collection)
+		//datastore.Get(ctx, collection)
 
 		// 1. Get collection permission datastore table and check if user has entry (also check if allUsers has access)
 		// 2. Load collection permissions to context for future scope checks
@@ -266,26 +269,14 @@ func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.Key = datastore.NewKey(ctx, k.Name, name, 0, nil)
 
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			if h.Key.Incomplete() {
-				h.Key, err = datastore.Put(tc, h.Key, h)
-				if err != nil {
-					return err
-				}
-			} else {
-				if _, err := k.Get(tc, h.Key); err != nil {
-					if err == datastore.ErrNoSuchEntity {
-						h.Key, err = datastore.Put(tc, h.Key, h)
-						if err != nil {
-							return err
-						}
-					}
-					return err
-				}
+			err = k.Create(tc, h)
+			if err != nil {
+				return err
 			}
 
 			// create iam entry
-			iam := IAMKind.NewHolder(nil)
-			iam.Key = datastore.NewKey(tc, iam.Kind.Name, )
+			//iam := IAMKind.NewHolder(nil)
+			//iam.Key = datastore.NewKey(tc, iam.Kind.Name, )
 
 			return errors.New("entry already exists")
 		}, nil)

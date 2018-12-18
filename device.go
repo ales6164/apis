@@ -1,4 +1,4 @@
-package auth
+package apis
 
 import (
 	"google.golang.org/appengine"

@@ -3,9 +3,7 @@ package emailpassword
 import (
 	"encoding/json"
 	"errors"
-	"github.com/ales6164/apis/kind"
-	"github.com/ales6164/apis/providers"
-	"github.com/ales6164/client"
+	"github.com/ales6164/apis"
 	"github.com/asaskevich/govalidator"
 	"github.com/buger/jsonparser"
 	"golang.org/x/crypto/bcrypt"
@@ -32,27 +30,28 @@ var (
 
 type emailPassword struct {
 	*Options
-	*providers.Provider
+	*apis.Auth
 }
 
 type Options struct {
-	Cost       int
-	SigningKey []byte
+	UserKind *apis.Kind
+	Cost     int
 }
 
 type Entry struct {
-	Email string `datastore:",noindex"`
-	Hash  []byte `datastore:",noindex"`
+	Account *datastore.Key
+	Email   string `datastore:",noindex"`
+	Hash    []byte `datastore:",noindex"`
 }
 
-func New(options *Options) *emailPassword {
+func New(a *apis.Auth, options *Options) *emailPassword {
 	return &emailPassword{
-		Options:  options,
-		Provider: &providers.Provider{Name: EmailPasswordProviderName},
+		Options: options,
+		Auth:    a,
 	}
 }
 
-func (p *emailPassword) SignInHandler(rp client.RoleProvider) http.Handler {
+/*func (p *emailPassword) SignInHandler(rp client.RoleProvider) http.Handler {
 	type InputCredentials struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -114,10 +113,9 @@ func (p *emailPassword) SignInHandler(rp client.RoleProvider) http.Handler {
 			},
 		})
 	})
-}
+}*/
 
-func (p *emailPassword) SignUpHandler(rp client.RoleProvider, scopes ...string) http.Handler {
-
+func (p *emailPassword) SignUpHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := appengine.NewContext(r)
 
@@ -140,11 +138,19 @@ func (p *emailPassword) SignUpHandler(rp client.RoleProvider, scopes ...string) 
 			return
 		}
 
+		userHolder := p.UserKind.NewHolder(nil)
+		err = userHolder.Parse(userData)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var session *apis.Session
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
 			// check if user exists
-			emailPasswordEntryKey := datastore.NewKey(tc, EmailPasswordProviderKindName, email, 0, nil)
+			providerKey := datastore.NewKey(tc, EmailPasswordProviderKindName, email, 0, nil)
 			emailPasswordEntry := new(Entry)
-			err = datastore.Get(tc, emailPasswordEntryKey, emailPasswordEntry)
+			err = datastore.Get(tc, providerKey, emailPasswordEntry)
 			if err == nil {
 				return errors.New("user already exists")
 			}
@@ -158,53 +164,40 @@ func (p *emailPassword) SignUpHandler(rp client.RoleProvider, scopes ...string) 
 				return err
 			}
 
-			// create user entry
-			emailPasswordEntryKey, err = datastore.Put(tc, emailPasswordEntryKey, emailPasswordEntry)
+			// connect identity to account
+			account, err := p.ConnectUser(tc, providerKey, email, userHolder)
 			if err != nil {
 				return err
 			}
 
-			// connect identity to account
-			p.ConnectUser(ctx, emailPasswordEntryKey, userData)
+			emailPasswordEntry.Account = account.Id
 
-			return nil
+			// create emailPassword entry
+			providerKey, err = datastore.Put(tc, providerKey, emailPasswordEntry)
+			if err != nil {
+				return err
+			}
+
+			// create session
+			session, err = p.NewSession(ctx, providerKey, account.Id, account.Scopes...)
+			return err
 		}, &datastore.TransactionOptions{XG: true})
-
-		user, err := client.NewUser(ctx, inputCredentials.Email, inputCredentials.Profile, scopes...)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		hash, err := crypt([]byte(inputCredentials.Password))
+		signedToken, err := p.Auth.SignedToken(session)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		identity, err := client.NewIdentity(ctx, EmailPasswordProviderName, user.Key, inputCredentials.Email, hash)
-		if err != nil {
-			http.Error(w, errors.ErrUserDoesNotExist.Error(), http.StatusBadRequest)
-			return
-		}
-
-		ss, token, err := client.NewSession(ctx, identity, rp, user.Scopes...)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		signedToken, err := token.SignedString(p.SigningKey)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		json.NewEncoder(w).Encode(&Response{
-			User: user,
-			Token: &Token{
+		json.NewEncoder(w).Encode(apis.AuthResponse{
+			User: userHolder.GetValue(),
+			Token: apis.Token{
 				Id:        signedToken,
-				ExpiresAt: ss.ExpiresAt,
+				ExpiresAt: session.ExpiresAt.Unix(),
 			},
 		})
 	})

@@ -1,7 +1,6 @@
 package apis
 
 import (
-	"github.com/ales6164/apis/kind"
 	"github.com/gorilla/mux"
 	"net/http"
 )
@@ -25,7 +24,7 @@ func New(options *Options) *Apis {
 		a.Roles = map[string][]string{}
 	}
 
-	a.Handle("/iam", kind.IAMKind)
+	//a.Handle("/iam", IAMKind)
 
 	return a
 }

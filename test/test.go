@@ -2,8 +2,7 @@ package test
 
 import (
 	"github.com/ales6164/apis"
-	"github.com/ales6164/apis/kind"
-	"github.com/ales6164/auth"
+	"github.com/ales6164/apis/providers/emailPassword"
 	"github.com/dgrijalva/jwt-go"
 	"google.golang.org/appengine/datastore"
 	"io/ioutil"
@@ -17,38 +16,48 @@ func init() {
 		panic(err)
 	}
 
-	// custom auth middleware + login/registration/session library
-	// user profile? private entities with scope access? like projects and user profile
-
-	a := auth.New(&auth.Options{
-		SigningKey:          signingKey,
-		Extractors:          []auth.TokenExtractor{auth.FromAuthHeader},
-		CredentialsOptional: false,
-		SigningMethod:       jwt.SigningMethodHS256,
+	var userKind = apis.NewKind(&apis.KindOptions{
+		Name: "user",
+		Type: User{},
 	})
-	middleware := a.Middleware()
-
-	var parentKind = kind.New(&kind.Options{
+	var parentKind = apis.NewKind(&apis.KindOptions{
 		Name: "parent",
 		Type: Parent{},
 	})
-	var childKind = kind.New(&kind.Options{
+	var childKind = apis.NewKind(&apis.KindOptions{
 		Name: "child",
 		Type: Child{},
 	})
-	var projectKind = kind.New(&kind.Options{
-		Name:         "project",
-		Type:         Project{},
+	var projectKind = apis.NewKind(&apis.KindOptions{
+		Name: "project",
+		Type: Project{},
 		/*IsCollection: true,*/
 		/*KindProvider: kind.NewProvider(childKind, parentKind),*/
 	})
 
+	a := apis.NewAuth(&apis.AuthOptions{
+		SigningKey:          signingKey,
+		Extractors:          []apis.TokenExtractor{apis.FromAuthHeader},
+		CredentialsOptional: false,
+		DefaultScopes:       []string{parentKind.ScopeFullControl},
+		SigningMethod:       jwt.SigningMethodHS256,
+	})
+	middleware := a.Middleware()
+
+	provider := emailpassword.New(a, &emailpassword.Options{
+		UserKind: userKind,
+		Cost:     12,
+	})
+
+
+
 	api := apis.New(&apis.Options{
 	})
 
-	api.Handle("/children", middleware.Handler(childKind))
-	api.Handle("/parents", middleware.Handler(parentKind))
-	api.Handle("/projects", middleware.Handler(projectKind))
+	api.Handle("/auth/signup", provider.SignUpHandler())
+	api.HandleKind("/children", middleware.Handler(childKind))
+	api.HandleKind("/parents", middleware.Handler(parentKind))
+	api.HandleKind("/projects", middleware.Handler(projectKind))
 
 	// kater collection je nas zanima samo ob POST metodi
 	// postanje v collection bi lahko bilo urejeno tako:
@@ -62,6 +71,11 @@ func init() {
 }
 
 // TODO: check scope on every handler operation (get, put, delete, post) - best to put checks inside handler functions
+
+type User struct {
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+}
 
 type Project struct {
 	Id   *datastore.Key `datastore:"-" auto:"id" json:"id,omitempty"`
