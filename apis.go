@@ -129,7 +129,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 	}).Methods(http.MethodGet)
 
 	// GET with path
-	a.HandleFunc(joinPath(k.Path, "{key}", "{path}"), func(w http.ResponseWriter, r *http.Request) {
+	a.HandleFunc(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -177,7 +177,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 	}).Methods(http.MethodPut)
 
 	// PUT with path
-	a.HandleFunc(joinPath(k.Path, "{key}", "{path}"), func(w http.ResponseWriter, r *http.Request) {
+	a.HandleFunc(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -225,7 +225,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 	}).Methods(http.MethodDelete)
 
 	// DELETE with path
-	a.HandleFunc(joinPath(k.Path, "{key}", "{path}"), func(w http.ResponseWriter, r *http.Request) {
+	a.HandleFunc(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -249,10 +249,6 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
 	}).Methods(http.MethodDelete)
-
-	/*a.Handle(path, h)
-	a.Handle(path+`/{key}`, h)
-	a.Handle(path+`/{key}/{path:[a-zA-Z0-9=\-\/]+}`, h)*/
 
 	// TODO: HANDLE collection permission checking right inside handlefunc
 	/*a.collectionRouter.HandleFunc(joinPath(k.Path), func(w http.ResponseWriter, r *http.Request) {
