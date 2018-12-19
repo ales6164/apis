@@ -7,7 +7,9 @@ import (
 )
 
 type Auth struct {
+	a *Apis
 	*AuthOptions
+	middleware *JWTMiddleware
 }
 
 const (
@@ -31,7 +33,7 @@ type AuthOptions struct {
 	// Default is 12
 	HashingCost int
 
-	Roles map[string][]string
+	/*Roles map[string][]string*/
 
 	providers []Provider
 }
@@ -42,8 +44,8 @@ type Token struct {
 }
 
 type AuthResponse struct {
-	User  interface{} `json:"user"`
-	Token Token       `json:"token"`
+	User  *User `json:"user"`
+	Token Token `json:"token"`
 }
 
 func NewAuth(opt *AuthOptions) *Auth {
@@ -57,18 +59,15 @@ func NewAuth(opt *AuthOptions) *Auth {
 		opt.TokenExpiresIn = 60 * 60 * 24 * 7
 	}
 	auth := &Auth{AuthOptions: opt}
-	return auth
-}
-
-func (a *Auth) Middleware() *JWTMiddleware {
-	return middleware(a, MiddlewareOptions{
-		Extractor: FromFirst(a.Extractors...),
+	auth.middleware = middleware(auth, MiddlewareOptions{
+		Extractor: FromFirst(auth.Extractors...),
 		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
-			return a.SigningKey, nil
+			return auth.SigningKey, nil
 		},
-		SigningMethod:       a.SigningMethod,
-		CredentialsOptional: a.CredentialsOptional,
+		SigningMethod:       auth.SigningMethod,
+		CredentialsOptional: auth.CredentialsOptional,
 	})
+	return auth
 }
 
 func (a *Auth) NewSession(ctx context.Context, providerIdentity *datastore.Key, subject *datastore.Key, scopes ...string) (*Session, error) {

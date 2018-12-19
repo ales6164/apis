@@ -93,6 +93,39 @@ func Increment(ctx context.Context, name string) error {
 	return nil
 }
 
+// Increment increments the named counter.
+func IncrementTransactionless(ctx context.Context, name string) error {
+	// Get counter config.
+	var cfg counterConfig
+	ckey := datastore.NewKey(ctx, configKind, name, 0, nil)
+	err := datastore.Get(ctx, ckey, &cfg)
+	if err == datastore.ErrNoSuchEntity {
+		cfg.Shards = defaultShards
+		_, err = datastore.Put(ctx, ckey, &cfg)
+	}
+
+	if err != nil {
+		return err
+	}
+	var s shard
+	shardName := fmt.Sprintf("%s-shard%d", name, rand.Intn(cfg.Shards))
+	key := datastore.NewKey(ctx, shardKind, shardName, 0, nil)
+	err = datastore.Get(ctx, key, &s)
+	// A missing entity and a present entity will both work.
+	if err != nil && err != datastore.ErrNoSuchEntity {
+		return err
+	}
+	s.Name = name
+	s.Count++
+	_, err = datastore.Put(ctx, key, &s)
+	return err
+	if err != nil {
+		return err
+	}
+	memcache.IncrementExisting(ctx, memcacheKey(name), 1)
+	return nil
+}
+
 // Decrement decrements the named counter.
 func Decrement(ctx context.Context, name string) error {
 	// Get counter config.
@@ -123,6 +156,40 @@ func Decrement(ctx context.Context, name string) error {
 		_, err = datastore.Put(ctx, key, &s)
 		return err
 	}, nil)
+	if err != nil {
+		return err
+	}
+	memcache.IncrementExisting(ctx, memcacheKey(name), 1)
+	return nil
+}
+
+// Decrement decrements the named counter.
+func DecrementTransactionless(ctx context.Context, name string) error {
+	// Get counter config.
+	var cfg counterConfig
+	ckey := datastore.NewKey(ctx, configKind, name, 0, nil)
+	err := datastore.Get(ctx, ckey, &cfg)
+	if err == datastore.ErrNoSuchEntity {
+		cfg.Shards = defaultShards
+		_, err = datastore.Put(ctx, ckey, &cfg)
+	}
+	if err != nil {
+		return err
+	}
+	var s shard
+
+	shardName := fmt.Sprintf("%s-shard%d", name, rand.Intn(cfg.Shards))
+	key := datastore.NewKey(ctx, shardKind, shardName, 0, nil)
+	err = datastore.Get(ctx, key, &s)
+	// A missing entity and a present entity will both work.
+	if err != nil && err != datastore.ErrNoSuchEntity {
+		return err
+	}
+	s.Name = name
+	s.Count--
+	_, err = datastore.Put(ctx, key, &s)
+	return err
+
 	if err != nil {
 		return err
 	}

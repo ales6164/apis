@@ -212,7 +212,7 @@ loop:
 	return fields
 }
 
-// Creates new entry. It fails if entry already exists.
+// Creates new entry. It fails if entry already exists. Should be run inside a transaction.
 func (k *Kind) Create(ctx context.Context, h *Holder) error {
 	var err error
 	if h.Key == nil {
@@ -232,7 +232,7 @@ func (k *Kind) Create(ctx context.Context, h *Holder) error {
 	return err
 }
 
-// Updates or creates new entry
+// Updates or creates a new entry.
 func (k *Kind) Put(ctx context.Context, h *Holder) error {
 	var err error
 	if h.Key == nil {

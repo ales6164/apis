@@ -1,7 +1,6 @@
 package apis
 
 import (
-	"errors"
 	"github.com/gorilla/mux"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
@@ -142,8 +141,8 @@ func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, erro
 
 /*
 /kinds QUERY, POST
-/kinds/{key} GET, PUT
-/kinds/{key}/{path} GET, PUT
+/kinds/{key} GET, PUT, DELETE
+/kinds/{key}/{path} GET, PUT, DELETE
  */
 
 func (k *Kind) QueryHandler(ctx Context) {
@@ -155,220 +154,153 @@ func (k *Kind) QueryHandler(ctx Context) {
 	ctx.PrintJSON(queryResults.Items, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
 }
 
-func (k *Kind) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var ok bool
-	var h *Holder
-
-	var encodedCollection string
-	var key, collection *datastore.Key
-	var path []string
-	var hasKey, hasPath, hasCollection bool
-
-	vars := mux.Vars(r)
-
-	if encodedKey, ok := vars["key"]; ok {
-		if key, err = datastore.DecodeKey(encodedKey); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		} else {
-			hasKey = true
-		}
-	}
-	if encodedCollection, ok = vars["collection"]; ok {
-		if collection, err = datastore.DecodeKey(encodedCollection); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		} else {
-			hasCollection = true
-			if collection != nil {
-				//remove this if
-			}
-		}
-	}
-	if _path, ok := vars["path"]; ok {
-		path = strings.Split(_path, "/")
-		hasPath = len(path) > 0
-	}
-
-	ctx := NewContext(w, r)
-
-	// todo: if has collection ...
-	if hasCollection {
-		if hasKey && key.Namespace() != encodedCollection {
-			// key namespace doesn't match collection
-			ctx.PrintError("key namespace doesn't match collection", http.StatusConflict)
+func (k *Kind) GetHandler(ctx Context, key *datastore.Key, path ...string) {
+	h, err := k.Get(ctx, key)
+	if err != nil {
+		if err == datastore.ErrNoSuchEntity {
+			ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
 			return
 		}
-
-		// collection key + user key
-		//datastore.Get(ctx, collection)
-
-		// 1. Get collection permission datastore table and check if user has entry (also check if allUsers has access)
-		// 2. Load collection permissions to context for future scope checks
-		// 3. Update context namespace
-	} else {
-		/*if hasKey && len(key.Namespace()) > 0 {
-			// key namespace doesn't match collection
-			ctx.PrintError(w, http.StatusConflict, "key namespace doesn't match collection")
-			return
-		}*/
-
-		// 1. Check if key has namespace and if so check access
+		ctx.PrintError(err.Error(), http.StatusInternalServerError)
+		return
 	}
-
-	switch r.Method {
-	case http.MethodGet:
-		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusInternalServerError)
-			return
-		}
-		if hasKey {
-			h, err := k.Get(ctx, key)
-			if err != nil {
-				if err == datastore.ErrNoSuchEntity {
-					ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
-					return
-				}
-				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+	if len(path) > 0 {
+		var value interface{}
+		h, value, err = h.Get(ctx, path)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
 				return
 			}
-			if hasPath {
-				var value interface{}
-				h, value, err = h.Get(ctx, path)
-				if err != nil {
-					if err == datastore.ErrNoSuchEntity {
-						ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
-						return
-					}
-					ctx.PrintError(err.Error(), http.StatusInternalServerError)
-					return
-				}
-				ctx.PrintJSON(value, http.StatusOK)
-			} else {
-				ctx.PrintJSON(h.GetValue(), http.StatusOK)
-			}
-		} else {
-			// DO QUERY
-			queryResults, err := k.Query(ctx, r.URL.Query())
-			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusBadRequest)
-				return
-			}
-			ctx.PrintJSON(queryResults.Items, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
-		}
-	case http.MethodPost:
-		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusInternalServerError)
-			return
-		}
-
-		if hasPath || hasKey {
-			http.Error(w, "not implemented", http.StatusNotImplemented)
-			return
-		}
-
-		h = k.NewHolder(nil)
-		if err := h.Parse(ctx.Body()); err != nil {
 			ctx.PrintError(err.Error(), http.StatusInternalServerError)
 			return
 		}
+		ctx.PrintJSON(value, http.StatusOK)
+	} else {
+		ctx.PrintJSON(h.GetValue(), http.StatusOK)
+	}
+}
 
-		var name = k.dsNameGenerator(ctx, h)
-		h.Key = datastore.NewKey(ctx, k.Path, name, 0, nil)
+func (k *Kind) PostHandler(ctx Context, key *datastore.Key, path ...string) {
+	if key != nil || len(path) > 0 {
+		ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+		return
+	}
 
+	h := k.NewHolder(nil)
+	if err := h.Parse(ctx.Body()); err != nil {
+		ctx.PrintError(err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var name = k.dsNameGenerator(ctx, h)
+	h.Key = datastore.NewKey(ctx, k.Path, name, 0, nil)
+
+	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
+		err := k.Create(tc, h)
+		if err != nil {
+			return err
+		}
+
+		// create iam entry
+		//iam := IAMKind.NewHolder(nil)
+		//iam.Key = datastore.NewKey(tc, iam.Kind.Name, )
+
+		return IncrementTransactionless(tc, k.Path)
+	}, &datastore.TransactionOptions{XG: true})
+	if err != nil {
+		ctx.PrintError(err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var location string
+	locationUrl, err := mux.CurrentRoute(ctx.r).URL()
+	if err == nil {
+		location = strings.Join(append(strings.Split(locationUrl.Path, "/"), h.Key.Encode()), "/")
+	}
+
+	ctx.PrintJSON(h.GetValue(), http.StatusCreated, "Location", location)
+}
+
+func (k *Kind) PutHandler(ctx Context, key *datastore.Key, path ...string) {
+	if key == nil {
+		ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+		return
+	}
+
+	var err error
+	var h *Holder
+	err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
+		h, err = k.Get(tc, key)
+		if err != nil {
+			return err
+		}
+		h, err = h.Set(ctx, path, ctx.Body())
+		if err != nil {
+			return err
+		}
+		h.Key, err = datastore.Put(ctx, h.Key, h)
+		return err
+	}, nil)
+	if err != nil {
+		if err == datastore.ErrNoSuchEntity {
+			ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			return
+		}
+		ctx.PrintError(err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ctx.PrintJSON(h.GetValue(), http.StatusOK)
+}
+
+func (k *Kind) DeleteHandler(ctx Context, key *datastore.Key, path ...string) {
+	if key == nil {
+		ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+		return
+	}
+	if len(path) > 0 {
+		var err error
+		var h *Holder
 		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			err = k.Create(tc, h)
+			h, err = k.Get(tc, key)
 			if err != nil {
 				return err
 			}
-
-			// create iam entry
-			//iam := IAMKind.NewHolder(nil)
-			//iam.Key = datastore.NewKey(tc, iam.Kind.Name, )
-
-			return errors.New("entry already exists")
+			h, err = h.Delete(ctx, path)
+			if err != nil {
+				return err
+			}
+			h.Key, err = datastore.Put(ctx, h.Key, h)
+			return err
 		}, nil)
-
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-
-		_ = Increment(ctx, k.Path)
-
-		var location string
-		locationUrl, err := mux.CurrentRoute(r).URL()
-		if err == nil {
-			location = strings.Join(append(strings.Split(locationUrl.Path, "/"), h.Key.Encode()), "/")
-		}
-
-		ctx.PrintJSON(h.GetValue(), http.StatusCreated, "Location", location)
-	case http.MethodPut:
-		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); !ok {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusInternalServerError)
+			if err == datastore.ErrNoSuchEntity {
+				ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
+				return
+			}
+			ctx.PrintError(err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		if hasKey {
-			h, err = k.Get(ctx, key)
+		ctx.PrintJSON(h.GetValue(), http.StatusOK)
+	} else {
+		var err error
+		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
+			err = datastore.Delete(ctx, key)
 			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusNotFound)
+				return err
+			}
+			return DecrementTransactionless(tc, k.Path)
+		}, &datastore.TransactionOptions{XG: true})
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
 				return
 			}
-			h, err = h.Set(ctx, path, ctx.Body())
-			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if h.Key, err = datastore.Put(ctx, key, h); err != nil {
-				ctx.PrintError(err.Error(), http.StatusInternalServerError)
-				return
-			}
-			ctx.PrintJSON(h.GetValue(), http.StatusOK)
-		} else {
-			r.Method = http.MethodPost
-			k.ServeHTTP(w, r)
+			ctx.PrintError(err.Error(), http.StatusInternalServerError)
 			return
 		}
-	case http.MethodDelete:
-		if ok := ctx.HasScope(k.ScopeDelete, k.ScopeFullControl); !ok {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusInternalServerError)
-			return
-		}
-
-		if hasKey {
-			if hasPath {
-				if h, err = k.Get(ctx, key); err != nil {
-					ctx.PrintError(err.Error(), http.StatusNotFound)
-					return
-				}
-
-				h, err = h.Delete(ctx, path)
-				if err != nil {
-					ctx.PrintError(err.Error(), http.StatusInternalServerError)
-					return
-				}
-
-				_, err = datastore.Put(ctx, h.Key, h)
-				if err != nil {
-					ctx.PrintError(err.Error(), http.StatusInternalServerError)
-					return
-				}
-
-				ctx.PrintJSON(h.GetValue(), http.StatusOK)
-			} else {
-				if err = datastore.Delete(ctx, key); err != nil {
-					ctx.PrintError(err.Error(), http.StatusNotFound)
-					return
-				}
-
-				_ = Decrement(ctx, k.Path)
-
-				ctx.PrintStatus(http.StatusText(http.StatusOK), http.StatusOK)
-			}
-		} else {
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
+		ctx.PrintStatus(http.StatusText(http.StatusOK), http.StatusOK)
 	}
+
 }

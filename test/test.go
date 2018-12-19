@@ -33,7 +33,7 @@ const (
 )
 
 /*
-TODO: 1. auth handler -- apis needs to know what roles have what scopes.. maybe move roles to apis? And GetSessiong (in context) must always receive a session...
+TODO: 1. auth handler -- apis needs to know what roles have what scopes.. maybe move roles to apis? And GetSession (in context) must always receive a session...
 TODO: 2. collection creator is by default it's owner (scope is owner)
 TODO: 3. collections
  */
@@ -58,9 +58,10 @@ func init() {
 	api := apis.New(&apis.Options{
 		Roles: map[string][]string{
 			subscriber:    {parentKind.ScopeFullControl},
-			apis.AllUsers: {},
+			apis.AllUsers: {parentKind.ScopeFullControl},
 		},
 	})
+	api.SetAuth(auth)
 
 	//api.Handle("/auth/signup", provider.SignUpHandler())
 	api.RegisterKind(childKind)

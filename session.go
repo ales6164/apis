@@ -13,6 +13,8 @@ const NotBeforeCorrection = -10 // seconds
 
 // db entry
 type Session struct {
+	isValid          bool           `datastore:"-"`
+	isAuthenticated  bool           `datastore:"-"`
 	ProviderIdentity *datastore.Key `json:"-"`
 	Subject          *datastore.Key `json:"-"`
 	CreatedAt        time.Time
@@ -31,7 +33,7 @@ type Claims struct {
 func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, subject *datastore.Key, scopes ...string) (*Session, error) {
 	var noRolesScopes []string
 	for _, s := range scopes {
-		if roleScopes, ok := a.Roles[s]; ok {
+		if roleScopes, ok := a.a.Roles[s]; ok {
 			noRolesScopes = append(noRolesScopes, roleScopes...)
 		} else {
 			noRolesScopes = append(noRolesScopes, s)
@@ -77,18 +79,31 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, s
 	return s, nil
 }
 
-// TODO: needs to create a session even if token is not provided -- in this case it is a public session with role AllUsers
-func GetSession(ctx context.Context, token *jwt.Token) (*Session, error) {
+func StartSession(ctx Context, token *jwt.Token) (*Session, error) {
+	var err error
 	var s = new(Session)
-	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
-		err := datastore.Get(ctx, claims.Id, s)
-		if err != nil {
-			return s, err
+	if token != nil {
+		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+			err = datastore.Get(ctx, claims.Id, s)
+			if err != nil {
+				return s, err
+			}
+			if s.IsBlocked {
+				return s, errors.New("session expired")
+			}
+
+			s.isAuthenticated = true
+			s.Scopes = append(s.Scopes, ctx.a.Roles[AllAuthenticatedUsers]...)
+			s.token = token
+		} else {
+			return s, errors.New("invalid claims type")
 		}
-		s.token = token
-		return s, nil
 	}
-	return s, errors.New("invalid claims type")
+
+	s.isValid = true
+	s.Scopes = append(s.Scopes, ctx.a.Roles[AllUsers]...)
+
+	return s, nil
 }
 
 func (s *Session) HasScope(scopes ...string) bool {

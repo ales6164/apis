@@ -3,7 +3,6 @@ package apis
 import (
 	"encoding/json"
 	"github.com/dgrijalva/jwt-go"
-	gorilla "github.com/gorilla/context"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"
@@ -14,30 +13,25 @@ import (
 
 type Context struct {
 	context.Context
-	r               *http.Request
-	w               http.ResponseWriter
-	hasReadBody     bool
-	body            []byte
-	auth            *Auth
-	session         *Session
-	isAuthenticated bool
+	a           *Apis
+	r           *http.Request
+	w           http.ResponseWriter
+	hasReadBody bool
+	body        []byte
+	session     *Session
 }
 
-func NewContext(w http.ResponseWriter, r *http.Request) (ctx Context) {
-	ctx = Context{Context: appengine.NewContext(r), w: w, r: r}
-	if _auth, ok := gorilla.GetOk(r, "auth"); ok {
-		if a, ok := _auth.(*Auth); ok {
-			ctx.auth = a
-			if _token, ok := gorilla.GetOk(r, "token"); ok {
-				if token, ok := _token.(*jwt.Token); ok {
-					var err error
-					ctx.session, err = GetSession(ctx, token)
-					ctx.isAuthenticated = err == nil
-				}
-			}
-		}
+func (a *Apis) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context, err error) {
+	var token *jwt.Token
+	ctx = Context{Context: appengine.NewContext(r), w: w, r: r, a: a}
+
+	if a.hasAuth {
+		token, _ = a.auth.middleware.CheckJWT(w, r)
 	}
-	return ctx
+
+	ctx.session, err = StartSession(ctx, token)
+
+	return ctx, err
 }
 
 // reads body once and stores contents
@@ -51,9 +45,6 @@ func (ctx Context) Body() []byte {
 }
 
 func (ctx Context) HasScope(scopes ...string) bool {
-	if ctx.isAuthenticated {
-
-	}
 	return ctx.session.HasScope(scopes...)
 }
 
