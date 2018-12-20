@@ -26,8 +26,6 @@ var (
 	})
 )
 
-
-
 const (
 	subscriber = "subscriber"
 )
@@ -48,10 +46,9 @@ func init() {
 		SigningKey:          signingKey,
 		Extractors:          []apis.TokenExtractor{apis.FromAuthHeader},
 		CredentialsOptional: false,
-		DefaultScopes:       []string{subscriber},
-
-		SigningMethod:  jwt.SigningMethodHS256,
-		TokenExpiresIn: 60 * 60 * 24 * 7,
+		DefaultRoles:        []string{subscriber},
+		SigningMethod:       jwt.SigningMethodHS256,
+		TokenExpiresIn:      60 * 60 * 24 * 7,
 	})
 	auth.RegisterProvider(emailpassword.New(&emailpassword.Config{}))
 

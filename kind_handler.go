@@ -32,7 +32,7 @@ func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, erro
 		Items: []interface{}{},
 	}
 
-	q := datastore.NewQuery(k.Path)
+	q := datastore.NewQuery(k.Name)
 	var filterMap = map[string]map[string]string{}
 	for name, values := range params {
 		switch name {
@@ -81,7 +81,7 @@ func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, erro
 	q = q.Offset(r.Offset)
 
 	var err error
-	r.Total, err = Count(ctx, k.Path)
+	r.Total, err = Count(ctx, k.Name)
 	if err != nil {
 		return r, err
 	}
@@ -194,7 +194,7 @@ func (k *Kind) PostHandler(ctx Context, key *datastore.Key, path ...string) {
 	}
 
 	var name = k.dsNameGenerator(ctx, h)
-	h.Key = datastore.NewKey(ctx, k.Path, name, 0, nil)
+	h.Key = datastore.NewKey(ctx, k.Name, name, 0, nil)
 
 	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
 		err := k.Create(tc, h)
@@ -206,7 +206,7 @@ func (k *Kind) PostHandler(ctx Context, key *datastore.Key, path ...string) {
 		//iam := IAMKind.NewHolder(nil)
 		//iam.Key = datastore.NewKey(tc, iam.Kind.Name, )
 
-		return IncrementTransactionless(tc, k.Path)
+		return IncrementTransactionless(tc, k.Name)
 	}, &datastore.TransactionOptions{XG: true})
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusInternalServerError)
@@ -290,7 +290,7 @@ func (k *Kind) DeleteHandler(ctx Context, key *datastore.Key, path ...string) {
 			if err != nil {
 				return err
 			}
-			return DecrementTransactionless(tc, k.Path)
+			return DecrementTransactionless(tc, k.Name)
 		}, &datastore.TransactionOptions{XG: true})
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {

@@ -12,7 +12,7 @@ func NewProvider(kinds ...*Kind) *KindProvider {
 	p.kinds = map[string]*Kind{}
 	p.types = map[reflect.Type]*Kind{}
 	for _, k := range kinds {
-		p.kinds[k.Path] = k
+		p.kinds[k.Name] = k
 		p.types[k.Type()] = k
 	}
 	return p
@@ -25,7 +25,7 @@ func (p *KindProvider) RegisterKind(k *Kind) {
 	if p.types == nil {
 		p.types = map[reflect.Type]*Kind{}
 	}
-	p.kinds[k.Path] = k
+	p.kinds[k.Name] = k
 	p.types[k.Type()] = k
 }
 

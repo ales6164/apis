@@ -11,6 +11,7 @@ import (
 )
 
 type Kind struct {
+	Name                  string
 	t                     reflect.Type
 	hasIdFieldName        bool
 	hasCreatedAtFieldName bool
@@ -72,14 +73,16 @@ func NewKind(opt *KindOptions) *Kind {
 		},
 	}
 
+	k.Name = k.t.Name()
+
 	if len(opt.Path) == 0 || !govalidator.IsAlphanumeric(opt.Path) {
 		panic(errors.New("type name must be at least one character and can contain only a-Z0-9"))
 	}
 
-	k.ScopeFullControl = opt.Path + ".fullcontrol"
-	k.ScopeReadOnly = opt.Path + ".readonly"
-	k.ScopeReadWrite = opt.Path + ".readwrite"
-	k.ScopeDelete = opt.Path + ".delete"
+	k.ScopeFullControl = k.Name + ".fullcontrol"
+	k.ScopeReadOnly = k.Name + ".readonly"
+	k.ScopeReadWrite = k.Name + ".readwrite"
+	k.ScopeDelete = k.Name + ".delete"
 
 	if k.t == nil || k.t.Kind() != reflect.Struct {
 		panic(errors.New("type not of kind struct"))
@@ -216,7 +219,7 @@ loop:
 func (k *Kind) Create(ctx context.Context, h *Holder) error {
 	var err error
 	if h.Key == nil {
-		h.Key = datastore.NewIncompleteKey(ctx, k.Path, nil)
+		h.Key = datastore.NewIncompleteKey(ctx, k.Name, nil)
 	}
 	if h.Key.Incomplete() {
 		h.Key, err = datastore.Put(ctx, h.Key, h)
@@ -236,7 +239,7 @@ func (k *Kind) Create(ctx context.Context, h *Holder) error {
 func (k *Kind) Put(ctx context.Context, h *Holder) error {
 	var err error
 	if h.Key == nil {
-		h.Key = datastore.NewIncompleteKey(ctx, k.Path, nil)
+		h.Key = datastore.NewIncompleteKey(ctx, k.Name, nil)
 	}
 	h.Key, err = datastore.Put(ctx, h.Key, h)
 	return err

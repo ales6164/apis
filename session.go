@@ -30,13 +30,11 @@ type Claims struct {
 	jwt.StandardClaims
 }
 
-func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, subject *datastore.Key, scopes ...string) (*Session, error) {
+func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, subject *datastore.Key, roles ...string) (*Session, error) {
 	var noRolesScopes []string
-	for _, s := range scopes {
+	for _, s := range roles {
 		if roleScopes, ok := a.a.Roles[s]; ok {
 			noRolesScopes = append(noRolesScopes, roleScopes...)
-		} else {
-			noRolesScopes = append(noRolesScopes, s)
 		}
 	}
 
@@ -47,7 +45,7 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, s
 		CreatedAt:        now,
 		ExpiresAt:        now.Add(time.Second * time.Duration(a.TokenExpiresIn)),
 		IsBlocked:        false,
-		Scopes:           scopes,
+		Scopes:           noRolesScopes,
 	}
 
 	sKey := datastore.NewIncompleteKey(ctx, SessionKind, nil)
@@ -59,7 +57,7 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, s
 
 	claims := Claims{
 		sKey,
-		scopes,
+		noRolesScopes,
 		jwt.StandardClaims{
 			Issuer:    a.TokenIssuer,
 			NotBefore: now.Add(time.Second * time.Duration(NotBeforeCorrection)).Unix(),

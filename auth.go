@@ -22,7 +22,7 @@ type AuthOptions struct {
 	Extractors          []TokenExtractor
 	CredentialsOptional bool
 	// These scopes are assigned to new users
-	DefaultScopes []string
+	DefaultRoles  []string
 	SigningMethod jwt.SigningMethod
 	// How long until it expires in seconds. Default is 7 days.
 	TokenExpiresIn int64
@@ -32,10 +32,7 @@ type AuthOptions struct {
 	AutoExtendToken bool
 	// Default is 12
 	HashingCost int
-
-	/*Roles map[string][]string*/
-
-	providers []Provider
+	providers   []Provider
 }
 
 type Token struct {

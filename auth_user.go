@@ -10,7 +10,7 @@ type User struct {
 	Id             *datastore.Key `datastore:"-" auto:"id" json:"id"`
 	Email          string         `json:"email"`
 	EmailConfirmed bool           `json:"emailConfirmed"`
-	Scopes         []string       `json:"scopes"`
+	Roles          []string       `json:"roles"`
 }
 
 var UserKind = NewKind(&KindOptions{
@@ -22,7 +22,7 @@ var UserKind = NewKind(&KindOptions{
 // Connects provider identity with user account. Creates account if it doesn't exist. Should be run inside a transaction.
 // TrustUserEmail should be always false.
 func (a *Auth) GetUser(ctx context.Context, userEmail string, trustUserEmail bool) (*User, error) {
-	userKey := datastore.NewKey(ctx, UserKind.Path, userEmail, 0, nil)
+	userKey := datastore.NewKey(ctx, UserKind.Name, userEmail, 0, nil)
 	userHolder, err := UserKind.Get(ctx, userKey)
 	if err != nil {
 		if err == datastore.ErrNoSuchEntity {
@@ -31,7 +31,7 @@ func (a *Auth) GetUser(ctx context.Context, userEmail string, trustUserEmail boo
 				Id:             userKey,
 				EmailConfirmed: trustUserEmail,
 				Email:          userEmail,
-				Scopes:         a.DefaultScopes,
+				Roles:          a.DefaultRoles,
 			})
 			err = UserKind.Put(ctx, userHolder)
 			return userHolder.GetValue().(*User), err

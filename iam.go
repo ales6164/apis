@@ -1,11 +1,14 @@
 package apis
 
-// parent is entity key, id is user key
+// parent is entry key, id is user key
 type IAM struct {
 	Scopes []string
 }
 
-/*var IAMKind = New(&Options{
-	Name: "_iam",
+var IAMKind = NewKind(&KindOptions{
+	Path: "iam",
 	Type: IAM{},
-})*/
+})
+
+type Role string
+
