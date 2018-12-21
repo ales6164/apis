@@ -16,7 +16,7 @@ type Session struct {
 	isValid          bool           `datastore:"-"`
 	isAuthenticated  bool           `datastore:"-"`
 	ProviderIdentity *datastore.Key `json:"-"`
-	Subject          *datastore.Key `json:"-"`
+	Member           *datastore.Key `json:"-"`
 	CreatedAt        time.Time
 	ExpiresAt        time.Time
 	IsBlocked        bool
@@ -30,7 +30,7 @@ type Claims struct {
 	jwt.StandardClaims
 }
 
-func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, subject *datastore.Key, roles ...string) (*Session, error) {
+func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, member *datastore.Key, roles ...string) (*Session, error) {
 	var noRolesScopes []string
 	for _, s := range roles {
 		if roleScopes, ok := a.a.Roles[s]; ok {
@@ -41,7 +41,7 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, s
 	now := time.Now()
 	s := &Session{
 		ProviderIdentity: providerIdentity,
-		Subject:          subject,
+		Member:           member,
 		CreatedAt:        now,
 		ExpiresAt:        now.Add(time.Second * time.Duration(a.TokenExpiresIn)),
 		IsBlocked:        false,
@@ -62,7 +62,7 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, s
 			Issuer:    a.TokenIssuer,
 			NotBefore: now.Add(time.Second * time.Duration(NotBeforeCorrection)).Unix(),
 			Id:        sKey.Encode(),
-			Subject:   subject.Encode(),
+			Subject:   member.Encode(),
 			Audience:  a.TokenAudience,
 			IssuedAt:  now.Unix(),
 		},
@@ -100,19 +100,15 @@ func StartSession(ctx Context, token *jwt.Token) (*Session, error) {
 
 	s.isValid = true
 	s.Scopes = append(s.Scopes, ctx.a.Roles[AllUsers]...)
+	if !s.isAuthenticated {
+		s.Member = datastore.NewKey(ctx, "Group", AllUsers, 0, nil)
+	}
 
 	return s, nil
 }
 
 func (s *Session) HasScope(scopes ...string) bool {
-	for _, scp := range scopes {
-		for _, r := range s.Scopes {
-			if r == scp {
-				return true
-			}
-		}
-	}
-	return false
+	return ContainsScope(s.Scopes, scopes...)
 }
 
 // extend by seconds from now

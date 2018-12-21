@@ -8,11 +8,11 @@ type Provider interface {
 	GetName() string
 
 	ConfigAuth(*Auth)
-	Login(*Context)
-	Logout(*Context)
-	Register(*Context)
-	Callback(*Context)
-	ServeHTTP(*Context)
+	Login(Context)
+	Logout(Context)
+	Register(Context)
+	Callback(Context)
+	ServeHTTP(Context)
 }
 
 func (a *Auth) RegisterProvider(provider Provider) {

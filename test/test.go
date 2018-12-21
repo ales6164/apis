@@ -19,8 +19,9 @@ var (
 		Type: Child{},
 	})
 	projectKind = apis.NewKind(&apis.KindOptions{
-		Path: "projects",
-		Type: Project{},
+		Path:         "projects",
+		Type:         Project{},
+		IsCollection: true,
 		/*IsCollection: true,*/
 		/*KindProvider: kind.NewProvider(childKind, parentKind),*/
 	})
@@ -55,7 +56,7 @@ func init() {
 	api := apis.New(&apis.Options{
 		Roles: map[string][]string{
 			subscriber:    {parentKind.ScopeFullControl},
-			apis.AllUsers: {parentKind.ScopeFullControl},
+			apis.AllUsers: {parentKind.ScopeFullControl, projectKind.ScopeFullControl},
 		},
 	})
 	api.SetAuth(auth)

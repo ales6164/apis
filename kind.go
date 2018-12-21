@@ -79,10 +79,10 @@ func NewKind(opt *KindOptions) *Kind {
 		panic(errors.New("type name must be at least one character and can contain only a-Z0-9"))
 	}
 
-	k.ScopeFullControl = k.Name + ".fullcontrol"
-	k.ScopeReadOnly = k.Name + ".readonly"
-	k.ScopeReadWrite = k.Name + ".readwrite"
-	k.ScopeDelete = k.Name + ".delete"
+	k.ScopeFullControl = k.Name + "." + FullControl
+	k.ScopeReadOnly = k.Name + "." + ReadOnly
+	k.ScopeReadWrite = k.Name + "." + ReadWrite
+	k.ScopeDelete = k.Name + "." + Delete
 
 	if k.t == nil || k.t.Kind() != reflect.Struct {
 		panic(errors.New("type not of kind struct"))

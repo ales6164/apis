@@ -48,8 +48,8 @@ func (ctx Context) HasScope(scopes ...string) bool {
 	return ctx.session.HasScope(scopes...)
 }
 
-func (ctx Context) User() *datastore.Key {
-	return ctx.session.Subject
+func (ctx Context) Member() *datastore.Key {
+	return ctx.session.Member
 }
 
 /**

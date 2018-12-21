@@ -12,6 +12,7 @@ type Apis struct {
 	*Options
 	auth             *Auth
 	hasAuth          bool
+	authRouter       *mux.Router
 	collectionRouter *mux.Router
 	kinds            map[string]*Kind
 }
@@ -54,6 +55,7 @@ func New(options *Options) *Apis {
 		}))
 	})
 
+	a.authRouter = a.Router.PathPrefix(joinPath("auth")).Subrouter()
 	a.collectionRouter = a.Router.PathPrefix(joinPath("{collection}")).Subrouter()
 
 	if a.Roles == nil {
@@ -69,6 +71,16 @@ func (a *Apis) SetAuth(auth *Auth) {
 	a.auth = auth
 	auth.a = a
 	a.hasAuth = auth != nil
+	for _, p := range auth.providers {
+		a.authRouter.HandleFunc(joinPath(p.GetName(), "register"), func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+			p.Register(ctx)
+		}).Methods(http.MethodPost)
+	}
 }
 
 func (a *Apis) SetRole(name string, scopes ...string) {
@@ -250,20 +262,6 @@ func (a *Apis) RegisterKind(k *Kind) {
 		}
 	}).Methods(http.MethodDelete)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 	// COLLECTIONS
 
 	// QUERY
@@ -274,12 +272,6 @@ func (a *Apis) RegisterKind(k *Kind) {
 			return
 		}
 
-
-
-		// user is also member ... so userKey is actually not the same as UserKey....
-		// member has roles
-		// role has permissions/scopes
-
 		var collectionKey *datastore.Key
 		vars := mux.Vars(r)
 		if encodedKey, ok := vars["collection"]; ok {
@@ -289,13 +281,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 			}
 		}
 
-		// check if user**, AllAuthenticatedUsers* or AllUsers has access
-		//
-
-		IAMKind.Get(ctx, datastore.NewKey(ctx, "Member", ))
-
-
-		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); ok {
+		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadOnly, ReadWrite, FullControl); ok {
 			k.QueryHandler(ctx)
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
@@ -309,7 +295,15 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); ok {
+		var collectionKey *datastore.Key
+		vars := mux.Vars(r)
+		if encodedKey, ok := vars["collection"]; ok {
+			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadOnly, ReadWrite, FullControl); ok {
 			k.PostHandler(ctx, nil)
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
@@ -323,7 +317,15 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); ok {
+		var collectionKey *datastore.Key
+		vars := mux.Vars(r)
+		if encodedKey, ok := vars["collection"]; ok {
+			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadOnly, ReadWrite, FullControl); ok {
 			var key *datastore.Key
 			vars := mux.Vars(r)
 			if encodedKey, ok := vars["key"]; ok {
@@ -345,7 +347,15 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); ok {
+		var collectionKey *datastore.Key
+		vars := mux.Vars(r)
+		if encodedKey, ok := vars["collection"]; ok {
+			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadOnly, ReadWrite, FullControl); ok {
 			var key *datastore.Key
 			var path []string
 			vars := mux.Vars(r)
@@ -371,7 +381,15 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); ok {
+		var collectionKey *datastore.Key
+		vars := mux.Vars(r)
+		if encodedKey, ok := vars["collection"]; ok {
+			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadWrite, FullControl); ok {
 			var key *datastore.Key
 			vars := mux.Vars(r)
 			if encodedKey, ok := vars["key"]; ok {
@@ -393,7 +411,15 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); ok {
+		var collectionKey *datastore.Key
+		vars := mux.Vars(r)
+		if encodedKey, ok := vars["collection"]; ok {
+			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadWrite, FullControl); ok {
 			var key *datastore.Key
 			var path []string
 			vars := mux.Vars(r)
@@ -419,7 +445,15 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeDelete, k.ScopeFullControl); ok {
+		var collectionKey *datastore.Key
+		vars := mux.Vars(r)
+		if encodedKey, ok := vars["collection"]; ok {
+			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, Delete, FullControl); ok {
 			var key *datastore.Key
 			vars := mux.Vars(r)
 			if encodedKey, ok := vars["key"]; ok {
@@ -441,7 +475,15 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeDelete, k.ScopeFullControl); ok {
+		var collectionKey *datastore.Key
+		vars := mux.Vars(r)
+		if encodedKey, ok := vars["collection"]; ok {
+			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, Delete, FullControl); ok {
 			var key *datastore.Key
 			var path []string
 			vars := mux.Vars(r)

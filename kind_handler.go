@@ -202,9 +202,10 @@ func (k *Kind) PostHandler(ctx Context, key *datastore.Key, path ...string) {
 			return err
 		}
 
-		// create iam entry
-		//iam := IAMKind.NewHolder(nil)
-		//iam.Key = datastore.NewKey(tc, iam.Kind.Name, )
+		err = OwnerIAM(tc, ctx.Member(), h.Key)
+		if err != nil {
+			return err
+		}
 
 		return IncrementTransactionless(tc, k.Name)
 	}, &datastore.TransactionOptions{XG: true})

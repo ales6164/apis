@@ -63,6 +63,17 @@ func ClearIndex(ctx context.Context, indexName string) error {
 	return index.DeleteMulti(ctx, ids)
 }
 
+func ContainsScope(arr []string, scopes ...string) bool {
+	for _, scp := range scopes {
+		for _, r := range arr {
+			if r == scp {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 var queryFilters = regexp.MustCompile(`(?m)filters\[(?P<num>[^\]]+)\]\[(?P<nam>[^\]]+)\]`)
 
 func getParams(url string) (paramsMap map[string]string) {

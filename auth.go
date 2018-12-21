@@ -12,10 +12,6 @@ type Auth struct {
 	middleware *JWTMiddleware
 }
 
-const (
-	AllUsers              = "allUsers"              // given to all requests
-	AllAuthenticatedUsers = "allAuthenticatedUsers" // giver to all authenticated requests
-)
 
 type AuthOptions struct {
 	SigningKey          []byte
@@ -74,6 +70,8 @@ func (a *Auth) NewSession(ctx context.Context, providerIdentity *datastore.Key, 
 func (a *Auth) SignedToken(s *Session) (string, error) {
 	return s.token.SignedString(a.SigningKey)
 }
+
+
 
 // when project selected - switch namespace
 // when on some project endpoint check for project namespace??

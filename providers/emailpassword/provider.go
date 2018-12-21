@@ -45,15 +45,15 @@ func (p *Provider) ConfigAuth(a *apis.Auth) {
 	p.Auth = a
 }
 
-func (p *Provider) Login(ctx *apis.Context) {
+func (p *Provider) Login(ctx apis.Context) {
 
 }
 
-func (p *Provider) Logout(ctx *apis.Context) {
+func (p *Provider) Logout(ctx apis.Context) {
 
 }
 
-func (p *Provider) Register(ctx *apis.Context) {
+func (p *Provider) Register(ctx apis.Context) {
 	body := ctx.Body()
 
 	email, _ := jsonparser.GetString(body, "email")
@@ -89,7 +89,7 @@ func (p *Provider) Register(ctx *apis.Context) {
 			return err
 		}
 		// create session
-		session, err = p.NewSession(ctx, identity.Id, user.Id, user.Scopes...)
+		session, err = p.NewSession(ctx, identity.Id, user.Id, user.Roles...)
 		return err
 	}, &datastore.TransactionOptions{XG: true})
 	if err != nil {
@@ -112,10 +112,10 @@ func (p *Provider) Register(ctx *apis.Context) {
 	}, http.StatusOK)
 }
 
-func (p *Provider) Callback(ctx *apis.Context) {
+func (p *Provider) Callback(ctx apis.Context) {
 
 }
 
-func (p *Provider) ServeHTTP(ctx *apis.Context) {
+func (p *Provider) ServeHTTP(ctx apis.Context) {
 
 }
