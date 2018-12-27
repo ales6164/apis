@@ -46,7 +46,55 @@ func (p *Provider) ConfigAuth(a *apis.Auth) {
 }
 
 func (p *Provider) Login(ctx apis.Context) {
+	body := ctx.Body()
 
+	email, _ := jsonparser.GetString(body, "email")
+	password, _ := jsonparser.GetString(body, "password")
+
+	if len(email) == 0 {
+		ctx.PrintError(ErrEmailUndefined.Error(), http.StatusBadRequest)
+		return
+	} else if !govalidator.IsEmail(email) || len(email) > 128 || len(email) < 5 {
+		ctx.PrintError(ErrInvalidEmail.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if len(password) > 256 {
+		ctx.PrintError(ErrPasswordTooLong.Error(), http.StatusBadRequest)
+		return
+	} else if len(password) < 6 {
+		ctx.PrintError(ErrPasswordTooShort.Error(), http.StatusBadRequest)
+		return
+	}
+
+	identity, err := p.GetIdentity(ctx, p, email, password)
+	if err != nil {
+		ctx.PrintError(err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	user, err := identity.GetUser(ctx)
+	if err != nil {
+		ctx.PrintError(err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// create session
+	session, err := p.NewSession(ctx, identity.Id, user.Id, user.Roles...)
+
+	signedToken, err := p.Auth.SignedToken(session)
+	if err != nil {
+		ctx.PrintError(err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ctx.PrintJSON(apis.AuthResponse{
+		User: user,
+		Token: apis.Token{
+			Id:        signedToken,
+			ExpiresAt: session.ExpiresAt.Unix(),
+		},
+	}, http.StatusOK)
 }
 
 func (p *Provider) Logout(ctx apis.Context) {
@@ -80,7 +128,7 @@ func (p *Provider) Register(ctx apis.Context) {
 	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
 		// connect identity to account
 		var err error
-		user, err = p.GetUser(tc, email, false)
+		user, err = p.CreateUser(tc, email, false)
 		if err != nil {
 			return err
 		}

@@ -59,6 +59,12 @@ func (a *Auth) GetIdentity(ctx context.Context, provider Provider, userEmail str
 	return identity, err
 }
 
+func (i *Identity) GetUser(ctx context.Context) (*User, error) {
+	var user = new(User)
+	err := datastore.Get(ctx, i.User, user)
+	return user, err
+}
+
 func decrypt(hash []byte, password []byte) error {
 	defer clear(password)
 	return bcrypt.CompareHashAndPassword(hash, password)

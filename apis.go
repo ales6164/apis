@@ -72,6 +72,14 @@ func (a *Apis) SetAuth(auth *Auth) {
 	auth.a = a
 	a.hasAuth = auth != nil
 	for _, p := range auth.providers {
+		a.authRouter.HandleFunc(joinPath(p.GetName(), "login"), func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+			p.Login(ctx)
+		}).Methods(http.MethodPost)
 		a.authRouter.HandleFunc(joinPath(p.GetName(), "register"), func(w http.ResponseWriter, r *http.Request) {
 			ctx, err := a.NewContext(w, r)
 			if err != nil {

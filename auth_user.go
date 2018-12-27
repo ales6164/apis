@@ -21,7 +21,7 @@ var UserKind = NewKind(&KindOptions{
 
 // Connects provider identity with user account. Creates account if it doesn't exist. Should be run inside a transaction.
 // TrustUserEmail should be always false.
-func (a *Auth) GetUser(ctx context.Context, userEmail string, trustUserEmail bool) (*User, error) {
+func (a *Auth) CreateUser(ctx context.Context, userEmail string, trustUserEmail bool) (*User, error) {
 	userKey := datastore.NewKey(ctx, UserKind.Name, userEmail, 0, nil)
 	userHolder, err := UserKind.Get(ctx, userKey)
 	if err != nil {
