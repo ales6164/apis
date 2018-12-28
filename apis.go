@@ -36,33 +36,12 @@ func New(options *Options) *Apis {
 		kinds:   map[string]*Kind{},
 	}
 
-	a.Router.Use(func(handler http.Handler) http.Handler {
-		return http.Handler(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			if origin := req.Header.Get("Origin"); origin != "" {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-				w.Header().Set("Access-Control-Allow-Headers",
-					"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
-						"X-Requested-With, X-Total-Count, Link")
-				w.Header().Set("Access-Control-Expose-Headers",
-					"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
-						"X-Requested-With, X-Total-Count, Link")
-			}
-			if req.Method == "OPTIONS" {
-				return
-			}
-			handler.ServeHTTP(w, req)
-		}))
-	})
-
 	a.authRouter = a.Router.PathPrefix(joinPath("auth")).Subrouter()
 	a.collectionRouter = a.Router.PathPrefix(joinPath("{collection}")).Subrouter()
 
 	if a.Roles == nil {
 		a.Roles = map[string][]string{}
 	}
-
-	//a.Handle("/iam", IAMKind)
 
 	return a
 }
@@ -99,7 +78,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 	a.kinds[k.Path] = k
 
 	// QUERY
-	a.HandleFunc(joinPath(k.Path), func(w http.ResponseWriter, r *http.Request) {
+	a.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -110,10 +89,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodGet)
+	})).Methods(http.MethodGet, http.MethodOptions)
 
 	// POST
-	a.HandleFunc(joinPath(k.Path), func(w http.ResponseWriter, r *http.Request) {
+	a.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -124,10 +103,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodPost)
+	})).Methods(http.MethodPost, http.MethodOptions)
 
 	// GET
-	a.HandleFunc(joinPath(k.Path, "{key}"), func(w http.ResponseWriter, r *http.Request) {
+	a.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -146,10 +125,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodGet)
+	})).Methods(http.MethodGet, http.MethodOptions)
 
 	// GET with path
-	a.HandleFunc(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), func(w http.ResponseWriter, r *http.Request) {
+	a.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -172,10 +151,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodGet)
+	})).Methods(http.MethodGet, http.MethodOptions)
 
 	// PUT
-	a.HandleFunc(joinPath(k.Path, "{key}"), func(w http.ResponseWriter, r *http.Request) {
+	a.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -194,10 +173,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodPut)
+	})).Methods(http.MethodPut, http.MethodOptions)
 
 	// PUT with path
-	a.HandleFunc(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), func(w http.ResponseWriter, r *http.Request) {
+	a.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -220,10 +199,33 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodPut)
+	})).Methods(http.MethodPut, http.MethodOptions)
+
+	// PATCH
+	a.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
+		ctx, err := a.NewContext(w, r)
+		if err != nil {
+			ctx.PrintError(err.Error(), http.StatusForbidden)
+			return
+		}
+		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); ok {
+			var key *datastore.Key
+			var path []string
+			vars := mux.Vars(r)
+			if encodedKey, ok := vars["key"]; ok {
+				if key, err = datastore.DecodeKey(encodedKey); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			k.PatchHandler(ctx, key)
+		} else {
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		}
+	})).Methods(http.MethodPatch, http.MethodOptions)
 
 	// DELETE
-	a.HandleFunc(joinPath(k.Path, "{key}"), func(w http.ResponseWriter, r *http.Request) {
+	a.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -242,10 +244,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodDelete)
+	})).Methods(http.MethodDelete, http.MethodOptions)
 
 	// DELETE with path
-	a.HandleFunc(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), func(w http.ResponseWriter, r *http.Request) {
+	a.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -268,12 +270,12 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodDelete)
+	})).Methods(http.MethodDelete, http.MethodOptions)
 
 	// COLLECTIONS
 
 	// QUERY
-	a.collectionRouter.HandleFunc(joinPath(k.Path), func(w http.ResponseWriter, r *http.Request) {
+	a.collectionRouter.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -294,10 +296,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodGet)
+	})).Methods(http.MethodGet, http.MethodOptions)
 
 	// POST
-	a.collectionRouter.HandleFunc(joinPath(k.Path), func(w http.ResponseWriter, r *http.Request) {
+	a.collectionRouter.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -316,10 +318,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodPost)
+	})).Methods(http.MethodPost, http.MethodOptions)
 
 	// GET
-	a.collectionRouter.HandleFunc(joinPath(k.Path, "{key}"), func(w http.ResponseWriter, r *http.Request) {
+	a.collectionRouter.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -346,10 +348,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodGet)
+	})).Methods(http.MethodGet, http.MethodOptions)
 
 	// GET with path
-	a.collectionRouter.HandleFunc(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), func(w http.ResponseWriter, r *http.Request) {
+	a.collectionRouter.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -380,10 +382,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodGet)
+	})).Methods(http.MethodGet, http.MethodOptions)
 
 	// PUT
-	a.collectionRouter.HandleFunc(joinPath(k.Path, "{key}"), func(w http.ResponseWriter, r *http.Request) {
+	a.collectionRouter.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -410,10 +412,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodPut)
+	})).Methods(http.MethodPut, http.MethodOptions)
 
 	// PUT with path
-	a.collectionRouter.HandleFunc(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), func(w http.ResponseWriter, r *http.Request) {
+	a.collectionRouter.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -444,10 +446,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodPut)
+	})).Methods(http.MethodPut, http.MethodOptions)
 
 	// DELETE
-	a.collectionRouter.HandleFunc(joinPath(k.Path, "{key}"), func(w http.ResponseWriter, r *http.Request) {
+	a.collectionRouter.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -474,10 +476,10 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodDelete)
+	})).Methods(http.MethodDelete, http.MethodOptions)
 
 	// DELETE with path
-	a.collectionRouter.HandleFunc(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), func(w http.ResponseWriter, r *http.Request) {
+	a.collectionRouter.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -508,5 +510,5 @@ func (a *Apis) RegisterKind(k *Kind) {
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
-	}).Methods(http.MethodDelete)
+	})).Methods(http.MethodDelete, http.MethodOptions)
 }

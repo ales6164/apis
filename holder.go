@@ -143,6 +143,26 @@ func (h *Holder) Set(ctx Context, fields []string, value []byte) (*Holder, error
 	return h2, nil
 }
 
+func (h *Holder) Patch(ctx Context, patches []patch) (*Holder, error) {
+	h2, v, err := h.get(ctx, fields)
+	if err != nil {
+		return h2, err
+	}
+
+	if v.CanSet() {
+		inputValue := reflect.New(v.Type()).Interface()
+		err = json.Unmarshal(value, &inputValue)
+		if err != nil {
+			return h2, err
+		}
+		v.Set(reflect.ValueOf(inputValue).Elem())
+	} else {
+		return h2, errors.New("field value can't be set")
+	}
+
+	return h2, nil
+}
+
 func (h *Holder) Delete(ctx Context, fields []string) (*Holder, error) {
 	var valueHolder = h.reflectValue
 	for i, field := range fields {
