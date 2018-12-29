@@ -4,8 +4,8 @@ import (
 	"github.com/dgrijalva/jwt-go"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
-	"gopkg.in/ales6164/apis.v1/errors"
 	"time"
+	"errors"
 )
 
 const SessionKind = "_session"

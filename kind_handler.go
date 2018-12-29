@@ -291,7 +291,7 @@ func (k *Kind) PatchHandler(ctx Context, key *datastore.Key) {
 			return err
 		}
 
-		h, err = h.Patch(ctx, patches)
+		err = h.Patch(ctx, patches)
 		if err != nil {
 			return err
 		}
@@ -299,7 +299,6 @@ func (k *Kind) PatchHandler(ctx Context, key *datastore.Key) {
 		h.Key, err = datastore.Put(ctx, h.Key, h)
 		return err
 	}, nil)
-
 	if err != nil {
 		if err == datastore.ErrNoSuchEntity {
 			ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)

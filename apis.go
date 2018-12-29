@@ -210,7 +210,6 @@ func (a *Apis) RegisterKind(k *Kind) {
 		}
 		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); ok {
 			var key *datastore.Key
-			var path []string
 			vars := mux.Vars(r)
 			if encodedKey, ok := vars["key"]; ok {
 				if key, err = datastore.DecodeKey(encodedKey); err != nil {
