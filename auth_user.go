@@ -16,7 +16,7 @@ type User struct {
 var UserKind = NewKind(&KindOptions{
 	Path:         "users",
 	Type:         User{},
-	IsCollection: true,
+	IsGroup: true,
 })
 
 // Connects provider identity with user account. Creates account if it doesn't exist. Should be run inside a transaction.

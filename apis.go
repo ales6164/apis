@@ -14,11 +14,12 @@ type Apis struct {
 	hasAuth          bool
 	authRouter       *mux.Router
 	collectionRouter *mux.Router
+	roles            map[string][]string
 	kinds            map[string]*Kind
 }
 
 type Options struct {
-	Roles map[string][]string
+	Roles map[string][][]string
 }
 
 func New(options *Options) *Apis {
@@ -27,20 +28,27 @@ func New(options *Options) *Apis {
 	}
 
 	if options.Roles == nil {
-		options.Roles = map[string][]string{}
+		options.Roles = map[string][][]string{}
 	}
 
 	a := &Apis{
 		Options: options,
 		Router:  mux.NewRouter(),
 		kinds:   map[string]*Kind{},
+		roles:   map[string][]string{},
 	}
 
 	a.authRouter = a.Router.PathPrefix(joinPath("auth")).Subrouter()
 	a.collectionRouter = a.Router.PathPrefix(joinPath("{collection}")).Subrouter()
 
 	if a.Roles == nil {
-		a.Roles = map[string][]string{}
+		a.Roles = map[string][][]string{}
+	}
+
+	for role, rules := range a.Roles {
+		for _, scopes := range rules {
+			a.roles[role] = append(a.roles[role], scopes...)
+		}
 	}
 
 	return a
@@ -70,10 +78,6 @@ func (a *Apis) SetAuth(auth *Auth) {
 	}
 }
 
-func (a *Apis) SetRole(name string, scopes ...string) {
-	a.Roles[name] = append(a.Roles[name], scopes...)
-}
-
 func (a *Apis) RegisterKind(k *Kind) {
 	a.kinds[k.Path] = k
 
@@ -84,7 +88,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); ok {
+		if ok := ctx.HasScope(k.Rules(ReadOnly, ReadWrite, FullControl)...); ok {
 			k.QueryHandler(ctx)
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
@@ -98,7 +102,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); ok {
+		if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
 			k.PostHandler(ctx, nil)
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
@@ -112,7 +116,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); ok {
+		if ok := ctx.HasScope(k.Rules(ReadOnly, ReadWrite, FullControl)...); ok {
 			var key *datastore.Key
 			vars := mux.Vars(r)
 			if encodedKey, ok := vars["key"]; ok {
@@ -134,7 +138,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadOnly, k.ScopeReadWrite, k.ScopeFullControl); ok {
+		if ok := ctx.HasScope(k.Rules(ReadOnly, ReadWrite, FullControl)...); ok {
 			var key *datastore.Key
 			var path []string
 			vars := mux.Vars(r)
@@ -160,7 +164,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); ok {
+		if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
 			var key *datastore.Key
 			vars := mux.Vars(r)
 			if encodedKey, ok := vars["key"]; ok {
@@ -182,7 +186,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); ok {
+		if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
 			var key *datastore.Key
 			var path []string
 			vars := mux.Vars(r)
@@ -208,7 +212,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeReadWrite, k.ScopeFullControl); ok {
+		if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
 			var key *datastore.Key
 			vars := mux.Vars(r)
 			if encodedKey, ok := vars["key"]; ok {
@@ -230,7 +234,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeDelete, k.ScopeFullControl); ok {
+		if ok := ctx.HasScope(k.Rules(Delete, FullControl)...); ok {
 			var key *datastore.Key
 			vars := mux.Vars(r)
 			if encodedKey, ok := vars["key"]; ok {
@@ -252,7 +256,7 @@ func (a *Apis) RegisterKind(k *Kind) {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		if ok := ctx.HasScope(k.ScopeDelete, k.ScopeFullControl); ok {
+		if ok := ctx.HasScope(k.Rules(Delete, FullControl)...); ok {
 			var key *datastore.Key
 			var path []string
 			vars := mux.Vars(r)

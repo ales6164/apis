@@ -27,10 +27,7 @@ type Kind struct {
 	createdByFieldName string
 	updatedByFieldName string
 
-	ScopeFullControl string
-	ScopeReadOnly    string
-	ScopeReadWrite   string
-	ScopeDelete      string
+
 
 	dsUseName       bool // default: false; if true, changes the way datastore Keys are generated
 	dsNameGenerator func(ctx context.Context, holder *Holder) string
@@ -46,7 +43,7 @@ type KindOptions struct {
 	// even if field is false gotta store who created entry? so that is switched to true, creators still have access - if no owner is stored nobody has access
 	EnableEntryScope bool
 	Path             string
-	IsCollection     bool
+	IsGroup          bool
 	Type             interface{}
 	t                reflect.Type
 }
@@ -79,11 +76,6 @@ func NewKind(opt *KindOptions) *Kind {
 		panic(errors.New("type name must be at least one character and can contain only a-Z0-9"))
 	}
 
-	k.ScopeFullControl = k.Name + "." + FullControl
-	k.ScopeReadOnly = k.Name + "." + ReadOnly
-	k.ScopeReadWrite = k.Name + "." + ReadWrite
-	k.ScopeDelete = k.Name + "." + Delete
-
 	if k.t == nil || k.t.Kind() != reflect.Struct {
 		panic(errors.New("type not of kind struct"))
 	}
@@ -105,6 +97,14 @@ const (
 	createdby = "createdby"
 	updatedby = "updatedby"
 )
+
+func (k *Kind) Rules(scopes ...string) []string {
+	var r []string
+	for _, s := range scopes {
+		r = append(r, k.Name + "." + s)
+	}
+	return r
+}
 
 func (k *Kind) Get(ctx context.Context, key *datastore.Key) (h *Holder, err error) {
 	h = k.NewHolder(key)
