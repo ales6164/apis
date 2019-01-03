@@ -3,11 +3,11 @@ package apis
 import (
 	"encoding/json"
 	"errors"
+	"github.com/buger/jsonparser"
 	"google.golang.org/appengine/datastore"
 	"reflect"
 	"strconv"
 	"strings"
-	"github.com/buger/jsonparser"
 )
 
 type Holder struct {
@@ -154,107 +154,143 @@ const (
 	op_copy    = "copy"
 )
 
-func (h *Holder) Patch(ctx Context, patches []patch) error {
-	for _, patch := range patches {
-		path := strings.Split(patch.Path, "/")
-		if len(path) > 0 && len(path[0]) == 0 {
-			path = path[1:]
-		}
-
-		_, v, err := h.get(ctx, path)
+func (h *Holder) Patch(ctx Context, dataArray []byte) error {
+	var endErr error
+	var cb = func(err error) {
+		endErr = err
+	}
+	_, err := jsonparser.ArrayEach(dataArray, func(patch []byte, dataType jsonparser.ValueType, offset int, err error) {
+		operation, err := jsonparser.GetString(patch, "op")
 		if err != nil {
-			return err
+			cb(errors.New("invalid operation"))
+			return
 		}
-
-		switch patch.Operation {
+		value, _, _, _ := jsonparser.Get(patch, "value")
+		path, err := jsonparser.GetString(patch, "path")
+		if err != nil {
+			cb(errors.New("invalid path"))
+			return
+		}
+		pathArray := strings.Split(path, "/")
+		if len(pathArray) > 0 && len(pathArray[0]) == 0 {
+			pathArray = pathArray[1:]
+		}
+		_, v, err := h.get(ctx, pathArray)
+		if err != nil {
+			cb(err)
+			return
+		}
+		switch operation {
 		/*case op_test:*/
 		case op_remove:
 			if v.CanSet() {
 				inputValue := reflect.New(v.Type()).Interface()
 				v.Set(reflect.ValueOf(inputValue).Elem())
 			} else {
-				return errors.New("field value can't be set")
+				cb(errors.New("field value can't be set"))
+				return
 			}
 		case op_add:
 			if v.CanSet() {
-				bytes, err := json.Marshal(patch.Value)
+				_, err := jsonparser.ArrayEach(value, func(valueItem []byte, dataType jsonparser.ValueType, offset int, err error) {
+					inputValue := reflect.New(v.Type().Elem()).Interface()
+					err = json.Unmarshal(valueItem, &inputValue)
+					if err != nil {
+						cb(err)
+						return
+					}
+					v.Set(reflect.Append(v, reflect.ValueOf(inputValue).Elem()))
+				})
 				if err != nil {
-					return err
+					cb(err)
+					return
 				}
-
-				jsonparser.ArrayEach()
-
-				inputValue := reflect.New(v.Type()).Interface()
-				err = json.Unmarshal(bytes, &inputValue)
-				if err != nil {
-					return err
-				}
-				v.Set(reflect.AppendSlice(v, reflect.ValueOf(inputValue).Elem()))
-
-				/*inputValue := reflect.ValueOf(patch.Value)
-				if inputValue.Kind() != reflect.Slice {
-					return errors.New("value is not a slice")
-				}*/
-
-				/*for i := 0; i < inputValue.Len(); i++ {
-
-					reflect.
-
-					v.Set(reflect.Append(v, reflect.ValueOf(inputValue.Index(i).Interface())))
-				}*/
 			} else {
-				return errors.New("field value can't be set")
+				cb(errors.New("field value can't be set"))
+				return
 			}
 		case op_replace:
 			if v.CanSet() {
-				v.Set(reflect.ValueOf(patch.Value))
+				if v.Kind() == reflect.String {
+					v.SetString(string(value))
+				} else {
+					inputValue := reflect.New(v.Type()).Interface()
+					err = json.Unmarshal(value, &inputValue)
+					if err != nil {
+						cb(err)
+						return
+					}
+					v.Set(reflect.ValueOf(inputValue).Elem())
+				}
 			} else {
-				return errors.New("field value can't be set")
+				cb(errors.New("field value can't be set"))
+				return
 			}
 		case op_move:
-			fromPath := strings.Split(patch.From, "/")
+			from, err := jsonparser.GetString(patch, "from")
+			if err != nil {
+				cb(errors.New("invalid from"))
+				return
+			}
+
+			fromPath := strings.Split(from, "/")
 			if len(fromPath) > 0 && len(fromPath[0]) == 0 {
 				fromPath = fromPath[1:]
 			}
 
 			_, fromV, err := h.get(ctx, fromPath)
 			if err != nil {
-				return err
+				cb(err)
+				return
 			}
 
 			if v.CanSet() {
 				v.Set(fromV)
 			} else {
-				return errors.New("field value can't be set")
+				cb(errors.New("field value can't be set"))
+				return
 			}
 
 			if fromV.CanSet() {
 				fromValue := reflect.New(fromV.Type()).Interface()
 				fromV.Set(reflect.ValueOf(fromValue).Elem())
 			} else {
-				return errors.New("field value can't be set")
+				cb(errors.New("field value can't be set"))
+				return
 			}
 		case op_copy:
-			fromPath := strings.Split(patch.From, "/")
+			from, err := jsonparser.GetString(patch, "from")
+			if err != nil {
+				cb(errors.New("invalid from"))
+				return
+			}
+
+			fromPath := strings.Split(from, "/")
 			if len(fromPath) > 0 && len(fromPath[0]) == 0 {
 				fromPath = fromPath[1:]
 			}
 
 			_, fromV, err := h.get(ctx, fromPath)
 			if err != nil {
-				return err
+				cb(err)
+				return
 			}
 
 			if v.CanSet() {
 				v.Set(fromV)
 			} else {
-				return errors.New("field value can't be set")
+				cb(errors.New("field value can't be set"))
+				return
 			}
 		default:
-			return errors.New("invalid operation")
+			cb(errors.New("invalid operation"))
+			return
 		}
+	})
+	if err != nil {
+		return err
 	}
-	return nil
+	return endErr
 }
 
 func (h *Holder) Delete(ctx Context, fields []string) (*Holder, error) {

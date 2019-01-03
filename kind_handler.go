@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"encoding/json"
+	"errors"
 	"github.com/gorilla/mux"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
@@ -263,37 +263,27 @@ func (k *Kind) PutHandler(ctx Context, key *datastore.Key, path ...string) {
 	ctx.PrintJSON(h.GetValue(), http.StatusOK)
 }
 
-type patch struct {
-	Operation string      `json:"op"`
-	From      string      `json:"from"`
-	Path      string      `json:"path"`
-	Value     interface{} `json:"value"`
-}
-
 func (k *Kind) PatchHandler(ctx Context, key *datastore.Key) {
 	if key == nil {
 		ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 		return
 	}
 
-	var patches = make([]patch, 0)
-	err := json.Unmarshal(ctx.Body(), &patches)
-	if err != nil {
-		ctx.PrintError(err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	var h *Holder
-
+	var err error
 	err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
 		h, err = k.Get(tc, key)
 		if err != nil {
 			return err
 		}
 
-		err = h.Patch(ctx, patches)
+		err = h.Patch(ctx, ctx.Body())
 		if err != nil {
 			return err
+		}
+
+		if h.reflectValue.IsNil() || !h.reflectValue.IsValid() {
+			return errors.New("interface is nil")
 		}
 
 		h.Key, err = datastore.Put(ctx, h.Key, h)
