@@ -31,6 +31,7 @@ func OwnerIAM(ctx context.Context, memberKey *datastore.Key, collectionKey *data
 	return err
 }
 
+// should check if got scope groupName.collectionName.scope
 func CheckCollectionAccess(ctx Context, collectionKey *datastore.Key, roles ...string) (Context, bool) {
 	var iam = new(IAM)
 	// AllUsers

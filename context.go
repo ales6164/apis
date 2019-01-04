@@ -21,17 +21,26 @@ type Context struct {
 	session     *Session
 }
 
-func (a *Apis) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context, err error) {
+func (a *Apis) NewContext(w http.ResponseWriter, r *http.Request, scopes ...string) (ctx Context, ok bool) {
 	var token *jwt.Token
 	ctx = Context{Context: appengine.NewContext(r), w: w, r: r, a: a}
-
 	if a.hasAuth {
 		token, _ = a.auth.middleware.CheckJWT(w, r)
 	}
-
+	var err error
 	ctx.session, err = StartSession(ctx, token)
-
-	return ctx, err
+	if err != nil {
+		ctx.PrintError(err.Error(), http.StatusForbidden)
+		return ctx, false
+	}
+	if len(scopes) > 0 {
+		if ctx.HasScope(scopes...) {
+			return ctx, true
+		}
+		ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return ctx, false
+	}
+	return ctx, true
 }
 
 // reads body once and stores contents

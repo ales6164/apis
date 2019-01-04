@@ -1,21 +1,20 @@
 package apis
 
 import (
+	"github.com/ales6164/apis/collection"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
 	"net/http"
-	"strings"
 )
 
 type Apis struct {
 	*mux.Router
 	*Options
-	auth             *Auth
-	hasAuth          bool
-	authRouter       *mux.Router
-	collectionRouter *mux.Router
-	roles            map[string][]string
-	kinds            map[string]*Kind
+	auth       *Auth
+	hasAuth    bool
+	authRouter *mux.Router
+	collections map[string]*collection.Collection // by path
+	roles      map[string][]string
 }
 
 type Options struct {
@@ -32,10 +31,10 @@ func New(options *Options) *Apis {
 	}
 
 	a := &Apis{
-		Options: options,
-		Router:  mux.NewRouter(),
-		kinds:   map[string]*Kind{},
-		roles:   map[string][]string{},
+		Options:     options,
+		Router:      mux.NewRouter(),
+		collections: map[string]*Collection{},
+		roles:       map[string][]string{},
 	}
 
 	a.authRouter = a.Router.PathPrefix(joinPath("auth")).Subrouter()
@@ -78,39 +77,31 @@ func (a *Apis) SetAuth(auth *Auth) {
 	}
 }
 
-func (a *Apis) RegisterKind(k *Kind) {
-	a.kinds[k.Path] = k
+func (a *Apis) SetRoles(roles map[string][][]string) {
+	a.Roles = roles
+	for role, rules := range a.Roles {
+		for _, scopes := range rules {
+			a.roles[role] = append(a.roles[role], scopes...)
+		}
+	}
+}
+
+func (a *Apis) HandleCollection(c *collection.Collection) {
+	a.handleCollection(joinPath("/", c.Path()), c)
+}
+
+func (a *Apis) handleCollection(rootPath string, c *collection.Collection) {
+	pathWId := joinPath(rootPath, "{id}")
 
 	// QUERY
-	a.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		if ok := ctx.HasScope(k.Rules(ReadOnly, ReadWrite, FullControl)...); ok {
-			k.QueryHandler(ctx)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+	a.Handle(path, serve(func(w http.ResponseWriter, r *http.Request) {
+		if ctx, ok := a.NewContext(w, r, c.Scopes(ReadOnly, ReadWrite, FullControl)...); ok {
+
 		}
 	})).Methods(http.MethodGet, http.MethodOptions)
 
-	// POST
-	a.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
-			k.PostHandler(ctx, nil)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodPost, http.MethodOptions)
-
 	// GET
-	a.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
+	a.Handle(pathWId, serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
@@ -131,387 +122,430 @@ func (a *Apis) RegisterKind(k *Kind) {
 		}
 	})).Methods(http.MethodGet, http.MethodOptions)
 
-	// GET with path
-	a.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		if ok := ctx.HasScope(k.Rules(ReadOnly, ReadWrite, FullControl)...); ok {
-			var key *datastore.Key
-			var path []string
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-			}
-			if _path, ok := vars["path"]; ok {
-				path = strings.Split(_path, "/")
-			}
-			k.GetHandler(ctx, key, path...)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodGet, http.MethodOptions)
-
-	// PUT
-	a.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
-			var key *datastore.Key
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-			}
-			k.PutHandler(ctx, key)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodPut, http.MethodOptions)
-
-	// PUT with path
-	a.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
-			var key *datastore.Key
-			var path []string
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-			}
-			if _path, ok := vars["path"]; ok {
-				path = strings.Split(_path, "/")
-			}
-			k.PutHandler(ctx, key, path...)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodPut, http.MethodOptions)
-
-	// PATCH
-	a.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
-			var key *datastore.Key
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-			}
-			k.PatchHandler(ctx, key)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodPatch, http.MethodOptions)
-
-	// DELETE
-	a.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		if ok := ctx.HasScope(k.Rules(Delete, FullControl)...); ok {
-			var key *datastore.Key
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-			}
-			k.DeleteHandler(ctx, key)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodDelete, http.MethodOptions)
-
-	// DELETE with path
-	a.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		if ok := ctx.HasScope(k.Rules(Delete, FullControl)...); ok {
-			var key *datastore.Key
-			var path []string
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-			}
-			if _path, ok := vars["path"]; ok {
-				path = strings.Split(_path, "/")
-			}
-			k.DeleteHandler(ctx, key, path...)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodDelete, http.MethodOptions)
-
-	// COLLECTIONS
-
-	// QUERY
-	a.collectionRouter.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-
-		var collectionKey *datastore.Key
-		vars := mux.Vars(r)
-		if encodedKey, ok := vars["collection"]; ok {
-			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-		}
-
-		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadOnly, ReadWrite, FullControl); ok {
-			k.QueryHandler(ctx)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodGet, http.MethodOptions)
-
 	// POST
-	a.collectionRouter.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
+	a.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := a.NewContext(w, r)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusForbidden)
 			return
 		}
-		var collectionKey *datastore.Key
-		vars := mux.Vars(r)
-		if encodedKey, ok := vars["collection"]; ok {
-			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-		}
-		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadOnly, ReadWrite, FullControl); ok {
+		if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
 			k.PostHandler(ctx, nil)
 		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
 	})).Methods(http.MethodPost, http.MethodOptions)
 
-	// GET
-	a.collectionRouter.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		var collectionKey *datastore.Key
-		vars := mux.Vars(r)
-		if encodedKey, ok := vars["collection"]; ok {
-			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+	/*
+		// GET with path
+		a.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
 				return
 			}
-		}
-		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadOnly, ReadWrite, FullControl); ok {
-			var key *datastore.Key
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
+			if ok := ctx.HasScope(k.Rules(ReadOnly, ReadWrite, FullControl)...); ok {
+				var key *datastore.Key
+				var path []string
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
 				}
+				if _path, ok := vars["path"]; ok {
+					path = strings.Split(_path, "/")
+				}
+				k.GetHandler(ctx, key, path...)
+			} else {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			}
-			k.GetHandler(ctx, key)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodGet, http.MethodOptions)
+		})).Methods(http.MethodGet, http.MethodOptions)
 
-	// GET with path
-	a.collectionRouter.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		var collectionKey *datastore.Key
-		vars := mux.Vars(r)
-		if encodedKey, ok := vars["collection"]; ok {
-			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+		// PUT
+		a.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
 				return
 			}
-		}
-		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadOnly, ReadWrite, FullControl); ok {
-			var key *datastore.Key
-			var path []string
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
+			if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
+				var key *datastore.Key
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
 				}
+				k.PutHandler(ctx, key)
+			} else {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			}
-			if _path, ok := vars["path"]; ok {
-				path = strings.Split(_path, "/")
-			}
-			k.GetHandler(ctx, key, path...)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodGet, http.MethodOptions)
+		})).Methods(http.MethodPut, http.MethodOptions)
 
-	// PUT
-	a.collectionRouter.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		var collectionKey *datastore.Key
-		vars := mux.Vars(r)
-		if encodedKey, ok := vars["collection"]; ok {
-			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+		// PUT with path
+		a.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
 				return
 			}
-		}
-		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadWrite, FullControl); ok {
-			var key *datastore.Key
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
+			if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
+				var key *datastore.Key
+				var path []string
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
 				}
+				if _path, ok := vars["path"]; ok {
+					path = strings.Split(_path, "/")
+				}
+				k.PutHandler(ctx, key, path...)
+			} else {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			}
-			k.PutHandler(ctx, key)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodPut, http.MethodOptions)
+		})).Methods(http.MethodPut, http.MethodOptions)
 
-	// PUT with path
-	a.collectionRouter.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		var collectionKey *datastore.Key
-		vars := mux.Vars(r)
-		if encodedKey, ok := vars["collection"]; ok {
-			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+		// PATCH
+		a.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
 				return
 			}
-		}
-		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadWrite, FullControl); ok {
-			var key *datastore.Key
-			var path []string
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
+			if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
+				var key *datastore.Key
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
 				}
+				k.PatchHandler(ctx, key)
+			} else {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			}
-			if _path, ok := vars["path"]; ok {
-				path = strings.Split(_path, "/")
-			}
-			k.PutHandler(ctx, key, path...)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodPut, http.MethodOptions)
+		})).Methods(http.MethodPatch, http.MethodOptions)
 
-	// DELETE
-	a.collectionRouter.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		var collectionKey *datastore.Key
-		vars := mux.Vars(r)
-		if encodedKey, ok := vars["collection"]; ok {
-			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+		// DELETE
+		a.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
 				return
 			}
-		}
-		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, Delete, FullControl); ok {
-			var key *datastore.Key
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
+			if ok := ctx.HasScope(k.Rules(Delete, FullControl)...); ok {
+				var key *datastore.Key
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
 				}
+				k.DeleteHandler(ctx, key)
+			} else {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			}
-			k.DeleteHandler(ctx, key)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodDelete, http.MethodOptions)
+		})).Methods(http.MethodDelete, http.MethodOptions)
 
-	// DELETE with path
-	a.collectionRouter.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		var collectionKey *datastore.Key
-		vars := mux.Vars(r)
-		if encodedKey, ok := vars["collection"]; ok {
-			if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+		// DELETE with path
+		a.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
 				return
 			}
-		}
-		if ctx, ok := CheckCollectionAccess(ctx, collectionKey, Delete, FullControl); ok {
-			var key *datastore.Key
-			var path []string
+			if ok := ctx.HasScope(k.Rules(Delete, FullControl)...); ok {
+				var key *datastore.Key
+				var path []string
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+				if _path, ok := vars["path"]; ok {
+					path = strings.Split(_path, "/")
+				}
+				k.DeleteHandler(ctx, key, path...)
+			} else {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			}
+		})).Methods(http.MethodDelete, http.MethodOptions)
+
+		// COLLECTIONS
+
+		// QUERY
+		a.collectionRouter.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+
+			var collectionKey *datastore.Key
 			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
+			if encodedKey, ok := vars["collection"]; ok {
+				if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
 					http.Error(w, err.Error(), http.StatusBadRequest)
 					return
 				}
 			}
-			if _path, ok := vars["path"]; ok {
-				path = strings.Split(_path, "/")
+
+			if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadOnly, ReadWrite, FullControl); ok {
+				groupKind := a.kinds[collectionKey.Kind()]
+				if ok := ctx.HasScope(groupKind.Rules(k.Rules(ReadOnly, ReadWrite, FullControl)...)...); ok {
+					k.QueryHandler(ctx)
+					return
+				}
 			}
-			k.DeleteHandler(ctx, key, path...)
-		} else {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		}
-	})).Methods(http.MethodDelete, http.MethodOptions)
+		})).Methods(http.MethodGet, http.MethodOptions)
+
+		// POST
+		a.collectionRouter.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+			var collectionKey *datastore.Key
+			vars := mux.Vars(r)
+			if encodedKey, ok := vars["collection"]; ok {
+				if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadWrite, FullControl); ok {
+				groupKind := a.kinds[collectionKey.Kind()]
+				if ok := ctx.HasScope(groupKind.Rules(k.Rules(ReadWrite, FullControl)...)...); ok {
+					k.PostHandler(ctx, nil)
+					return
+				}
+			}
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		})).Methods(http.MethodPost, http.MethodOptions)
+
+		// GET
+		a.collectionRouter.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+			var collectionKey *datastore.Key
+			vars := mux.Vars(r)
+			if encodedKey, ok := vars["collection"]; ok {
+				if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadOnly, ReadWrite, FullControl); ok {
+				var key *datastore.Key
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+				groupKind := a.kinds[collectionKey.Kind()]
+				if ok := ctx.HasScope(groupKind.Rules(k.Rules(ReadOnly, ReadWrite, FullControl)...)...); ok {
+					k.GetHandler(ctx, key)
+					return
+				}
+			}
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		})).Methods(http.MethodGet, http.MethodOptions)
+
+		// GET with path
+		a.collectionRouter.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+			var collectionKey *datastore.Key
+			vars := mux.Vars(r)
+			if encodedKey, ok := vars["collection"]; ok {
+				if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadOnly, ReadWrite, FullControl); ok {
+				var key *datastore.Key
+				var path []string
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+				if _path, ok := vars["path"]; ok {
+					path = strings.Split(_path, "/")
+				}
+				groupKind := a.kinds[collectionKey.Kind()]
+				if ok := ctx.HasScope(groupKind.Rules(k.Rules(ReadOnly, ReadWrite, FullControl)...)...); ok {
+					k.GetHandler(ctx, key, path...)
+					return
+				}
+			}
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		})).Methods(http.MethodGet, http.MethodOptions)
+
+		// PUT
+		a.collectionRouter.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+			var collectionKey *datastore.Key
+			vars := mux.Vars(r)
+			if encodedKey, ok := vars["collection"]; ok {
+				if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadWrite, FullControl); ok {
+				var key *datastore.Key
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+
+				groupKind := a.kinds[collectionKey.Kind()]
+				if ok := ctx.HasScope(groupKind.Rules(k.Rules(ReadWrite, FullControl)...)...); ok {
+					k.PutHandler(ctx, key)
+					return
+				}
+			}
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		})).Methods(http.MethodPut, http.MethodOptions)
+
+		// PUT with path
+		a.collectionRouter.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+			var collectionKey *datastore.Key
+			vars := mux.Vars(r)
+			if encodedKey, ok := vars["collection"]; ok {
+				if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			if ctx, ok := CheckCollectionAccess(ctx, collectionKey, ReadWrite, FullControl); ok {
+				var key *datastore.Key
+				var path []string
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+				if _path, ok := vars["path"]; ok {
+					path = strings.Split(_path, "/")
+				}
+
+				groupKind := a.kinds[collectionKey.Kind()]
+				if ok := ctx.HasScope(groupKind.Rules(k.Rules(ReadWrite, FullControl)...)...); ok {
+					k.PutHandler(ctx, key, path...)
+					return
+				}
+			}
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		})).Methods(http.MethodPut, http.MethodOptions)
+
+		// DELETE
+		a.collectionRouter.Handle(joinPath(k.Path, "{key}"), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+			var collectionKey *datastore.Key
+			vars := mux.Vars(r)
+			if encodedKey, ok := vars["collection"]; ok {
+				if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			if ctx, ok := CheckCollectionAccess(ctx, collectionKey, Delete, FullControl); ok {
+				var key *datastore.Key
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+
+				groupKind := a.kinds[collectionKey.Kind()]
+				if ok := ctx.HasScope(groupKind.Rules(k.Rules(Delete, FullControl)...)...); ok {
+					k.DeleteHandler(ctx, key)
+					return
+				}
+			}
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		})).Methods(http.MethodDelete, http.MethodOptions)
+
+		// DELETE with path
+		a.collectionRouter.Handle(joinPath(k.Path, "{key}", `{path:[a-zA-Z0-9=\-\/]+}`), serve(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+			var collectionKey *datastore.Key
+			vars := mux.Vars(r)
+			if encodedKey, ok := vars["collection"]; ok {
+				if collectionKey, err = datastore.DecodeKey(encodedKey); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
+			if ctx, ok := CheckCollectionAccess(ctx, collectionKey, Delete, FullControl); ok {
+				var key *datastore.Key
+				var path []string
+				vars := mux.Vars(r)
+				if encodedKey, ok := vars["key"]; ok {
+					if key, err = datastore.DecodeKey(encodedKey); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+				if _path, ok := vars["path"]; ok {
+					path = strings.Split(_path, "/")
+				}
+
+				groupKind := a.kinds[collectionKey.Kind()]
+				if ok := ctx.HasScope(groupKind.Rules(k.Rules(Delete, FullControl)...)...); ok {
+					k.DeleteHandler(ctx, key, path...)
+					return
+				}
+			}
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		})).Methods(http.MethodDelete, http.MethodOptions)*/
 }

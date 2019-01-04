@@ -1,30 +1,22 @@
 package test
 
 import (
+	"fmt"
 	"github.com/ales6164/apis"
+	"github.com/ales6164/apis/collection"
 	"github.com/ales6164/apis/providers/emailpassword"
 	"github.com/dgrijalva/jwt-go"
+	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"
 	"io/ioutil"
 	"net/http"
+	"strings"
+	"time"
 )
 
 var (
-	parentKind = apis.NewKind(&apis.KindOptions{
-		Path: "parents",
-		Type: Parent{},
-	})
-	childKind = apis.NewKind(&apis.KindOptions{
-		Path: "children",
-		Type: Child{},
-	})
-	projectKind = apis.NewKind(&apis.KindOptions{
-		Path:    "projects",
-		Type:    Project{},
-		IsGroup: true,
-		/*IsCollection: true,*/
-		/*KindProvider: kind.NewProvider(childKind, parentKind),*/
-	})
+	projects = collection.New("projects", Project{}).Group()
+	objects = collection.New("objects", Object{})
 )
 
 const (
@@ -55,22 +47,43 @@ func init() {
 
 	api := apis.New(&apis.Options{
 		Roles: map[string][][]string{
-			subscriber: {
-				parentKind.Rules(apis.FullControl),
-			},
 			apis.AllUsers: {
-				parentKind.Rules(apis.FullControl),
-				projectKind.Rules(apis.FullControl),
-				projectKind.Rules(parentKind.Rules(apis.FullControl)...), // Todo
+				objects.Scopes(apis.FullControl),
+				projects.Scopes(apis.FullControl),
+				projects.Scopes(objects.Scopes(apis.FullControl)...),
 			},
 		},
 	})
 	api.SetAuth(auth)
 
-	//api.Handle("/auth/signup", provider.SignUpHandler())
-	api.RegisterKind(childKind)
-	api.RegisterKind(parentKind)
-	api.RegisterKind(projectKind)
+
+	api.HandleCollection(projects)
+
+
+	api.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Print all the kinds in the datastore, with all the indexed
+		// properties (and their representations) for each.
+		ctx := appengine.NewContext(r)
+
+		kinds, err := datastore.Kinds(ctx)
+		if err != nil {
+
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		for _, kind := range kinds {
+			fmt.Fprintf(w, "%s:\n", kind)
+			props, err := datastore.KindProperties(ctx, kind)
+			if err != nil {
+				fmt.Fprintln(w, "\t(unable to retrieve properties)")
+				continue
+			}
+			for p, rep := range props {
+				fmt.Fprintf(w, "\t-%s (%s)\n", p, strings.Join(rep, ", "))
+			}
+		}
+	})
 
 	// kater collection je nas zanima samo ob POST metodi
 	// postanje v collection bi lahko bilo urejeno tako:
@@ -84,21 +97,14 @@ func init() {
 }
 
 type Project struct {
-	Id   *datastore.Key `datastore:"-" auto:"id" json:"id,omitempty"`
-	Name string         `json:"name"`
+	Id   string `datastore:"-" auto:"id" json:"id,omitempty"`
+	Name string `json:"name"`
 }
 
-type Parent struct {
-	Id        *datastore.Key   `datastore:"-" auto:"id" json:"id,omitempty"`
-	Name      string           `json:"name"`
-	ChildRef  *datastore.Key   `json:"childRef"`
-	ChildRefs []*datastore.Key `json:"childRefs"`
-	Child     Child            `json:"child"`
-	Children  []Child          `json:"children"`
-}
-
-type Child struct {
-	Id     *datastore.Key `datastore:"-" auto:"id" json:"id,omitempty"`
-	Name   string         `json:"name"`
-	Reason string         `json:"reason"`
+type Object struct {
+	Id        string    `datastore:"-" auto:"id" json:"id,omitempty"`
+	CreatedAt time.Time `datastore:"-" auto:"createdAt" json:"createdAt,omitempty"`
+	UpdatedAt time.Time `datastore:"-" auto:"updatedAt" json:"updatedAt,omitempty"`
+	Name      string    `json:"name"`
+	Stuff     []string  `json:"stuff"`
 }
