@@ -7,6 +7,8 @@ import (
 	"google.golang.org/appengine/datastore"
 	"reflect"
 	"strings"
+	"github.com/ales6164/apis/kind"
+	"strconv"
 )
 
 type Collection struct {
@@ -31,6 +33,7 @@ type Collection struct {
 	updatedByFieldName string
 
 	fields map[string]*Field // map key is json representation for field name
+	kind.Kind
 }
 
 type Field struct {
@@ -38,7 +41,6 @@ type Field struct {
 	Fields   map[string]*Field                                      // map key is json representation for field name
 	retrieve func(value reflect.Value, path []string) reflect.Value // if *datastore.Key, fetches and returns resource; if array, returns item at index; otherwise returns the value
 	Is       string
-
 	IsAutoId bool
 }
 
@@ -84,9 +86,8 @@ func (c *Collection) Path() string {
 	return c.path
 }
 
-func (c *Collection) Group() *Collection {
-	c.isGroup = true
-	return c
+func (c *Collection) IsNamespace() bool {
+	return false
 }
 
 func (c *Collection) Scopes(scopes ...string) []string {
@@ -95,6 +96,34 @@ func (c *Collection) Scopes(scopes ...string) []string {
 		r = append(r, c.name+"."+s)
 	}
 	return r
+}
+
+// Gets value at path
+func (c *Collection) ValueAt(value reflect.Value, path []string) (reflect.Value, error) {
+	var valueHolder = value
+	for _, pathPart := range path {
+		var f *Field
+		// get real field name (in case json field has different name)
+		var ok bool
+		if f, ok = c.fields[pathPart]; ok {
+			pathPart = f.Name
+		}
+		switch valueHolder.Kind() {
+		case reflect.Slice, reflect.Array:
+			if index, err := strconv.Atoi(pathPart); err == nil {
+				valueHolder = valueHolder.Index(index)
+			} else {
+				return valueHolder, errors.New("error converting string to slice index")
+			}
+		default:
+			if valueHolder.Kind() == reflect.Ptr {
+				valueHolder = valueHolder.Elem().FieldByName(pathPart)
+			} else {
+				valueHolder = valueHolder.FieldByName(pathPart)
+			}
+		}
+	}
+	return valueHolder, nil
 }
 
 func lookup(kind *Collection, typ reflect.Type, fields map[string]*Field) map[string]*Field {
@@ -204,12 +233,31 @@ func (c *Collection) Type() reflect.Type {
 	return c.t
 }
 
-func (c *Collection) Doc(ctx context.Context, key *datastore.Key) (*Document, error) {
+func (c *Collection) Data(doc kind.Doc) interface{} {
+	reflectValue := doc.Value()
+	key := doc.Key()
+	if c.hasIdFieldName && key != nil {
+		v := reflectValue.Elem()
+		idField := v.FieldByName(c.idFieldName)
+		if idField.IsValid() && idField.CanSet() {
+			if key.IntID() > 0 {
+				idField.Set(reflect.ValueOf(key.Encode()))
+			} else {
+				idField.Set(reflect.ValueOf(key.StringID()))
+			}
+		}
+	}
+	return reflectValue.Interface()
+}
+
+func (c *Collection) Doc(ctx context.Context, key *datastore.Key) kind.Doc {
 	if key != nil && key.Kind() != c.name {
-		return nil, errors.New("key doesn't belong to collection " + c.name)
+		key = nil
 	}
 	return &Document{
-		reflectValue: reflect.New(c.t),
-		key:          key,
-	}, nil
+		kind:  c,
+		ctx:   ctx,
+		value: reflect.New(c.t),
+		key:   key,
+	}
 }

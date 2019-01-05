@@ -12,29 +12,22 @@ import (
 	"net/http"
 	"strings"
 	"time"
-)
-
-var (
-	projects = collection.New("projects", Project{}).Group()
-	objects = collection.New("objects", Object{})
+	"github.com/ales6164/apis/group"
 )
 
 const (
+	// roles
 	subscriber = "subscriber"
 )
 
-/*
-TODO: 1. auth handler -- apis needs to know what roles have what scopes.. maybe move roles to apis? And GetSession (in context) must always receive a session...
-TODO: 2. collection creator is by default it's owner (scope is owner)
-TODO: 3. collections
- */
 func init() {
-	// auth
+	// Signing key for JWT token issuing and authorization process.
 	signingKey, err := ioutil.ReadFile("key.txt")
 	if err != nil {
 		panic(err)
 	}
 
+	// Built-in auth library
 	auth := apis.NewAuth(&apis.AuthOptions{
 		SigningKey:          signingKey,
 		Extractors:          []apis.TokenExtractor{apis.FromAuthHeader},
@@ -43,8 +36,10 @@ func init() {
 		SigningMethod:       jwt.SigningMethodHS256,
 		TokenExpiresIn:      60 * 60 * 24 * 7,
 	})
+	// Login/registration flow provider
 	auth.RegisterProvider(emailpassword.New(&emailpassword.Config{}))
 
+	// Set-up API, define user roles and permissions
 	api := apis.New(&apis.Options{
 		Roles: map[string][][]string{
 			apis.AllUsers: {
@@ -54,12 +49,14 @@ func init() {
 			},
 		},
 	})
-	api.SetAuth(auth)
+	//api.SetAuth(auth)
 
+	// Expose collections
+	api.HandleKind(objects)
+	//api.HandleKind(projects)
 
-	api.HandleCollection(projects)
-
-
+	// Custom handlers
+	// Prints datastore info
 	api.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Print all the kinds in the datastore, with all the indexed
 		// properties (and their representations) for each.
@@ -85,16 +82,16 @@ func init() {
 		}
 	})
 
-	// kater collection je nas zanima samo ob POST metodi
-	// postanje v collection bi lahko bilo urejeno tako:
-	// api.Handle(`/projects`, projectKind)                                                  	// ustvarjanje projektov
-	// api.Handle(`/projects/{key}`, projectKind)                                             	// urejanje projektov
-	// api.Handle(`/projects/{collection}/{kind}`, projectKind)                            		// postanje endpointov v projekt
-	// api.Handle(`/projects/{collection}/{kind}/{key}`, projectKind)                        	// urejanje entrijev v endpointu v projektu
-	// api.Handle(`/projects/{collection}/{kind}/{key}/{path:[a-zA-Z0-9=\-\/]+}`, projectKind)	// ...
-
+	// Serve
 	http.Handle("/", api)
 }
+
+// Collections
+
+var (
+	projects = group.New("projects", Project{})
+	objects = collection.New("objects", Object{})
+)
 
 type Project struct {
 	Id   string `datastore:"-" auto:"id" json:"id,omitempty"`

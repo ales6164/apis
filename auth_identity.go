@@ -62,7 +62,6 @@ func (a *Auth) GetIdentity(ctx context.Context, provider Provider, userEmail str
 func (i *Identity) GetUser(ctx context.Context) (*User, error) {
 	var user = new(User)
 	err := datastore.Get(ctx, i.User, user)
-	user.Id = i.User
 	return user, err
 }
 

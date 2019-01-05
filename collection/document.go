@@ -6,33 +6,34 @@ import (
 	"github.com/buger/jsonparser"
 	"google.golang.org/appengine/datastore"
 	"reflect"
-	"strconv"
 	"strings"
-	"time"
+	"github.com/ales6164/apis/kind"
+	"golang.org/x/net/context"
 )
 
 type Document struct {
-	key    *datastore.Key
-
+	kind               kind.Kind
+	ctx                context.Context
+	key                *datastore.Key
+	value              reflect.Value
 	hasInputData       bool // when updating
 	hasLoadedData      bool
 	rollbackProperties []datastore.Property
-
-	reflectValue reflect.Value
+	kind.Doc
 }
 
 var (
 	keyType = reflect.TypeOf(&datastore.Key{})
 )
 
-func (h *Document) Id() string {
+/*func (h *Document) Id() string {
 	if d.Key != nil {
 		return d.Key.Encode()
 	}
 	return ""
-}
+}*/
 
-func (h *Document) ReflectValue() {
+/*func (h *Document) ReflectValue() {
 	if d.Kind != nil && d.Kind.hasIdFieldName && d.Key != nil {
 		v := d.reflectValue.Elem()
 		idField := v.FieldByName(d.Kind.idFieldName)
@@ -44,14 +45,21 @@ func (h *Document) ReflectValue() {
 			}
 		}
 	}
+}*/
+
+func (d *Document) Value() reflect.Value {
+	return d.value
 }
 
-func (h *Document) Data() interface{} {
-	d.ReflectValue()
-	return d.reflectValue.Interface()
+func (d *Document) Key() *datastore.Key {
+	return d.key
 }
 
-type Rich struct {
+func (d *Document) Type() reflect.Type {
+	return d.kind.Type()
+}
+
+/*type Rich struct {
 	ID        string      `json:"id"`
 	CreatedAt time.Time   `json:"createdAt"`
 	UpdatedAt time.Time   `json:"updatedAt"`
@@ -63,67 +71,18 @@ type Rich struct {
 func (d *Document) RichData() interface{} {
 	d.ReflectValue()
 	return d.reflectValue.Interface()
-}
+}*/
 
-func (d *Document) SetValue(v interface{}) {
+/*func (d *Document) setData(v interface{}) {
 	d.reflectValue = reflect.ValueOf(v)
-}
+}*/
 
 func (d *Document) Parse(body []byte) error {
 	d.hasInputData = true
-	var value = d.Kind.New().Interface()
+	var value = reflect.New(d.Type()).Interface()
 	err := json.Unmarshal(body, &value)
-	d.reflectValue = reflect.ValueOf(value)
+	d.value = reflect.ValueOf(value)
 	return err
-}
-
-func (d *Document) get(ctx Context, fields []string) (*Document, reflect.Value, error) {
-	var valueHolder = d.reflectValue
-	for _, field := range fields {
-		var f *Field
-		// get real field name (in case json field has different name)
-		if d.Kind != nil {
-			var ok bool
-			if f, ok = d.Kind.fields[field]; ok {
-				field = f.Name
-			}
-		}
-		switch valueHolder.Kind() {
-		case reflect.Slice, reflect.Array:
-			if index, err := strconv.Atoi(field); err == nil {
-				valueHolder = valueHolder.Index(index)
-			} else {
-				return d, valueHolder, errors.New("error converting string to slice index")
-			}
-		default:
-			if valueHolder.Kind() == reflect.Ptr {
-				valueHolder = valueHolder.Elem().FieldByName(field)
-			} else {
-				valueHolder = valueHolder.FieldByName(field)
-			}
-		}
-	}
-	return d, valueHolder, nil
-}
-
-func (d *Document) Set(ctx Context, fields []string, value []byte) (*Document, error) {
-	h2, v, err := d.get(ctx, fields)
-	if err != nil {
-		return h2, err
-	}
-
-	if v.CanSet() {
-		inputValue := reflect.New(v.Type()).Interface()
-		err = json.Unmarshal(value, &inputValue)
-		if err != nil {
-			return h2, err
-		}
-		v.Set(reflect.ValueOf(inputValue).Elem())
-	} else {
-		return h2, errors.New("field value can't be set")
-	}
-
-	return h2, nil
 }
 
 const (
@@ -135,28 +94,24 @@ const (
 	op_copy    = "copy"
 )
 
-func (d *Document) Patch(ctx Context, dataArray []byte) error {
+func (d *Document) Patch(data []byte) error {
 	var endErr error
 	var cb = func(err error) {
 		endErr = err
 	}
-	_, err := jsonparser.ArrayEach(dataArray, func(patch []byte, dataType jsonparser.ValueType, offset int, err error) {
-		operation, err := jsonparser.GetString(patcd, "op")
-		if err != nil {
-			cb(errors.New("invalid operation"))
-			return
-		}
-		value, _, _, _ := jsonparser.Get(patcd, "value")
-		patd, err := jsonparser.GetString(patcd, "path")
+	_, err := jsonparser.ArrayEach(data, func(patch []byte, dataType jsonparser.ValueType, offset int, err error) {
+		operation, _ := jsonparser.GetString(patch, "op")
+		value, _, _, _ := jsonparser.Get(patch, "value")
+		path, err := jsonparser.GetString(patch, "path")
 		if err != nil {
 			cb(errors.New("invalid path"))
 			return
 		}
-		pathArray := strings.Split(patd, "/")
+		pathArray := strings.Split(path, "/")
 		if len(pathArray) > 0 && len(pathArray[0]) == 0 {
 			pathArray = pathArray[1:]
 		}
-		_, v, err := d.get(ctx, pathArray)
+		v, err := d.Kind().ValueAt(d.value, pathArray)
 		if err != nil {
 			cb(err)
 			return
@@ -208,7 +163,7 @@ func (d *Document) Patch(ctx Context, dataArray []byte) error {
 				return
 			}
 		case op_move:
-			from, err := jsonparser.GetString(patcd, "from")
+			from, err := jsonparser.GetString(patch, "from")
 			if err != nil {
 				cb(errors.New("invalid from"))
 				return
@@ -219,7 +174,7 @@ func (d *Document) Patch(ctx Context, dataArray []byte) error {
 				fromPath = fromPath[1:]
 			}
 
-			_, fromV, err := d.get(ctx, fromPath)
+			fromV, err := d.Kind().ValueAt(d.value, fromPath)
 			if err != nil {
 				cb(err)
 				return
@@ -240,7 +195,7 @@ func (d *Document) Patch(ctx Context, dataArray []byte) error {
 				return
 			}
 		case op_copy:
-			from, err := jsonparser.GetString(patcd, "from")
+			from, err := jsonparser.GetString(patch, "from")
 			if err != nil {
 				cb(errors.New("invalid from"))
 				return
@@ -251,7 +206,7 @@ func (d *Document) Patch(ctx Context, dataArray []byte) error {
 				fromPath = fromPath[1:]
 			}
 
-			_, fromV, err := d.get(ctx, fromPath)
+			fromV, err := d.Kind().ValueAt(d.value, fromPath)
 			if err != nil {
 				cb(err)
 				return
@@ -274,64 +229,77 @@ func (d *Document) Patch(ctx Context, dataArray []byte) error {
 	return endErr
 }
 
-func (d *Document) Delete(ctx Context) (*Document, error) {
-	var valueHolder = d.reflectValue
-	for i, field := range fields {
-		var f *Field
-		// get real field name (in case json field has different name)
-		if d.Kind != nil {
-			var ok bool
-			if f, ok = d.Kind.fields[field]; ok {
-				field = f.Name
-			}
-		}
+func (d *Document) Delete() error {
+	return datastore.Delete(d.ctx, d.key)
+}
 
-		// do stuff before switching to new value
-
-		// is it array?
-		switch valueHolder.Kind() {
-		case reflect.Slice, reflect.Array:
-			if index, err := strconv.Atoi(field); err == nil {
-				if i == len(fields)-1 {
-					if valueHolder.CanSet() {
-						// todo: check for index out of bounds
-						valueHolder.Set(reflect.AppendSlice(valueHolder.Slice(0, index), valueHolder.Slice(index+1, valueHolder.Len())))
-					} else {
-						return d, errors.New("field value can't be set")
-					}
-					return d, nil
-				} else {
-					valueHolder = valueHolder.Index(index)
-				}
-			} else {
-				return d, errors.New("error converting string to slice index")
-			}
-		default:
-			if valueHolder.Kind() == reflect.Ptr {
-				valueHolder = valueHolder.Elem().FieldByName(field)
-			} else {
-				valueHolder = valueHolder.FieldByName(field)
-			}
-		}
-		// do stuff after we have value
+func (d *Document) Set(data interface{}) (kind.Doc, error) {
+	var err error
+	if d.key == nil || d.key.Incomplete() {
+		return d, errors.New("can't set value for undefined key")
 	}
-
-	if valueHolder.CanSet() {
-		valueHolder.Set(reflect.Zero(valueHolder.Type()))
+	if d.value.Elem().CanSet() {
+		if bytes, ok := data.([]byte); ok {
+			inputValue := reflect.New(d.Type()).Interface()
+			err := json.Unmarshal(bytes, &inputValue)
+			if err != nil {
+				return d, err
+			}
+			d.value.Elem().Set(reflect.ValueOf(inputValue).Elem())
+		} else {
+			d.value.Elem().Set(reflect.ValueOf(data).Elem())
+		}
 	} else {
 		return d, errors.New("field value can't be set")
 	}
-
-	return d, nil
+	d.key, err = datastore.Put(d.ctx, d.key, d)
+	return d, err
 }
 
-func (d *Document) Get(ctx Context, fields []string) (*Document, interface{}, error) {
-	h2, v, err := d.get(ctx, fields)
-	return h2, v.Interface(), err
+func (d *Document) Add(data interface{}) (kind.Doc, error) {
+	var err error
+	var value reflect.Value
+	if d.value.Elem().CanSet() {
+		if bytes, ok := data.([]byte); ok {
+			inputValue := reflect.New(d.Type()).Interface()
+			err := json.Unmarshal(bytes, &inputValue)
+			if err != nil {
+				return d, err
+			}
+			value = reflect.ValueOf(inputValue).Elem()
+		} else {
+			value = reflect.ValueOf(data).Elem()
+		}
+	} else {
+		return d, errors.New("field value can't be set" + d.value.String())
+	}
+	if d.key == nil || d.key.Incomplete() {
+		d.key = datastore.NewIncompleteKey(d.ctx, d.Kind().Name(), nil)
+		d.value.Elem().Set(value)
+		d.key, err = datastore.Put(d.ctx, d.key, d)
+	} else {
+		err = datastore.RunInTransaction(d.ctx, func(ctx context.Context) error {
+			err = datastore.Get(ctx, d.key, d)
+			if err != nil {
+				if err == datastore.ErrNoSuchEntity {
+					// ok
+					d.value.Elem().Set(value)
+					d.key, err = datastore.Put(ctx, d.key, d)
+				}
+				return err
+			}
+			return kind.ErrEntityAlreadyExists
+		}, nil)
+	}
+	return d, err
 }
 
-func (d *Document) Bytes() ([]byte, error) {
-	return json.Marshal(d.GetValue())
+func (d *Document) Get() (kind.Doc, error) {
+	return d, datastore.Get(d.ctx, d.key, d)
+}
+
+func (d *Document) Kind() kind.Kind {
+	return d.kind
 }
 
 func (d *Document) Load(ps []datastore.Property) error {
@@ -339,16 +307,14 @@ func (d *Document) Load(ps []datastore.Property) error {
 	d.rollbackProperties = ps
 	if d.hasInputData {
 		// replace only empty fields
-		n := d.Kind.New().Interface()
+		n := reflect.New(d.Type()).Interface()
 		if err := datastore.LoadStruct(n, ps); err != nil {
 			return err
 		}
-
-		d.reflectValue = reflect.ValueOf(n)
-
+		d.value = reflect.ValueOf(n)
 		return nil
 	}
-	err := datastore.LoadStruct(d.reflectValue.Interface(), ps)
+	err := datastore.LoadStruct(d.value.Interface(), ps)
 	return err
 }
 
@@ -368,5 +334,5 @@ func (d *Document) Save() ([]datastore.Property, error) {
 			}
 		}
 	}*/
-	return datastore.SaveStruct(d.reflectValue.Interface())
+	return datastore.SaveStruct(d.value.Interface())
 }

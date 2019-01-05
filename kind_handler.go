@@ -1,15 +1,5 @@
 package apis
 
-import (
-	"errors"
-	"github.com/gorilla/mux"
-	"golang.org/x/net/context"
-	"google.golang.org/appengine/datastore"
-	"net/http"
-	"strconv"
-	"strings"
-)
-
 type QueryResult struct {
 	Items      []interface{}
 	Total      int
@@ -27,7 +17,7 @@ Filters param is an array of filter pairs:
 filters[0][filterStr] "fieldName >"
 filters[0][value] "fieldValue"
  */
-func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, error) {
+/*func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, error) {
 	r := QueryResult{
 		Limit: 25,
 		Items: []interface{}{},
@@ -138,7 +128,7 @@ func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, erro
 	r.LinkHeader = strings.Join(linkHeader, ",")
 
 	return r, nil
-}
+}*/
 
 /*
 /kinds QUERY, POST
@@ -146,16 +136,16 @@ func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, erro
 /kinds/{key}/{path} GET, PUT, DELETE
  */
 
-func (k *Kind) QueryHandler(ctx Context) {
+/*func (k *Kind) QueryHandler(ctx Context) {
 	queryResults, err := k.Query(ctx, ctx.r.URL.Query())
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusBadRequest)
 		return
 	}
 	ctx.PrintJSON(queryResults.Items, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
-}
+}*/
 
-func (k *Kind) GetHandler(ctx Context, key *datastore.Key, path ...string) {
+/*func (k *Kind) GetHandler(ctx Context, key *datastore.Key, path ...string) {
 	h, err := k.Get(ctx, key)
 	if err != nil {
 		if err == datastore.ErrNoSuchEntity {
@@ -351,3 +341,4 @@ func (k *Kind) DeleteHandler(ctx Context, key *datastore.Key, path ...string) {
 	}
 
 }
+*/

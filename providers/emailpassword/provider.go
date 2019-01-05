@@ -8,6 +8,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
 	"net/http"
+	"github.com/ales6164/apis/kind"
 )
 
 var (
@@ -80,7 +81,7 @@ func (p *Provider) Login(ctx apis.Context) {
 	}
 
 	// create session
-	session, err := p.NewSession(ctx, identity.Id, user.Id, user.Roles...)
+	session, err := p.NewSession(ctx, identity.Id, identity.User, user.Roles...)
 
 	signedToken, err := p.Auth.SignedToken(session)
 	if err != nil {
@@ -123,21 +124,23 @@ func (p *Provider) Register(ctx apis.Context) {
 		return
 	}
 
+	var userDoc kind.Doc
 	var user *apis.User
 	var session *apis.Session
 	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
 		// connect identity to account
 		var err error
-		user, err = p.CreateUser(tc, email, false)
+		userDoc, err = p.CreateUser(tc, email, false)
 		if err != nil {
 			return err
 		}
-		identity, err := p.CreateIdentity(ctx, p, user.Id, password)
+		user = apis.UserKind.Data(userDoc).(*apis.User)
+		identity, err := p.CreateIdentity(ctx, p, userDoc.Key(), password)
 		if err != nil {
 			return err
 		}
 		// create session
-		session, err = p.NewSession(ctx, identity.Id, user.Id, user.Roles...)
+		session, err = p.NewSession(ctx, identity.Id, userDoc.Key(), user.Roles...)
 		return err
 	}, &datastore.TransactionOptions{XG: true})
 	if err != nil {

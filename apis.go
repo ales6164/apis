@@ -1,10 +1,10 @@
 package apis
 
 import (
-	"github.com/ales6164/apis/collection"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
 	"net/http"
+	"github.com/ales6164/apis/kind"
 )
 
 type Apis struct {
@@ -13,7 +13,7 @@ type Apis struct {
 	auth       *Auth
 	hasAuth    bool
 	authRouter *mux.Router
-	collections map[string]*collection.Collection // by path
+	kinds      map[string]kind.Kind
 	roles      map[string][]string
 }
 
@@ -31,14 +31,14 @@ func New(options *Options) *Apis {
 	}
 
 	a := &Apis{
-		Options:     options,
-		Router:      mux.NewRouter(),
-		collections: map[string]*Collection{},
-		roles:       map[string][]string{},
+		Options: options,
+		Router:  mux.NewRouter(),
+		kinds:   map[string]kind.Kind{},
+		roles:   map[string][]string{},
 	}
 
-	a.authRouter = a.Router.PathPrefix(joinPath("auth")).Subrouter()
-	a.collectionRouter = a.Router.PathPrefix(joinPath("{collection}")).Subrouter()
+	//a.authRouter = a.Router.PathPrefix(joinPath("auth")).Subrouter()
+	//a.collectionRouter = a.Router.PathPrefix(joinPath("{collection}")).Subrouter()
 
 	if a.Roles == nil {
 		a.Roles = map[string][][]string{}
@@ -53,7 +53,7 @@ func New(options *Options) *Apis {
 	return a
 }
 
-func (a *Apis) SetAuth(auth *Auth) {
+/*func (a *Apis) SetAuth(auth *Auth) {
 	a.auth = auth
 	auth.a = a
 	a.hasAuth = auth != nil
@@ -75,7 +75,7 @@ func (a *Apis) SetAuth(auth *Auth) {
 			p.Register(ctx)
 		}).Methods(http.MethodPost)
 	}
-}
+}*/
 
 func (a *Apis) SetRoles(roles map[string][][]string) {
 	a.Roles = roles
@@ -86,55 +86,67 @@ func (a *Apis) SetRoles(roles map[string][][]string) {
 	}
 }
 
-func (a *Apis) HandleCollection(c *collection.Collection) {
-	a.handleCollection(joinPath("/", c.Path()), c)
+func (a *Apis) HandleKind(k kind.Kind) {
+	a.handleKind(joinPath(k.Path()), k)
 }
 
-func (a *Apis) handleCollection(rootPath string, c *collection.Collection) {
+func (a *Apis) handleKind(rootPath string, k kind.Kind) {
 	pathWId := joinPath(rootPath, "{id}")
 
 	// QUERY
-	a.Handle(path, serve(func(w http.ResponseWriter, r *http.Request) {
-		if ctx, ok := a.NewContext(w, r, c.Scopes(ReadOnly, ReadWrite, FullControl)...); ok {
+	/*a.Handle(rootPath, serve(func(w http.ResponseWriter, r *http.Request) {
+		if ctx, ok := a.NewContext(w, r, k.Scopes(ReadOnly, ReadWrite, FullControl)...); ok {
 
 		}
-	})).Methods(http.MethodGet, http.MethodOptions)
+	})).Methods(http.MethodGet, http.MethodOptions)*/
 
 	// GET
 	a.Handle(pathWId, serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		if ok := ctx.HasScope(k.Rules(ReadOnly, ReadWrite, FullControl)...); ok {
-			var key *datastore.Key
-			vars := mux.Vars(r)
-			if encodedKey, ok := vars["key"]; ok {
-				if key, err = datastore.DecodeKey(encodedKey); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
+		if ctx, ok := a.NewContext(w, r, k.Scopes(ReadOnly, ReadWrite, FullControl)...); ok {
+			if id, ok := mux.Vars(r)["id"]; ok {
+				key, err := datastore.DecodeKey(id)
+				if err != nil {
+					key = datastore.NewKey(ctx, k.Name(), id, 0, nil)
+				}
+				doc, err := k.Doc(ctx, key).Get()
+				if err != nil {
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
 					return
 				}
+				ctx.PrintJSON(k.Data(doc), http.StatusOK)
 			}
-			k.GetHandler(ctx, key)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
 	})).Methods(http.MethodGet, http.MethodOptions)
 
 	// POST
-	a.Handle(joinPath(k.Path), serve(func(w http.ResponseWriter, r *http.Request) {
-		ctx, err := a.NewContext(w, r)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusForbidden)
-			return
-		}
-		if ok := ctx.HasScope(k.Rules(ReadWrite, FullControl)...); ok {
-			k.PostHandler(ctx, nil)
-		} else {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+	a.Handle(rootPath, serve(func(w http.ResponseWriter, r *http.Request) {
+		if ctx, ok := a.NewContext(w, r, k.Scopes(ReadWrite, FullControl)...); ok {
+			doc, err := k.Doc(ctx, nil).Add(ctx.Body())
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
+			}
+			ctx.PrintJSON(k.Data(doc), http.StatusOK)
 		}
 	})).Methods(http.MethodPost, http.MethodOptions)
+
+	// PUT
+	a.Handle(pathWId, serve(func(w http.ResponseWriter, r *http.Request) {
+		if ctx, ok := a.NewContext(w, r, k.Scopes(ReadWrite, FullControl)...); ok {
+			if id, ok := mux.Vars(r)["id"]; ok {
+				key, err := datastore.DecodeKey(id)
+				if err != nil {
+					key = datastore.NewKey(ctx, k.Name(), id, 0, nil)
+				}
+				doc, err := k.Doc(ctx, key).Set(ctx.Body())
+				if err != nil {
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
+					return
+				}
+				ctx.PrintJSON(k.Data(doc), http.StatusOK)
+			}
+		}
+	})).Methods(http.MethodPut, http.MethodOptions)
 
 	/*
 		// GET with path
