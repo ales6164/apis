@@ -1,10 +1,10 @@
 package apis
 
 import (
+	"github.com/ales6164/apis/kind"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
 	"net/http"
-	"github.com/ales6164/apis/kind"
 )
 
 type Apis struct {
@@ -87,11 +87,15 @@ func (a *Apis) SetRoles(roles map[string][][]string) {
 }
 
 func (a *Apis) HandleKind(k kind.Kind) {
-	a.handleKind(joinPath(k.Path()), k)
+	a.kinds[k.Name()] = k
+	a.handleKind(k.Name(), k)
 }
 
+// TODO: before finishing all methods figure out how to handle group keys and keys containing namespace
 func (a *Apis) handleKind(rootPath string, k kind.Kind) {
-	pathWId := joinPath(rootPath, "{id}")
+	pathWId := joinPath("/", rootPath, "{id}")
+	pathWGroup := joinPath("/", "{group}", rootPath)
+	pathWGroupId := joinPath("/", "{group}", rootPath, "{id}")
 
 	// QUERY
 	/*a.Handle(rootPath, serve(func(w http.ResponseWriter, r *http.Request) {
@@ -115,6 +119,44 @@ func (a *Apis) handleKind(rootPath string, k kind.Kind) {
 				}
 				ctx.PrintJSON(k.Data(doc), http.StatusOK)
 			}
+		}
+	})).Methods(http.MethodGet, http.MethodOptions)
+	a.Handle(pathWGroupId, serve(func(w http.ResponseWriter, r *http.Request) {
+		// get group and id
+		// check if user has access to group
+		// check if scopes are ok
+
+		// context.Key() and context.Group()
+		// 
+
+		if ctx, ok := a.NewContext(w, r, k.Scopes(ReadOnly, ReadWrite, FullControl)...); ok {
+			id := mux.Vars(r)["id"]
+			group := mux.Vars(r)["group"]
+
+			key, err := datastore.DecodeKey(id)
+			if err != nil {
+				key = datastore.NewKey(ctx, k.Name(), id, 0, nil)
+			}
+
+			groupKey, err := datastore.DecodeKey(group)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusBadRequest)
+				return
+			}
+
+
+
+			ctx, ok = CheckCollectionAccess(ctx, groupKey)
+
+			// add k.Group(groupKey).Doc(...)
+			// inside doc check if has group key and also change namespace of context
+			doc, err := k.Doc(ctx, key).Get()
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
+			}
+			ctx.PrintJSON(k.Data(doc), http.StatusOK)
+
 		}
 	})).Methods(http.MethodGet, http.MethodOptions)
 

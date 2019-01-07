@@ -33,7 +33,6 @@ type Doc interface {
 
 type Kind interface {
 	Name() string
-	Path() string
 	Data(doc Doc) interface{}
 	ValueAt(value reflect.Value, path []string) (reflect.Value, error)
 	Fields() map[string]Field

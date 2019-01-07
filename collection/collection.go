@@ -13,7 +13,6 @@ import (
 
 type Collection struct {
 	name    string
-	path    string
 	i       interface{}
 	t       reflect.Type
 	isGroup bool
@@ -47,7 +46,6 @@ type Field struct {
 func New(name string, i interface{}) *Collection {
 	t := reflect.TypeOf(i)
 	c := &Collection{
-		path: "/" + name,
 		name: name,
 		t:    t,
 	}
