@@ -127,7 +127,7 @@ func (a *Apis) handleKind(rootPath string, k kind.Kind) {
 		// check if scopes are ok
 
 		// context.Key() and context.Group()
-		// 
+		//
 
 		if ctx, ok := a.NewContext(w, r, k.Scopes(ReadOnly, ReadWrite, FullControl)...); ok {
 			id := mux.Vars(r)["id"]
