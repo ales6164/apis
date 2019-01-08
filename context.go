@@ -19,6 +19,8 @@ type Context struct {
 	hasReadBody bool
 	body        []byte
 	session     *Session
+	groupKey    *datastore.Key
+	key         *datastore.Key
 }
 
 func (a *Apis) NewContext(w http.ResponseWriter, r *http.Request, scopes ...string) (ctx Context, ok bool) {
@@ -33,6 +35,35 @@ func (a *Apis) NewContext(w http.ResponseWriter, r *http.Request, scopes ...stri
 		ctx.PrintError(err.Error(), http.StatusForbidden)
 		return ctx, false
 	}
+
+	/*if id, ok  := mux.Vars(r)["id"]; ok {
+		ctx.key, _ = datastore.DecodeKey(id)
+	}
+	if group, ok := mux.Vars(r)["group"]; ok {
+		ctx.groupKey, _ = datastore.DecodeKey(group)
+		if err != nil {
+			ctx.PrintError(err.Error(), http.StatusBadRequest)
+			return ctx, false
+		}
+		ctx, ok = CheckCollectionAccess(ctx, groupKey, scopes...)
+		if !ok {
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return ctx, false
+		}
+	}
+
+	if ctx.key != nil {
+		if len(ctx.key.Namespace()) > 0 {
+			if ctx.groupKey == nil {
+				// trying to access a resource in a group
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return ctx, false
+			}
+
+
+		}
+	}*/
+
 	if len(scopes) > 0 {
 		if ctx.HasScope(scopes...) {
 			return ctx, true
@@ -55,6 +86,14 @@ func (ctx Context) Body() []byte {
 
 func (ctx Context) HasScope(scopes ...string) bool {
 	return ctx.session.HasScope(scopes...)
+}
+
+func (ctx Context) Group() *datastore.Key {
+	return ctx.groupKey
+}
+
+func (ctx Context) Key() *datastore.Key {
+	return ctx.key
 }
 
 func (ctx Context) Member() *datastore.Key {

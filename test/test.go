@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/ales6164/apis"
 	"github.com/ales6164/apis/collection"
+	"github.com/ales6164/apis/group"
 	"github.com/ales6164/apis/providers/emailpassword"
 	"github.com/dgrijalva/jwt-go"
 	"google.golang.org/appengine"
@@ -12,7 +13,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"github.com/ales6164/apis/group"
 )
 
 const (
@@ -41,11 +41,19 @@ func init() {
 
 	// Set-up API, define user roles and permissions
 	api := apis.New(&apis.Options{
-		Roles: map[string][][]string{
-			apis.AllUsers: {
-				objects.Scopes(apis.FullControl),
-				projects.Scopes(apis.FullControl),
-				projects.Scopes(objects.Scopes(apis.FullControl)...),
+		Rules: apis.Rules{
+			Match: apis.Match{
+				projects: apis.Rules{
+					FullControl: []string{apis.AllAuthenticatedUsers},
+					Match: apis.Match{
+						objects: apis.Rules{
+
+						},
+					},
+				},
+				objects: apis.Rules{
+					FullControl: []string{apis.AllUsers},
+				},
 			},
 		},
 	})
@@ -90,7 +98,7 @@ func init() {
 
 var (
 	projects = group.New("projects", Project{})
-	objects = collection.New("objects", Object{})
+	objects  = collection.New("objects", Object{})
 )
 
 type Project struct {
@@ -105,3 +113,4 @@ type Object struct {
 	Name      string    `json:"name"`
 	Stuff     []string  `json:"stuff"`
 }
+

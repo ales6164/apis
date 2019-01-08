@@ -36,7 +36,7 @@ type Kind interface {
 	Data(doc Doc) interface{}
 	ValueAt(value reflect.Value, path []string) (reflect.Value, error)
 	Fields() map[string]Field
-	IsNamespace() bool
+	IsNamespace() bool // or is group
 	Scopes(scopes ...string) []string
 	Type() reflect.Type
 	Doc(ctx context.Context, key *datastore.Key) Doc

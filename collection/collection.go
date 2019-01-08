@@ -2,20 +2,20 @@ package collection
 
 import (
 	"errors"
+	"github.com/ales6164/apis/kind"
 	"github.com/asaskevich/govalidator"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
 	"reflect"
-	"strings"
-	"github.com/ales6164/apis/kind"
 	"strconv"
+	"strings"
 )
 
 type Collection struct {
-	name    string
-	i       interface{}
-	t       reflect.Type
-	isGroup bool
+	name           string
+	i              interface{}
+	t              reflect.Type
+	isGroup        bool
 
 	hasIdFieldName        bool
 	hasCreatedAtFieldName bool
@@ -46,8 +46,8 @@ type Field struct {
 func New(name string, i interface{}) *Collection {
 	t := reflect.TypeOf(i)
 	c := &Collection{
-		name: name,
-		t:    t,
+		name:           name,
+		t:              t,
 	}
 
 	if len(name) == 0 || !govalidator.IsAlphanumeric(name) {
@@ -78,10 +78,6 @@ const (
 
 func (c *Collection) Name() string {
 	return c.name
-}
-
-func (c *Collection) Path() string {
-	return c.path
 }
 
 func (c *Collection) IsNamespace() bool {

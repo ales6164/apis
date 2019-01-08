@@ -14,11 +14,22 @@ type Apis struct {
 	hasAuth    bool
 	authRouter *mux.Router
 	kinds      map[string]kind.Kind
-	roles      map[string][]string
+	//roles      map[string][]string
 }
 
 type Options struct {
-	Roles map[string][][]string
+	Rules Rules
+}
+
+type Match map[kind.Kind]Rules
+type Roles []string
+
+type Rules struct {
+	FullControl Roles
+	ReadOnly    Roles
+	ReadWrite   Roles
+	Delete      Roles
+	Match       Match
 }
 
 func New(options *Options) *Apis {
@@ -26,29 +37,21 @@ func New(options *Options) *Apis {
 		options = &Options{}
 	}
 
-	if options.Roles == nil {
-		options.Roles = map[string][][]string{}
-	}
-
 	a := &Apis{
 		Options: options,
 		Router:  mux.NewRouter(),
 		kinds:   map[string]kind.Kind{},
-		roles:   map[string][]string{},
+		//roles:   map[string][]string{},
 	}
 
 	//a.authRouter = a.Router.PathPrefix(joinPath("auth")).Subrouter()
 	//a.collectionRouter = a.Router.PathPrefix(joinPath("{collection}")).Subrouter()
 
-	if a.Roles == nil {
-		a.Roles = map[string][][]string{}
-	}
-
-	for role, rules := range a.Roles {
+	/*for role, rules := range a.Roles {
 		for _, scopes := range rules {
 			a.roles[role] = append(a.roles[role], scopes...)
 		}
-	}
+	}*/
 
 	return a
 }
@@ -77,14 +80,14 @@ func New(options *Options) *Apis {
 	}
 }*/
 
-func (a *Apis) SetRoles(roles map[string][][]string) {
+/*func (a *Apis) SetRoles(roles map[string][][]string) {
 	a.Roles = roles
 	for role, rules := range a.Roles {
 		for _, scopes := range rules {
 			a.roles[role] = append(a.roles[role], scopes...)
 		}
 	}
-}
+}*/
 
 func (a *Apis) HandleKind(k kind.Kind) {
 	a.kinds[k.Name()] = k
@@ -94,8 +97,6 @@ func (a *Apis) HandleKind(k kind.Kind) {
 // TODO: before finishing all methods figure out how to handle group keys and keys containing namespace
 func (a *Apis) handleKind(rootPath string, k kind.Kind) {
 	pathWId := joinPath("/", rootPath, "{id}")
-	pathWGroup := joinPath("/", "{group}", rootPath)
-	pathWGroupId := joinPath("/", "{group}", rootPath, "{id}")
 
 	// QUERY
 	/*a.Handle(rootPath, serve(func(w http.ResponseWriter, r *http.Request) {
@@ -121,47 +122,21 @@ func (a *Apis) handleKind(rootPath string, k kind.Kind) {
 			}
 		}
 	})).Methods(http.MethodGet, http.MethodOptions)
-	a.Handle(pathWGroupId, serve(func(w http.ResponseWriter, r *http.Request) {
-		// get group and id
-		// check if user has access to group
-		// check if scopes are ok
 
-		// context.Key() and context.Group()
-		//
-
-		if ctx, ok := a.NewContext(w, r, k.Scopes(ReadOnly, ReadWrite, FullControl)...); ok {
-			id := mux.Vars(r)["id"]
-			group := mux.Vars(r)["group"]
-
-			key, err := datastore.DecodeKey(id)
-			if err != nil {
-				key = datastore.NewKey(ctx, k.Name(), id, 0, nil)
-			}
-
-			groupKey, err := datastore.DecodeKey(group)
-			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusBadRequest)
-				return
-			}
-
-
-
-			ctx, ok = CheckCollectionAccess(ctx, groupKey)
-
-			// add k.Group(groupKey).Doc(...)
-			// inside doc check if has group key and also change namespace of context
-			doc, err := k.Doc(ctx, key).Get()
+	// POST
+	a.Handle(rootPath, serve(func(w http.ResponseWriter, r *http.Request) {
+		if ctx, ok := a.NewContext(w, r, k.Scopes(ReadWrite, FullControl)...); ok {
+			doc, err := k.Doc(ctx, nil).Add(ctx.Body())
 			if err != nil {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
 			ctx.PrintJSON(k.Data(doc), http.StatusOK)
-
 		}
-	})).Methods(http.MethodGet, http.MethodOptions)
+	})).Methods(http.MethodPost, http.MethodOptions)
 
-	// POST
-	a.Handle(rootPath, serve(func(w http.ResponseWriter, r *http.Request) {
+	// POST TO GROUP
+	a.Handle(pathWId, serve(func(w http.ResponseWriter, r *http.Request) {
 		if ctx, ok := a.NewContext(w, r, k.Scopes(ReadWrite, FullControl)...); ok {
 			doc, err := k.Doc(ctx, nil).Add(ctx.Body())
 			if err != nil {
