@@ -170,6 +170,22 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		pairs = append(pairs, pair)
 	}
 
+	// authenticate using r.Method() and also check if user has access to specified namespace ->
+	// namespace can get from second to last pair or from key that has namespace specified
+
+	// ALSO! must check if hierarchy of keys is OK
+	/*
+	project is a group ... create a new project
+	we take that project group key and use it for creating an object ... that object key contains namespace information of the project group -----
+	when accessing said object the namespace must match project key
+	this can go on for unlimited times
+	 */
+
+
+	 // ALSO!!!!!!!
+	 // Namespaces should not be named as keys are but use some other naming technique (keys can get very long, namespaces can only be 100 characters long)
+	 // todo: check if namespaces even get longer???
+
 	switch r.Method {
 	case http.MethodGet:
 		ctx.PrintJSON(pairs, 200)
