@@ -1,17 +1,13 @@
 package test
 
 import (
-	"fmt"
 	"github.com/ales6164/apis"
 	"github.com/ales6164/apis/collection"
 	"github.com/ales6164/apis/group"
 	"github.com/ales6164/apis/providers/emailpassword"
 	"github.com/dgrijalva/jwt-go"
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/datastore"
 	"io/ioutil"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -44,10 +40,10 @@ func init() {
 		Rules: apis.Rules{
 			Match: apis.Match{
 				projects: apis.Rules{
-					FullControl: []string{apis.AllAuthenticatedUsers},
+					FullControl: []string{apis.AllUsers},
 					Match: apis.Match{
 						objects: apis.Rules{
-
+							FullControl: []string{apis.AllUsers},
 						},
 					},
 				},
@@ -60,12 +56,13 @@ func init() {
 	//api.SetAuth(auth)
 
 	// Expose collections
+	api.HandleKind(projects)
 	api.HandleKind(objects)
 	//api.HandleKind(projects)
 
 	// Custom handlers
 	// Prints datastore info
-	api.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	/*api.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Print all the kinds in the datastore, with all the indexed
 		// properties (and their representations) for each.
 		ctx := appengine.NewContext(r)
@@ -88,7 +85,7 @@ func init() {
 				fmt.Fprintf(w, "\t-%s (%s)\n", p, strings.Join(rep, ", "))
 			}
 		}
-	})
+	})*/
 
 	// Serve
 	http.Handle("/", api)
@@ -113,4 +110,3 @@ type Object struct {
 	Name      string    `json:"name"`
 	Stuff     []string  `json:"stuff"`
 }
-

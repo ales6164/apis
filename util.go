@@ -74,6 +74,13 @@ func ContainsScope(arr []string, scopes ...string) bool {
 	return false
 }
 
+func min(a, b int) int {
+	if a <= b {
+		return a
+	}
+	return b
+}
+
 var queryFilters = regexp.MustCompile(`(?m)filters\[(?P<num>[^\]]+)\]\[(?P<nam>[^\]]+)\]`)
 
 func getParams(url string) (paramsMap map[string]string) {

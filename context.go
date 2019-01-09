@@ -23,11 +23,14 @@ type Context struct {
 	key         *datastore.Key
 }
 
-func (a *Apis) NewContext(w http.ResponseWriter, r *http.Request, scopes ...string) (ctx Context, ok bool) {
+func (a *Apis) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context) {
+	return Context{Context: appengine.NewContext(r), w: w, r: r, a: a}
+}
+
+func (ctx Context) Authenticate(scopes ...string) (Context, bool) {
 	var token *jwt.Token
-	ctx = Context{Context: appengine.NewContext(r), w: w, r: r, a: a}
-	if a.hasAuth {
-		token, _ = a.auth.middleware.CheckJWT(w, r)
+	if ctx.a.hasAuth {
+		token, _ = ctx.a.auth.middleware.CheckJWT(ctx.w, ctx.r)
 	}
 	var err error
 	ctx.session, err = StartSession(ctx, token)
@@ -117,7 +120,9 @@ func (ctx *Context) PrintJSON(result interface{}, statusCode int, headerPair ...
 		}
 	}
 	ctx.w.WriteHeader(statusCode)
-	json.NewEncoder(ctx.w).Encode(result)
+	if err := json.NewEncoder(ctx.w).Encode(result); err != nil {
+		http.Error(ctx.w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (ctx *Context) PrintStatus(s string, c int, descriptors ...string) {

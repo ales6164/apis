@@ -31,12 +31,12 @@ type Claims struct {
 }
 
 func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, member *datastore.Key, roles ...string) (*Session, error) {
-	var noRolesScopes []string
+	/*var noRolesScopes []string
 	for _, s := range roles {
 		if roleScopes, ok := a.a.roles[s]; ok {
 			noRolesScopes = append(noRolesScopes, roleScopes...)
 		}
-	}
+	}*/
 
 	now := time.Now()
 	s := &Session{
@@ -45,7 +45,7 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, m
 		CreatedAt:        now,
 		ExpiresAt:        now.Add(time.Second * time.Duration(a.TokenExpiresIn)),
 		IsBlocked:        false,
-		Scopes:           noRolesScopes,
+		//Scopes:           noRolesScopes,
 	}
 
 	sKey := datastore.NewIncompleteKey(ctx, SessionKind, nil)
@@ -57,7 +57,7 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, m
 
 	claims := Claims{
 		sKey,
-		noRolesScopes,
+		[]string{},
 		jwt.StandardClaims{
 			Issuer:    a.TokenIssuer,
 			NotBefore: now.Add(time.Second * time.Duration(NotBeforeCorrection)).Unix(),
@@ -91,7 +91,7 @@ func StartSession(ctx Context, token *jwt.Token) (*Session, error) {
 			}
 
 			s.isAuthenticated = true
-			s.Scopes = append(s.Scopes, ctx.a.roles[AllAuthenticatedUsers]...)
+			//s.Scopes = append(s.Scopes, ctx.a.roles[AllAuthenticatedUsers]...)
 			s.token = token
 		} else {
 			return s, errors.New("invalid claims type")
@@ -99,7 +99,7 @@ func StartSession(ctx Context, token *jwt.Token) (*Session, error) {
 	}
 
 	s.isValid = true
-	s.Scopes = append(s.Scopes, ctx.a.roles[AllUsers]...)
+	//s.Scopes = append(s.Scopes, ctx.a.roles[AllUsers]...)
 	if !s.isAuthenticated {
 		s.Member = datastore.NewKey(ctx, "Group", AllUsers, 0, nil)
 	}

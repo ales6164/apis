@@ -5,16 +5,18 @@ import (
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
 	"net/http"
+	"strings"
 )
 
 type Apis struct {
-	*mux.Router
+	//router *mux.Router
 	*Options
 	auth       *Auth
 	hasAuth    bool
 	authRouter *mux.Router
 	kinds      map[string]kind.Kind
 	//roles      map[string][]string
+	http.Handler
 }
 
 type Options struct {
@@ -29,7 +31,7 @@ type Rules struct {
 	ReadOnly    Roles
 	ReadWrite   Roles
 	Delete      Roles
-	Match       Match
+	Match       Match `json:"-"`
 }
 
 func New(options *Options) *Apis {
@@ -39,8 +41,8 @@ func New(options *Options) *Apis {
 
 	a := &Apis{
 		Options: options,
-		Router:  mux.NewRouter(),
-		kinds:   map[string]kind.Kind{},
+		/*Router:  mux.NewRouter(),*/
+		kinds: map[string]kind.Kind{},
 		//roles:   map[string][]string{},
 	}
 
@@ -94,9 +96,95 @@ func (a *Apis) HandleKind(k kind.Kind) {
 	a.handleKind(k.Name(), k)
 }
 
+type PathPair struct {
+	CollectionName   string         `json:"collectionName"`
+	CollectionId     string         `json:"collectionId"`
+	CollectionKind   kind.Kind      `json:"collectionKind"`
+	HasCollectionKey bool           `json:"hasCollectionKey"`
+	CollectionKey    *datastore.Key `json:"collectionKey"`
+	Rules            Rules          `json:"rules"`
+}
+
+func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if origin := r.Header.Get("Origin"); origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers",
+			"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
+				"X-Requested-With")
+	}
+
+	ctx := a.NewContext(w, r)
+
+	rules := a.Rules
+
+	path := r.URL.Path
+	if path[:1] == "/" {
+		path = path[1:]
+	}
+
+	// GET /projects
+	// GET /projects/FSDFKosfsfsefssgsdgf
+	// GET /projects/FSDFKosfsfsefssgsdgf/objects
+	// GET /projects/FSDFKosfsfsefssgsdgf/objects/sdfGdsGDSAFSDfdsgsdd
+	// ...
+
+	var err error
+	var pairs []PathPair
+	parts := strings.Split(path, "/")
+
+	for i := 0; i < len(parts); i += 2 {
+		// get collection name
+		pair := PathPair{
+			CollectionName: parts[i],
+		}
+
+		// get collection kind and match it to rules
+		if k, ok := a.kinds[pair.CollectionName]; ok {
+			pair.CollectionKind = k
+			if rules, ok = rules.Match[k]; ok {
+				// got latest rules
+				pair.Rules = rules
+			} else {
+				//ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
+				ctx.PrintError("asdd", http.StatusNotFound)
+				return
+			}
+		} else {
+			//ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			ctx.PrintError("da", http.StatusNotFound)
+			return
+		}
+
+		// get collection id if it exists
+		if (i + 1) < len(parts) {
+			pair.CollectionId = parts[i+1]
+
+			// convert collectionId to *datastore.Key
+			pair.CollectionKey, err = datastore.DecodeKey(pair.CollectionId)
+			if err != nil {
+				pair.CollectionKey = datastore.NewKey(ctx, pair.CollectionKind.Name(), pair.CollectionId, 0, nil)
+			}
+		}
+
+		pairs = append(pairs, pair)
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		ctx.PrintJSON(pairs, 200)
+	case http.MethodPost:
+	case http.MethodPut:
+	case http.MethodPatch:
+	case http.MethodDelete:
+	default:
+		return
+	}
+}
+
 // TODO: before finishing all methods figure out how to handle group keys and keys containing namespace
 func (a *Apis) handleKind(rootPath string, k kind.Kind) {
-	pathWId := joinPath("/", rootPath, "{id}")
+	//pathWId := joinPath("/", rootPath, "{id}")
 
 	// QUERY
 	/*a.Handle(rootPath, serve(func(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +194,7 @@ func (a *Apis) handleKind(rootPath string, k kind.Kind) {
 	})).Methods(http.MethodGet, http.MethodOptions)*/
 
 	// GET
-	a.Handle(pathWId, serve(func(w http.ResponseWriter, r *http.Request) {
+	/*a.Handle(pathWId, serve(func(w http.ResponseWriter, r *http.Request) {
 		if ctx, ok := a.NewContext(w, r, k.Scopes(ReadOnly, ReadWrite, FullControl)...); ok {
 			if id, ok := mux.Vars(r)["id"]; ok {
 				key, err := datastore.DecodeKey(id)
@@ -163,7 +251,7 @@ func (a *Apis) handleKind(rootPath string, k kind.Kind) {
 				ctx.PrintJSON(k.Data(doc), http.StatusOK)
 			}
 		}
-	})).Methods(http.MethodPut, http.MethodOptions)
+	})).Methods(http.MethodPut, http.MethodOptions)*/
 
 	/*
 		// GET with path
