@@ -77,6 +77,9 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.serve(w, r)
+	return
+
 	ctx := a.NewContext(w, r)
 
 	rules := a.Rules
