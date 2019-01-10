@@ -27,7 +27,7 @@ func (a *Apis) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context) 
 	return Context{Context: appengine.NewContext(r), w: w, r: r, a: a}
 }
 
-func (ctx Context) Authenticate(scopes ...string) (Context, bool) {
+func (ctx Context) WithSession() (Context, bool) {
 	var token *jwt.Token
 	if ctx.a.hasAuth {
 		token, _ = ctx.a.auth.middleware.CheckJWT(ctx.w, ctx.r)
@@ -38,43 +38,16 @@ func (ctx Context) Authenticate(scopes ...string) (Context, bool) {
 		ctx.PrintError(err.Error(), http.StatusForbidden)
 		return ctx, false
 	}
-
-	/*if id, ok  := mux.Vars(r)["id"]; ok {
-		ctx.key, _ = datastore.DecodeKey(id)
-	}
-	if group, ok := mux.Vars(r)["group"]; ok {
-		ctx.groupKey, _ = datastore.DecodeKey(group)
-		if err != nil {
-			ctx.PrintError(err.Error(), http.StatusBadRequest)
-			return ctx, false
-		}
-		ctx, ok = CheckCollectionAccess(ctx, groupKey, scopes...)
-		if !ok {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			return ctx, false
-		}
-	}
-
-	if ctx.key != nil {
-		if len(ctx.key.Namespace()) > 0 {
-			if ctx.groupKey == nil {
-				// trying to access a resource in a group
-				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-				return ctx, false
-			}
-
-
-		}
-	}*/
-
-	if len(scopes) > 0 {
-		if ctx.HasScope(scopes...) {
-			return ctx, true
-		}
-		ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		return ctx, false
-	}
 	return ctx, true
+}
+
+func (ctx Context) HasRole(roles ...Roles) bool {
+	for _, rs := range roles {
+		if ok := ctx.session.HasScope(rs...); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // reads body once and stores contents

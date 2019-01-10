@@ -43,53 +43,10 @@ func New(options *Options) *Apis {
 		Options: options,
 		/*Router:  mux.NewRouter(),*/
 		kinds: map[string]kind.Kind{},
-		//roles:   map[string][]string{},
 	}
-
-	//a.authRouter = a.Router.PathPrefix(joinPath("auth")).Subrouter()
-	//a.collectionRouter = a.Router.PathPrefix(joinPath("{collection}")).Subrouter()
-
-	/*for role, rules := range a.Roles {
-		for _, scopes := range rules {
-			a.roles[role] = append(a.roles[role], scopes...)
-		}
-	}*/
 
 	return a
 }
-
-/*func (a *Apis) SetAuth(auth *Auth) {
-	a.auth = auth
-	auth.a = a
-	a.hasAuth = auth != nil
-	for _, p := range auth.providers {
-		a.authRouter.HandleFunc(joinPath(p.GetName(), "login"), func(w http.ResponseWriter, r *http.Request) {
-			ctx, err := a.NewContext(w, r)
-			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusForbidden)
-				return
-			}
-			p.Login(ctx)
-		}).Methods(http.MethodPost)
-		a.authRouter.HandleFunc(joinPath(p.GetName(), "register"), func(w http.ResponseWriter, r *http.Request) {
-			ctx, err := a.NewContext(w, r)
-			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusForbidden)
-				return
-			}
-			p.Register(ctx)
-		}).Methods(http.MethodPost)
-	}
-}*/
-
-/*func (a *Apis) SetRoles(roles map[string][][]string) {
-	a.Roles = roles
-	for role, rules := range a.Roles {
-		for _, scopes := range rules {
-			a.roles[role] = append(a.roles[role], scopes...)
-		}
-	}
-}*/
 
 func (a *Apis) HandleKind(k kind.Kind) {
 	a.kinds[k.Name()] = k
@@ -97,12 +54,14 @@ func (a *Apis) HandleKind(k kind.Kind) {
 }
 
 type PathPair struct {
-	CollectionName   string         `json:"collectionName"`
-	CollectionId     string         `json:"collectionId"`
-	CollectionKind   kind.Kind      `json:"collectionKind"`
-	HasCollectionKey bool           `json:"hasCollectionKey"`
-	CollectionKey    *datastore.Key `json:"collectionKey"`
-	Rules            Rules          `json:"rules"`
+	CollectionName string         `json:"collectionName"`
+	CollectionId   string         `json:"collectionId"`
+	HasKey         bool           `json:"hasKey"`
+	CollectionKey  *datastore.Key `json:"collectionKey"`
+	CollectionKind kind.Kind      `json:"collectionKind"`
+	IsGroup        bool           `json:"isGroup"`
+	GroupKey       *datastore.Key `json:"groupKey"`
+	Rules          Rules          `json:"rules"`
 }
 
 func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -112,6 +71,10 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Headers",
 			"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
 				"X-Requested-With")
+	}
+
+	if r.Method == http.MethodOptions {
+		return
 	}
 
 	ctx := a.NewContext(w, r)
@@ -130,12 +93,12 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// ...
 
 	var err error
-	var pairs []PathPair
+	var pairs []*PathPair
+	var lastPair *PathPair
 	parts := strings.Split(path, "/")
-
 	for i := 0; i < len(parts); i += 2 {
 		// get collection name
-		pair := PathPair{
+		pair := &PathPair{
 			CollectionName: parts[i],
 		}
 
@@ -158,16 +121,29 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// get collection id if it exists
 		if (i + 1) < len(parts) {
+			pair.HasKey = true
 			pair.CollectionId = parts[i+1]
 
 			// convert collectionId to *datastore.Key
 			pair.CollectionKey, err = datastore.DecodeKey(pair.CollectionId)
 			if err != nil {
+
+				// if it has previous key, context should have namespace defined
+				/*if i > 0 {
+					pair.CollectionKey.Namespace()
+				}*/
+
 				pair.CollectionKey = datastore.NewKey(ctx, pair.CollectionKind.Name(), pair.CollectionId, 0, nil)
 			}
+
+			// compare this key to the previous one
+			/*if i > 0 {
+				pair.CollectionKey.Namespace()
+			}*/
 		}
 
 		pairs = append(pairs, pair)
+		lastPair = pair
 	}
 
 	// authenticate using r.Method() and also check if user has access to specified namespace ->
@@ -181,20 +157,59 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	this can go on for unlimited times
 	 */
 
+	// ALSO!!!!!!!
+	// Namespaces should not be named as keys are but use some other naming technique (keys can get very long, namespaces can only be 100 characters long)
+	// todo: check if namespaces even get longer???
 
-	 // ALSO!!!!!!!
-	 // Namespaces should not be named as keys are but use some other naming technique (keys can get very long, namespaces can only be 100 characters long)
-	 // todo: check if namespaces even get longer???
-
-	switch r.Method {
-	case http.MethodGet:
-		ctx.PrintJSON(pairs, 200)
-	case http.MethodPost:
-	case http.MethodPut:
-	case http.MethodPatch:
-	case http.MethodDelete:
-	default:
+	var ok bool
+	if ctx, ok = ctx.WithSession(); !ok {
 		return
+	}
+
+	if lastPair.HasKey {
+		switch r.Method {
+		case http.MethodGet:
+			if ok := ctx.HasRole(rules.ReadOnly, rules.ReadWrite, rules.FullControl); ok {
+				doc, err := lastPair.CollectionKind.Doc(ctx, lastPair.CollectionKey).Get()
+				if err != nil {
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
+					return
+				}
+				ctx.PrintJSON(lastPair.CollectionKind.Data(doc), http.StatusOK)
+			} else {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			}
+
+		case http.MethodPut:
+		case http.MethodPatch:
+		case http.MethodDelete:
+		case http.MethodPost:
+			// nothing
+		default:
+			return
+		}
+	} else {
+		switch r.Method {
+		case http.MethodGet:
+			ctx.PrintJSON(pairs, 200)
+			// QUERY
+		case http.MethodPost:
+			if ok := ctx.HasRole(rules.ReadWrite, rules.FullControl); ok {
+				doc, err := lastPair.CollectionKind.Doc(ctx, nil).Add(ctx.Body())
+				if err != nil {
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
+					return
+				}
+				ctx.PrintJSON(lastPair.CollectionKind.Data(doc), http.StatusOK)
+			} else {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			}
+
+		case http.MethodPut, http.MethodPatch, http.MethodDelete:
+			// nothing
+		default:
+			return
+		}
 	}
 }
 

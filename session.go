@@ -45,7 +45,7 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, m
 		CreatedAt:        now,
 		ExpiresAt:        now.Add(time.Second * time.Duration(a.TokenExpiresIn)),
 		IsBlocked:        false,
-		//Scopes:           noRolesScopes,
+		Scopes:           roles,
 	}
 
 	sKey := datastore.NewIncompleteKey(ctx, SessionKind, nil)
@@ -91,7 +91,7 @@ func StartSession(ctx Context, token *jwt.Token) (*Session, error) {
 			}
 
 			s.isAuthenticated = true
-			//s.Scopes = append(s.Scopes, ctx.a.roles[AllAuthenticatedUsers]...)
+			s.Scopes = append(s.Scopes, AllAuthenticatedUsers)
 			s.token = token
 		} else {
 			return s, errors.New("invalid claims type")
@@ -99,7 +99,7 @@ func StartSession(ctx Context, token *jwt.Token) (*Session, error) {
 	}
 
 	s.isValid = true
-	//s.Scopes = append(s.Scopes, ctx.a.roles[AllUsers]...)
+	s.Scopes = append(s.Scopes, AllUsers)
 	if !s.isAuthenticated {
 		s.Member = datastore.NewKey(ctx, "Group", AllUsers, 0, nil)
 	}

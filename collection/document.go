@@ -256,6 +256,7 @@ func (d *Document) Set(data interface{}) (kind.Doc, error) {
 	return d, err
 }
 
+// todo: some function for giving access to this document
 func (d *Document) Add(data interface{}) (kind.Doc, error) {
 	var err error
 	var value reflect.Value
