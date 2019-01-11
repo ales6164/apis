@@ -59,3 +59,19 @@ func CheckCollectionAccess(ctx Context, collectionKey *datastore.Key, roles ...s
 
 	return ctx, false
 }
+
+// key is made of group entity key and parent is parent group id
+type Group struct {
+	GroupID string
+}
+
+func createGroup() {
+
+}
+
+func getGroupId(ctx context.Context, parentGroupKey *datastore.Key, entityKey *datastore.Key) (*datastore.Key, string, error) {
+	groupKey := datastore.NewKey(ctx, "_group", entityKey.StringID(), entityKey.IntID(), parentGroupKey)
+	var group = new(Group)
+	err := datastore.Get(ctx, groupKey, group)
+	return groupKey, group.GroupID, err
+}
