@@ -160,10 +160,6 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	this can go on for unlimited times
 	 */
 
-	// ALSO!!!!!!!
-	// Namespaces should not be named as keys are but use some other naming technique (keys can get very long, namespaces can only be 100 characters long)
-	// todo: check if namespaces even get longer???
-
 	var ok bool
 	if ctx, ok = ctx.WithSession(); !ok {
 		return
