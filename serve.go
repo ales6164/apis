@@ -1,107 +1,177 @@
 package apis
 
 import (
+	"errors"
 	"github.com/ales6164/apis/kind"
+	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"
 	"net/http"
 	"strings"
+	"time"
 )
+
+type Collector struct {
+	defaultContext context.Context
+	ctx            Context
+	collection     *collection
+	collections    []*collection
+}
+
+type collection struct {
+	hasUncommittedChanges bool
+	entryKey              *datastore.Key
+	entry                 *Entry
+	kind                  kind.Kind
+}
+
+// datastore entry descriptor
+// only in default namespace
+type Entry struct {
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	CreatedBy *datastore.Key `json:"createdBy"`
+	UpdatedBy *datastore.Key `json:"updatedBy"`
+	Namespace string         `json:"-"`
+}
+
+func NewCollector(ctx Context) *Collector {
+	return &Collector{
+		defaultContext: appengine.NewContext(ctx.r),
+		ctx:            ctx,
+	}
+}
+
+func (c *Collector) NewEntryKey(kindName string, stringId string, intId int64) *datastore.Key {
+	return datastore.NewKey(c.defaultContext, "_entry_"+kindName, stringId, intId, nil)
+}
+
+func (c *Collector) AppendCollection(k kind.Kind, id string) error {
+	if c.collection != nil && c.collection.hasUncommittedChanges {
+		return errors.New("uncommitted changes")
+	}
+	var key *datastore.Key
+	if len(id) > 0 {
+		var err error
+		key, err = datastore.DecodeKey(id)
+		if err == nil {
+			// entry key from decoded key
+			key = c.NewEntryKey(k.Name(), key.StringID(), key.IntID())
+		} else {
+			key = c.NewEntryKey(k.Name(), id, 0)
+		}
+	}
+	col := &collection{
+		kind:     k,
+		entryKey: key,
+	}
+	c.collections = append(c.collections, col)
+	c.collection = col
+	return nil
+}
+
+
+// also check parent groupId inside entry
+func (c *Collector) RetrieveEntry() error {
+	if c.collection.entryKey != nil {
+		c.collection.entry = new(Entry)
+		err := datastore.Get(c.defaultContext, c.collection.entryKey, c.collection.entry)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				// create entry value as the entry key is anonymous
+				c.collection.hasUncommittedChanges = true
+				c.collection.entry = &Entry{
+				// TODO: add values
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// for every fetch retrieve document info and preload everything to then just get the entry when needed
+func (c *Collector) Fetch(k kind.Kind, id string) (*Collector, error) {
+	err := c.AppendCollection(k, id)
+	if err != nil {
+		return c, err
+	}
+	err = c.RetrieveEntry()
+
+	return c, err
+}
 
 func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 	path := getPath(r.URL.Path)
 
 	rules := a.Rules
 
-	var isOk bool
-
-	var lastKind kind.Kind
-	var lastKey *datastore.Key
-	var lastGroupKey *datastore.Key
-	var lastGroupId string
-	var isAfterFirst bool
-
-	ctx := appengine.NewContext(r)
+	ctx := a.NewContext(w, r)
+	collector := NewCollector(ctx)
 
 	// analyse path in pairs
 	for i := 0; i < len(path); i += 2 {
-		isOk = false
 
 		// get collection kind and match it to rules
 		if k, ok := a.kinds[path[i]]; ok {
 			if rules, ok = rules.Match[k]; ok {
 				// got latest rules
+				var err error
 
-				// is id provided in path?
 				if (i + 1) < len(path) {
-					id := path[i+1]
-					key, err := datastore.DecodeKey(id)
-					if err != nil {
-						// id is not encoded key
-
-
-						if isAfterFirst {
-							// this key is inside a group -- check namespace
-
-							lastGroupKey, lastGroupId, err = getGroupId(ctx, lastGroupKey, key)
-							if err != nil {
-								http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-								return
-							}
-
-							// todo:
-
-							ctx, err = appengine.Namespace(ctx, lastGroupId)
-							if err != nil {
-								http.Error(w, err.Error(), http.StatusInternalServerError)
-								return
-							}
-						} else {
-							key = datastore.NewKey(ctx, k.Name(), id, 0, nil)
-						}
-					} else if isAfterFirst {
-						// check namespace
-
-						lastGroupKey, lastGroupId, err = getGroupId(ctx, lastGroupKey, key)
-						if err != nil {
-							http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-							return
-						}
-
-						ctx, err = appengine.Namespace(ctx, lastGroupId)
-						if err != nil {
-							http.Error(w, err.Error(), http.StatusInternalServerError)
-							return
-						}
-					} else if len(key.Namespace()) > 0 {
-						// key should not have namespace defined
-						break
-					}
-
-					lastKey = key
+					collector, err = collector.Fetch(k, path[i+1])
 				} else {
-					// this request is without final id
-
+					collector, err = collector.Fetch(k, "")
 				}
 
-				isAfterFirst = true
-				lastKind = k
-				isOk = true
+				if err != nil {
+					ctx.PrintError(err.Error(), http.StatusBadRequest)
+					return
+				}
 				continue
 			}
 		}
-		break
+		ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
 	}
 
-	if isOk {
-		// todo:
-		// check if has group access
-		// check rules
 
 
+	var ok bool
+	if ctx, ok = ctx.WithSession(); !ok {
+		return
+	}
+
+	if hasKeyLast {
+		switch r.Method {
+		case http.MethodGet:
+			if ok := c.HasRole(rules.ReadOnly, rules.ReadWrite, rules.FullControl); ok {
+				doc, err := lastKind.Doc(ctx, lastKey).Get()
+				if err != nil {
+					c.PrintError(err.Error(), http.StatusInternalServerError)
+					return
+				}
+				c.PrintJSON(lastKind.Data(doc), http.StatusOK)
+			} else {
+				c.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			}
+		}
 	} else {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		switch r.Method {
+		case http.MethodGet:
+		case http.MethodPost:
+			if ok := c.HasRole(rules.ReadWrite, rules.FullControl); ok {
+				doc, err := lastKind.Doc(ctx, nil).Add(c.Body())
+				if err != nil {
+					c.PrintError(err.Error(), http.StatusInternalServerError)
+					return
+				}
+				c.PrintJSON(lastKind.Data(doc), http.StatusOK)
+			} else {
+				c.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			}
+		}
 	}
+
 }
 
 func getPath(p string) []string {

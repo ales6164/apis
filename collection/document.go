@@ -299,6 +299,10 @@ func (d *Document) Get() (kind.Doc, error) {
 	return d, datastore.Get(d.ctx, d.key, d)
 }
 
+func (d *Document) AddGroupMember() (kind.Doc, error) {
+	return d, datastore.Get(d.ctx, d.key, d)
+}
+
 func (d *Document) Kind() kind.Kind {
 	return d.kind
 }
