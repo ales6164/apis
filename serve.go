@@ -16,6 +16,7 @@ type Collector struct {
 	ctx            Context
 	collection     *collection
 	collections    []*collection
+	namespace      string
 }
 
 type collection struct {
@@ -28,11 +29,12 @@ type collection struct {
 // datastore entry descriptor
 // only in default namespace
 type Entry struct {
-	CreatedAt time.Time      `json:"createdAt"`
-	UpdatedAt time.Time      `json:"updatedAt"`
-	CreatedBy *datastore.Key `json:"createdBy"`
-	UpdatedBy *datastore.Key `json:"updatedBy"`
-	Namespace string         `json:"-"`
+	CreatedAt       time.Time      `json:"createdAt"`
+	UpdatedAt       time.Time      `json:"updatedAt"`
+	CreatedBy       *datastore.Key `json:"createdBy"`
+	UpdatedBy       *datastore.Key `json:"updatedBy"`
+	ParentNamespace string         `json:"-"`
+	Namespace       string         `json:"-"` // every entry should have unique namespace --- or maybe auto generated if needed
 }
 
 func NewCollector(ctx Context) *Collector {
@@ -70,7 +72,6 @@ func (c *Collector) AppendCollection(k kind.Kind, id string) error {
 	return nil
 }
 
-
 // also check parent groupId inside entry
 func (c *Collector) RetrieveEntry() error {
 	if c.collection.entryKey != nil {
@@ -83,6 +84,17 @@ func (c *Collector) RetrieveEntry() error {
 				c.collection.entry = &Entry{
 				// TODO: add values
 				}
+			} else {
+				return err
+			}
+		} else if len(c.collections) > 1 {
+			// TODO: check parent namespace
+			if c.collections[len(c.collections)-2].entry.Namespace == c.collection.entry.ParentNamespace {
+				// current value namespace matches parent
+
+
+			} else {
+				return errors.New(http.StatusText(http.StatusNotFound))
 			}
 		}
 	}
@@ -110,7 +122,6 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 
 	// analyse path in pairs
 	for i := 0; i < len(path); i += 2 {
-
 		// get collection kind and match it to rules
 		if k, ok := a.kinds[path[i]]; ok {
 			if rules, ok = rules.Match[k]; ok {
@@ -134,32 +145,30 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
-
 	var ok bool
 	if ctx, ok = ctx.WithSession(); !ok {
 		return
 	}
 
-	if hasKeyLast {
+	if collector.collection.entryKey != nil {
 		switch r.Method {
 		case http.MethodGet:
-			if ok := c.HasRole(rules.ReadOnly, rules.ReadWrite, rules.FullControl); ok {
-				doc, err := lastKind.Doc(ctx, lastKey).Get()
+			if ok := ctx.HasRole(rules.ReadOnly, rules.ReadWrite, rules.FullControl); ok {
+				doc, err := collector.collection.kind.Doc(ctx, collector.collection.entryKey).Get()
 				if err != nil {
-					c.PrintError(err.Error(), http.StatusInternalServerError)
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
 					return
 				}
-				c.PrintJSON(lastKind.Data(doc), http.StatusOK)
+				ctx.PrintJSON(collector.collection.kind.Data(doc), http.StatusOK)
 			} else {
-				c.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			}
 		}
 	} else {
 		switch r.Method {
 		case http.MethodGet:
 		case http.MethodPost:
-			if ok := c.HasRole(rules.ReadWrite, rules.FullControl); ok {
+			/*if ok := c.HasRole(rules.ReadWrite, rules.FullControl); ok {
 				doc, err := lastKind.Doc(ctx, nil).Add(c.Body())
 				if err != nil {
 					c.PrintError(err.Error(), http.StatusInternalServerError)
@@ -168,7 +177,7 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 				c.PrintJSON(lastKind.Data(doc), http.StatusOK)
 			} else {
 				c.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			}
+			}*/
 		}
 	}
 
