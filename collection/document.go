@@ -3,12 +3,12 @@ package collection
 import (
 	"encoding/json"
 	"errors"
+	"github.com/ales6164/apis/kind"
 	"github.com/buger/jsonparser"
+	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
 	"reflect"
 	"strings"
-	"github.com/ales6164/apis/kind"
-	"golang.org/x/net/context"
 )
 
 type Document struct {
@@ -257,6 +257,7 @@ func (d *Document) Set(data interface{}) (kind.Doc, error) {
 }
 
 // todo: some function for giving access to this document
+// Run from inside a transaction.
 func (d *Document) Add(data interface{}) (kind.Doc, error) {
 	var err error
 	var value reflect.Value
@@ -279,18 +280,16 @@ func (d *Document) Add(data interface{}) (kind.Doc, error) {
 		d.value.Elem().Set(value)
 		d.key, err = datastore.Put(d.ctx, d.key, d)
 	} else {
-		err = datastore.RunInTransaction(d.ctx, func(ctx context.Context) error {
-			err = datastore.Get(ctx, d.key, d)
-			if err != nil {
-				if err == datastore.ErrNoSuchEntity {
-					// ok
-					d.value.Elem().Set(value)
-					d.key, err = datastore.Put(ctx, d.key, d)
-				}
-				return err
+		err = datastore.Get(d.ctx, d.key, d)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				// ok
+				d.value.Elem().Set(value)
+				d.key, err = datastore.Put(d.ctx, d.key, d)
 			}
-			return kind.ErrEntityAlreadyExists
-		}, nil)
+			return d, err
+		}
+		return d, kind.ErrEntityAlreadyExists
 	}
 	return d, err
 }
