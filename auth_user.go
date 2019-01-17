@@ -1,10 +1,10 @@
 package apis
 
 import (
+	"github.com/ales6164/apis/collection"
+	"github.com/ales6164/apis/kind"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
-	"github.com/ales6164/apis/group"
-	"github.com/ales6164/apis/kind"
 )
 
 type User struct {
@@ -14,13 +14,13 @@ type User struct {
 	Roles          []string `json:"roles"`
 }
 
-var UserKind = group.New("users", User{})
+var UserKind = collection.New("users", User{})
 
 // Connects provider identity with user account. Creates account if it doesn't exist. Should be run inside a transaction.
 // TrustUserEmail should be always false.
 func (a *Auth) CreateUser(ctx context.Context, userEmail string, trustUserEmail bool) (kind.Doc, error) {
 	userKey := datastore.NewKey(ctx, UserKind.Name(), userEmail, 0, nil)
-	userHolder, err := UserKind.Doc(ctx, userKey).Add(&User{
+	userHolder, err := UserKind.Doc(ctx, userKey, nil).Add(&User{
 		Id:             userEmail,
 		EmailConfirmed: trustUserEmail,
 		Email:          userEmail,

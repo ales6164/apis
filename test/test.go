@@ -3,7 +3,6 @@ package test
 import (
 	"github.com/ales6164/apis"
 	"github.com/ales6164/apis/collection"
-	"github.com/ales6164/apis/group"
 	"github.com/ales6164/apis/providers/emailpassword"
 	"github.com/dgrijalva/jwt-go"
 	"io/ioutil"
@@ -94,7 +93,7 @@ func init() {
 // Collections
 
 var (
-	projects = group.New("projects", Project{})
+	projects = collection.New("projects", Project{})
 	objects  = collection.New("objects", Object{})
 )
 

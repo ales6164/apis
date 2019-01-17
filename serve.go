@@ -1,16 +1,11 @@
 package apis
 
 import (
-	"golang.org/x/net/context"
-	"google.golang.org/appengine"
+	"github.com/ales6164/apis/kind"
 	"google.golang.org/appengine/datastore"
 	"net/http"
 	"strings"
 )
-
-
-
-
 
 func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 	path := getPath(r.URL.Path)
@@ -18,7 +13,12 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 	rules := a.Rules
 
 	ctx := a.NewContext(w, r)
-	collector := NewCollector(ctx)
+	var ok bool
+	if ctx, ok = ctx.WithSession(); !ok {
+		return
+	}
+
+	var document kind.Doc
 
 	// analyse path in pairs
 	for i := 0; i < len(path); i += 2 {
@@ -28,11 +28,17 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 				// got latest rules
 				var err error
 
+				// create key
+				var key *datastore.Key
 				if (i + 1) < len(path) {
-					collector, err = collector.Fetch(k, path[i+1])
-				} else {
-					collector, err = collector.Fetch(k, "")
+					var err error
+					key, err = datastore.DecodeKey(path[i+1])
+					if err != nil {
+						key = datastore.NewKey(ctx, k.Name(), path[i+1], 0, nil)
+					}
 				}
+
+				document = k.Doc(ctx, key, document)
 
 				if err != nil {
 					ctx.PrintError(err.Error(), http.StatusBadRequest)
@@ -45,54 +51,41 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var ok bool
-	if ctx, ok = ctx.WithSession(); !ok {
-		return
-	}
+	var err error
 
-	c := appengine.NewContext(ctx.r)
-
-	if collector.collection.entryKey != nil {
-		if len(collector.collection.entry.ParentNamespace) > 0 {
-			c, _ = appengine.Namespace(c, collector.collection.entry.ParentNamespace)
-		}
-
-		switch r.Method {
-		case http.MethodGet:
-			if ok := ctx.HasRole(rules.ReadOnly, rules.ReadWrite, rules.FullControl); ok {
-				doc, err := collector.collection.kind.Doc(c, collector.collection.entryKey).Get()
-				if err != nil {
-					ctx.PrintError(err.Error(), http.StatusInternalServerError)
+	switch r.Method {
+	case http.MethodGet:
+		if document.Key() != nil {
+			document, err = document.Get()
+			if err != nil {
+				if err == datastore.ErrNoSuchEntity {
+					ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
 					return
 				}
-				ctx.PrintJSON(collector.collection.kind.Data(doc), http.StatusOK)
-			} else {
-				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
 			}
+			ctx.PrintJSON(document.Kind().Data(document), http.StatusOK)
+		} else {
+			ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 		}
-	} else {
-		switch r.Method {
-		case http.MethodGet:
-		case http.MethodPost:
-			if ok := ctx.HasRole(rules.ReadWrite, rules.FullControl); ok {
-				err := datastore.RunInTransaction(c, func(tc context.Context) error {
-					doc, err := collector.collection.kind.Doc(tc, nil).Add(ctx.Body())
-					if err != nil {
-						return err
-					} else {
-						ctx.PrintJSON(collector.collection.kind.Data(doc), http.StatusOK)
-					}
-					return nil
-				}, nil)
-				if err != nil {
-					ctx.PrintError(err.Error(), http.StatusInternalServerError)
-				}
-			} else {
-				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+	case http.MethodPost:
+		if document.Key() != nil {
+			ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+		} else {
+			document, err = document.Add(ctx.Body())
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
 			}
+			ctx.PrintJSON(document.Kind().Data(document), http.StatusOK)
 		}
+	default:
+		ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+
 	}
 
+	//collector.ServeContent(r.Method, rules)
 }
 
 func getPath(p string) []string {

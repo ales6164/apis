@@ -80,10 +80,6 @@ func (c *Collection) Name() string {
 	return c.name
 }
 
-func (c *Collection) IsNamespace() bool {
-	return false
-}
-
 func (c *Collection) Scopes(scopes ...string) []string {
 	var r []string
 	for _, s := range scopes {
@@ -244,7 +240,7 @@ func (c *Collection) Data(doc kind.Doc) interface{} {
 	return reflectValue.Interface()
 }
 
-func (c *Collection) Doc(ctx context.Context, key *datastore.Key) kind.Doc {
+func (c *Collection) Doc(ctx context.Context, key *datastore.Key, ancestor kind.Doc) kind.Doc {
 	if key != nil && key.Kind() != c.name {
 		key = nil
 	}
@@ -253,5 +249,6 @@ func (c *Collection) Doc(ctx context.Context, key *datastore.Key) kind.Doc {
 		ctx:   ctx,
 		value: reflect.New(c.t),
 		key:   key,
+		ancestor: ancestor,
 	}
 }

@@ -19,33 +19,29 @@ type Document struct {
 	hasInputData       bool // when updating
 	hasLoadedData      bool
 	rollbackProperties []datastore.Property
+	ancestor           kind.Doc
 	kind.Doc
 }
+
+type DocumentCollectionRelationship struct {
+	Roles []string // fullControl, ...
+}
+
+/*
+
+Get - gets entry and value simultaneously
+Add - adds entry after operation
+Set - runs Get and sees what's going on... if value exists but it has no entry it creates one ... if entry exists and the person has access it updates the value and entry simultaneously
+Del - deletes both
+
+Every action should check if operation is permitted
+
+
+ */
 
 var (
 	keyType = reflect.TypeOf(&datastore.Key{})
 )
-
-/*func (h *Document) Id() string {
-	if d.Key != nil {
-		return d.Key.Encode()
-	}
-	return ""
-}*/
-
-/*func (h *Document) ReflectValue() {
-	if d.Kind != nil && d.Kind.hasIdFieldName && d.Key != nil {
-		v := d.reflectValue.Elem()
-		idField := v.FieldByName(d.Kind.idFieldName)
-		if idField.IsValid() && idField.CanSet() {
-			if d.Kind.dsUseName {
-				idField.Set(reflect.ValueOf(d.Key.StringID()))
-			} else {
-				idField.Set(reflect.ValueOf(d.Key))
-			}
-		}
-	}
-}*/
 
 func (d *Document) Value() reflect.Value {
 	return d.value
@@ -59,30 +55,30 @@ func (d *Document) Type() reflect.Type {
 	return d.kind.Type()
 }
 
-/*type Rich struct {
-	ID        string      `json:"id"`
-	CreatedAt time.Time   `json:"createdAt"`
-	UpdatedAt time.Time   `json:"updatedAt"`
-	Value     interface{} `json:"value"`
-	//Version   int64     `json:"version"`
-}
-
-// encapsulates value inside Rich struct
-func (d *Document) RichData() interface{} {
-	d.ReflectValue()
-	return d.reflectValue.Interface()
-}*/
-
-/*func (d *Document) setData(v interface{}) {
-	d.reflectValue = reflect.ValueOf(v)
-}*/
-
 func (d *Document) Parse(body []byte) error {
 	d.hasInputData = true
 	var value = reflect.New(d.Type()).Interface()
 	err := json.Unmarshal(body, &value)
 	d.value = reflect.ValueOf(value)
 	return err
+}
+
+// Loads relationship table and checks if user has access to the specified namespace.
+// Then adds the parent and rewrites document key and context.
+/*func (d *Document) SetParent(doc kind.Doc) (kind.Doc, error) {
+	if doc != nil {
+		m, err := kind.GetMeta(d.ctx, doc)
+		if err != nil {
+			return d, err
+		}
+
+		d.parent = doc
+	}
+	return d, nil
+}*/
+
+func (d *Document) Ancestor() kind.Doc {
+	return d.ancestor
 }
 
 const (
@@ -93,6 +89,22 @@ const (
 	op_move    = "move"
 	op_copy    = "copy"
 )
+
+func (d *Document) Get() (kind.Doc, error) {
+	_, m, _, err := kind.Meta(d.ctx, d)
+	if err != nil {
+		return d, err
+	}
+
+	// todo: still need relationship check
+
+	d.ctx, d.key, err = kind.SetNamespace(d.ctx, d.key, m.GroupID)
+	if err != nil {
+		return d, err
+	}
+
+	return d, datastore.Get(d.ctx, d.key, d)
+}
 
 func (d *Document) Patch(data []byte) error {
 	var endErr error
@@ -259,6 +271,7 @@ func (d *Document) Set(data interface{}) (kind.Doc, error) {
 // todo: some function for giving access to this document
 // Run from inside a transaction.
 func (d *Document) Add(data interface{}) (kind.Doc, error) {
+	// 1. Parse value
 	var err error
 	var value reflect.Value
 	if d.value.Elem().CanSet() {
@@ -275,27 +288,54 @@ func (d *Document) Add(data interface{}) (kind.Doc, error) {
 	} else {
 		return d, errors.New("field value can't be set" + d.value.String())
 	}
-	if d.key == nil || d.key.Incomplete() {
+
+	// 2. Set key
+	if d.key == nil {
 		d.key = datastore.NewIncompleteKey(d.ctx, d.Kind().Name(), nil)
+	}
+
+	// 3. Set namespace
+	_, m, deferFun, err := kind.Meta(d.ctx, d)
+	if err != nil {
+		return d, err
+	}
+
+	// todo: still need relationship check
+
+	d.ctx, d.key, err = kind.SetNamespace(d.ctx, d.key, m.GroupID)
+	if err != nil {
+		return d, err
+	}
+
+	// 4. Store value
+	if d.key.Incomplete() {
 		d.value.Elem().Set(value)
-		d.key, err = datastore.Put(d.ctx, d.key, d)
-	} else {
-		err = datastore.Get(d.ctx, d.key, d)
-		if err != nil {
-			if err == datastore.ErrNoSuchEntity {
-				// ok
-				d.value.Elem().Set(value)
-				d.key, err = datastore.Put(d.ctx, d.key, d)
+		err = datastore.RunInTransaction(d.ctx, func(tc context.Context) error {
+			d.key, err = datastore.Put(d.ctx, d.key, d)
+			if err != nil {
+				return err
 			}
-			return d, err
-		}
-		return d, kind.ErrEntityAlreadyExists
+			return deferFun()
+		}, nil)
+	} else {
+		err = datastore.RunInTransaction(d.ctx, func(ctx context.Context) error {
+			err = datastore.Get(ctx, d.key, d)
+			if err != nil {
+				if err == datastore.ErrNoSuchEntity {
+					// ok
+					d.value.Elem().Set(value)
+					d.key, err = datastore.Put(ctx, d.key, d)
+					if err != nil {
+						return err
+					}
+					return deferFun()
+				}
+				return err
+			}
+			return kind.ErrEntityAlreadyExists
+		}, nil)
 	}
 	return d, err
-}
-
-func (d *Document) Get() (kind.Doc, error) {
-	return d, datastore.Get(d.ctx, d.key, d)
 }
 
 func (d *Document) AddGroupMember() (kind.Doc, error) {
