@@ -12,10 +12,11 @@ import (
 )
 
 type Collection struct {
-	name           string
-	i              interface{}
-	t              reflect.Type
-	isGroup        bool
+	name    string
+	i       interface{}
+	t       reflect.Type
+	isGroup bool
+	member  *datastore.Key
 
 	hasIdFieldName        bool
 	hasCreatedAtFieldName bool
@@ -46,8 +47,8 @@ type Field struct {
 func New(name string, i interface{}) *Collection {
 	t := reflect.TypeOf(i)
 	c := &Collection{
-		name:           name,
-		t:              t,
+		name: name,
+		t:    t,
 	}
 
 	if len(name) == 0 || !govalidator.IsAlphanumeric(name) {
@@ -223,6 +224,10 @@ func (c *Collection) Type() reflect.Type {
 	return c.t
 }
 
+func (c *Collection) SetMember(member *datastore.Key) {
+	c.member = member
+}
+
 func (c *Collection) Data(doc kind.Doc) interface{} {
 	reflectValue := doc.Value()
 	key := doc.Key()
@@ -245,10 +250,11 @@ func (c *Collection) Doc(ctx context.Context, key *datastore.Key, ancestor kind.
 		key = nil
 	}
 	return &Document{
-		kind:  c,
-		ctx:   ctx,
-		value: reflect.New(c.t),
-		key:   key,
-		ancestor: ancestor,
+		kind:       c,
+		defaultCtx: ctx,
+		ctx:        ctx,
+		value:      reflect.New(c.t),
+		key:        key,
+		ancestor:   ancestor,
 	}
 }

@@ -7,17 +7,21 @@ import (
 	"github.com/buger/jsonparser"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
+	"net/http"
 	"reflect"
 	"strings"
 )
 
 type Document struct {
 	kind               kind.Kind
+	member             *datastore.Key
+	defaultCtx         context.Context
 	ctx                context.Context
 	key                *datastore.Key
 	value              reflect.Value
 	hasInputData       bool // when updating
 	hasLoadedData      bool
+	isAuthenticated    bool
 	rollbackProperties []datastore.Property
 	ancestor           kind.Doc
 	kind.Doc
@@ -97,6 +101,11 @@ func (d *Document) Get() (kind.Doc, error) {
 	}
 
 	// todo: still need relationship check
+	if m.AncestorKey != nil {
+		if ok := CheckCollectionAccess(d.defaultCtx, d.member, d.isAuthenticated, m.AncestorKey, ReadOnly, ReadWrite, FullControl); !ok {
+			return d, errors.New(http.StatusText(http.StatusForbidden))
+		}
+	}
 
 	d.ctx, d.key, err = kind.SetNamespace(d.ctx, d.key, m.GroupID)
 	if err != nil {
@@ -268,6 +277,11 @@ func (d *Document) Set(data interface{}) (kind.Doc, error) {
 	return d, err
 }
 
+func (d *Document) SetMember(member *datastore.Key, isAuthenticated bool) {
+	d.member = member
+	d.isAuthenticated = isAuthenticated
+}
+
 // todo: some function for giving access to this document
 // Run from inside a transaction.
 func (d *Document) Add(data interface{}) (kind.Doc, error) {
@@ -301,6 +315,12 @@ func (d *Document) Add(data interface{}) (kind.Doc, error) {
 	}
 
 	// todo: still need relationship check
+	if m.AncestorKey != nil {
+		if ok := CheckCollectionAccess(d.defaultCtx, d.member, d.isAuthenticated, m.AncestorKey, ReadWrite, FullControl); !ok {
+			return d, errors.New(http.StatusText(http.StatusForbidden))
+		}
+	}
+	// todo: add owner then
 
 	d.ctx, d.key, err = kind.SetNamespace(d.ctx, d.key, m.GroupID)
 	if err != nil {
@@ -335,6 +355,10 @@ func (d *Document) Add(data interface{}) (kind.Doc, error) {
 			return kind.ErrEntityAlreadyExists
 		}, nil)
 	}
+	if err != nil {
+		return d, err
+	}
+	err = OwnerIAM(d.ctx, d.member, m.AncestorKey)
 	return d, err
 }
 

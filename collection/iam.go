@@ -1,4 +1,4 @@
-package apis
+package collection
 
 import (
 	"golang.org/x/net/context"
@@ -30,24 +30,34 @@ func OwnerIAM(ctx context.Context, memberKey *datastore.Key, ancestorMetaKey *da
 }
 
 // should check if got scope groupName.collectionName.scope
-func CheckCollectionAccess(ctx Context, ancestorMetaKey *datastore.Key, roles ...string) bool {
+func CheckCollectionAccess(ctx context.Context, memberKey *datastore.Key, isAuthenticated bool, ancestorMetaKey *datastore.Key, roles ...string) bool {
 	var iam = new(GroupRelationship)
 	// AllUsers
 	err := datastore.Get(ctx, datastore.NewKey(ctx, "_groupRelationship", AllUsers, 0, ancestorMetaKey), iam)
 	if err == nil && ContainsScope(iam.Roles, roles...) {
 		return true
 	}
-	if ctx.session.isAuthenticated {
+	if isAuthenticated {
 		// AllAuthenticatedUsers
 		err = datastore.Get(ctx, datastore.NewKey(ctx, "_groupRelationship", AllAuthenticatedUsers, 0, ancestorMetaKey), iam)
 		if err == nil && ContainsScope(iam.Roles, roles...) {
 			return true
 		}
 		// User
-		member := ctx.Member()
-		err = datastore.Get(ctx, datastore.NewKey(ctx, "_groupRelationship", member.StringID(), member.IntID(), ancestorMetaKey), iam)
+		err = datastore.Get(ctx, datastore.NewKey(ctx, "_groupRelationship", memberKey.StringID(), memberKey.IntID(), ancestorMetaKey), iam)
 		if err == nil && ContainsScope(iam.Roles, roles...) {
 			return true
+		}
+	}
+	return false
+}
+
+func ContainsScope(arr []string, scopes ...string) bool {
+	for _, scp := range scopes {
+		for _, r := range arr {
+			if r == scp {
+				return true
+			}
 		}
 	}
 	return false

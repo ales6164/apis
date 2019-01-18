@@ -51,6 +51,8 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	document.SetMember(ctx.Member(), ctx.session.isAuthenticated)
+
 	var err error
 
 	switch r.Method {
