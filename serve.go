@@ -51,12 +51,21 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	document.SetMember(ctx.Member(), ctx.session.isAuthenticated)
+	//document.SetMember(ctx.Member(), ctx.session.isAuthenticated)
+
+
+	// TODO: Check api.Rules for access
+	// TODO: document.HasRole ...
 
 	var err error
 
 	switch r.Method {
 	case http.MethodGet:
+
+		if ok = document.HasRole(ctx.Member()); !ok {
+
+		}
+
 		if document.Key() != nil {
 			document, err = document.Get()
 			if err != nil {

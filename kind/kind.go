@@ -32,7 +32,8 @@ type Doc interface {
 	Kind() Kind
 	Value() reflect.Value
 	Key() *datastore.Key
-	SetMember(member *datastore.Key, isAuthenticated bool)
+	SetRole(member *datastore.Key, role ...string) error
+	HasRole(member *datastore.Key, role ...string) bool
 	/*SetParent(doc Doc) (Doc, error)*/
 }
 

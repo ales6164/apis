@@ -7,7 +7,6 @@ import (
 	"github.com/buger/jsonparser"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
-	"net/http"
 	"reflect"
 	"strings"
 )
@@ -98,13 +97,6 @@ func (d *Document) Get() (kind.Doc, error) {
 	_, m, _, err := kind.Meta(d.ctx, d)
 	if err != nil {
 		return d, err
-	}
-
-	// todo: still need relationship check
-	if m.AncestorKey != nil {
-		if ok := CheckCollectionAccess(d.defaultCtx, d.member, d.isAuthenticated, m.AncestorKey, ReadOnly, ReadWrite, FullControl); !ok {
-			return d, errors.New(http.StatusText(http.StatusForbidden))
-		}
 	}
 
 	d.ctx, d.key, err = kind.SetNamespace(d.ctx, d.key, m.GroupID)
@@ -314,16 +306,7 @@ func (d *Document) Add(data interface{}) (kind.Doc, error) {
 		return d, err
 	}
 
-	// todo: still need relationship check
-	if m.AncestorKey != nil {
-		if ok := CheckCollectionAccess(d.defaultCtx, d.member, d.isAuthenticated, m.AncestorKey, ReadWrite, FullControl); !ok {
-			return d, errors.New(http.StatusText(http.StatusForbidden))
-		}
-	}
-	// todo: add owner then
-
-	d.ctx, d.key, err = kind.SetNamespace(d.ctx, d.key, m.GroupID)
-	if err != nil {
+	if d.ctx, d.key, err = kind.SetNamespace(d.ctx, d.key, m.GroupID); err != nil {
 		return d, err
 	}
 
@@ -355,15 +338,25 @@ func (d *Document) Add(data interface{}) (kind.Doc, error) {
 			return kind.ErrEntityAlreadyExists
 		}, nil)
 	}
-	if err != nil {
-		return d, err
-	}
-	err = OwnerIAM(d.ctx, d.member, m.AncestorKey)
 	return d, err
 }
 
-func (d *Document) AddGroupMember() (kind.Doc, error) {
-	return d, datastore.Get(d.ctx, d.key, d)
+func (d *Document) SetRole(member *datastore.Key, role ...string) error {
+	if d.key == nil || d.key.Incomplete() {
+		return errors.New("can't set role if key is incomplete")
+	}
+	_, err := datastore.Put(d.defaultCtx, datastore.NewKey(d.defaultCtx, "_groupRelationship", d.key.Encode(), 0, member), &GroupRelationship{
+		Roles: role,
+	})
+	return err
+}
+func (d *Document) HasRole(member *datastore.Key, role ...string) bool {
+	var iam = new(GroupRelationship)
+	err := datastore.Get(d.defaultCtx, datastore.NewKey(d.defaultCtx, "_groupRelationship", d.key.Encode(), 0, member), iam)
+	if err == nil && ContainsScope(iam.Roles, role...) {
+		return true
+	}
+	return false
 }
 
 func (d *Document) Kind() kind.Kind {

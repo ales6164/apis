@@ -31,13 +31,6 @@ type Claims struct {
 }
 
 func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, member *datastore.Key, roles ...string) (*Session, error) {
-	/*var noRolesScopes []string
-	for _, s := range roles {
-		if roleScopes, ok := a.a.roles[s]; ok {
-			noRolesScopes = append(noRolesScopes, roleScopes...)
-		}
-	}*/
-
 	now := time.Now()
 	s := &Session{
 		ProviderIdentity: providerIdentity,
@@ -106,6 +99,18 @@ func StartSession(ctx Context, token *jwt.Token) (*Session, error) {
 
 	return s, nil
 }
+
+var(
+	// User groups
+	AllUsers              = "allUsers"              // given to all requests
+	AllAuthenticatedUsers = "allAuthenticatedUsers" // giver to all authenticated requests
+
+	// Scopes
+	FullControl = "fullcontrol"
+	ReadOnly    = "readonly"
+	ReadWrite   = "readwrite"
+	Delete      = "delete"
+)
 
 func (s *Session) HasScope(scopes ...string) bool {
 	return ContainsScope(s.Scopes, scopes...)
