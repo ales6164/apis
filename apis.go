@@ -26,12 +26,11 @@ type Match map[kind.Kind]Rules
 type Roles []string
 
 type Rules struct {
-	FullControl Roles
-	ReadOnly    Roles
-	ReadWrite   Roles
-	Delete      Roles
+	Permissions Permissions
 	Match       Match `json:"-"`
 }
+
+type Permissions map[string]Roles
 
 func New(options *Options) *Apis {
 	if options == nil {

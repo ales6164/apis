@@ -34,6 +34,7 @@ type Doc interface {
 	Key() *datastore.Key
 	SetRole(member *datastore.Key, role ...string) error
 	HasRole(member *datastore.Key, role ...string) bool
+	HasAncestor() bool
 	/*SetParent(doc Doc) (Doc, error)*/
 }
 

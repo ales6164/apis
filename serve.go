@@ -13,10 +13,6 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 	rules := a.Rules
 
 	ctx := a.NewContext(w, r)
-	var ok bool
-	if ctx, ok = ctx.WithSession(); !ok {
-		return
-	}
 
 	var document kind.Doc
 
@@ -53,7 +49,6 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 
 	//document.SetMember(ctx.Member(), ctx.session.isAuthenticated)
 
-
 	// TODO: Check api.Rules for access
 	// TODO: document.HasRole ...
 
@@ -61,9 +56,18 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
+		// check rules
+		if ok := ctx.HasAccess(rules, ReadOnly, ReadWrite, FullControl); !ok {
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
 
-		if ok = document.HasRole(ctx.Member()); !ok {
-
+		// check group access
+		if document.HasAncestor() {
+			if ok := document.Ancestor().HasRole(ctx.Member(), ReadOnly, ReadWrite, FullControl); !ok {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
 		}
 
 		if document.Key() != nil {
@@ -81,10 +85,29 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 			ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 		}
 	case http.MethodPost:
+		// check rules
+		if ok := ctx.HasAccess(rules, ReadWrite, FullControl); !ok {
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+
+		// check group access
+		if document.HasAncestor() {
+			if ok := document.Ancestor().HasRole(ctx.Member(), ReadWrite, FullControl); !ok {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
+		}
+
 		if document.Key() != nil {
 			ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 		} else {
 			document, err = document.Add(ctx.Body())
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
+			}
+			err = document.SetRole(ctx.Member(), FullControl)
 			if err != nil {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
@@ -98,6 +121,17 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 
 	//collector.ServeContent(r.Method, rules)
 }
+
+/*func ContainsScope(arr []string, scopes ...string) bool {
+	for _, scp := range scopes {
+		for _, r := range arr {
+			if r == scp {
+				return true
+			}
+		}
+	}
+	return false
+}*/
 
 func getPath(p string) []string {
 	if p[:1] == "/" {

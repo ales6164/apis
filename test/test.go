@@ -39,15 +39,21 @@ func init() {
 		Rules: apis.Rules{
 			Match: apis.Match{
 				projects: apis.Rules{
-					FullControl: []string{apis.AllUsers},
+					Permissions: apis.Permissions{
+						apis.AllUsers: []string{apis.FullControl},
+					},
 					Match: apis.Match{
 						objects: apis.Rules{
-							FullControl: []string{apis.AllUsers},
+							Permissions: apis.Permissions{
+								apis.AllUsers: []string{apis.FullControl},
+							},
 						},
 					},
 				},
 				objects: apis.Rules{
-					FullControl: []string{apis.AllUsers},
+					Permissions: apis.Permissions{
+						apis.AllUsers: []string{apis.FullControl},
+					},
 				},
 			},
 		},

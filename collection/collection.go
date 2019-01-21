@@ -250,11 +250,12 @@ func (c *Collection) Doc(ctx context.Context, key *datastore.Key, ancestor kind.
 		key = nil
 	}
 	return &Document{
-		kind:       c,
-		defaultCtx: ctx,
-		ctx:        ctx,
-		value:      reflect.New(c.t),
-		key:        key,
-		ancestor:   ancestor,
+		kind:        c,
+		defaultCtx:  ctx,
+		ctx:         ctx,
+		value:       reflect.New(c.t),
+		key:         key,
+		ancestor:    ancestor,
+		hasAncestor: ancestor != nil,
 	}
 }

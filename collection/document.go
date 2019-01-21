@@ -23,6 +23,7 @@ type Document struct {
 	isAuthenticated    bool
 	rollbackProperties []datastore.Property
 	ancestor           kind.Doc
+	hasAncestor        bool
 	kind.Doc
 }
 
@@ -82,6 +83,10 @@ func (d *Document) Parse(body []byte) error {
 
 func (d *Document) Ancestor() kind.Doc {
 	return d.ancestor
+}
+
+func (d *Document) HasAncestor() bool {
+	return d.hasAncestor
 }
 
 const (
@@ -350,6 +355,7 @@ func (d *Document) SetRole(member *datastore.Key, role ...string) error {
 	})
 	return err
 }
+
 func (d *Document) HasRole(member *datastore.Key, role ...string) bool {
 	var iam = new(GroupRelationship)
 	err := datastore.Get(d.defaultCtx, datastore.NewKey(d.defaultCtx, "_groupRelationship", d.key.Encode(), 0, member), iam)

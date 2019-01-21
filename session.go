@@ -1,7 +1,6 @@
 package apis
 
 import (
-	"errors"
 	"github.com/dgrijalva/jwt-go"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
@@ -20,7 +19,7 @@ type Session struct {
 	CreatedAt        time.Time
 	ExpiresAt        time.Time
 	IsBlocked        bool
-	Scopes           []string
+	Roles            []string
 	token            *jwt.Token `datastore:"-"`
 }
 
@@ -38,7 +37,7 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, m
 		CreatedAt:        now,
 		ExpiresAt:        now.Add(time.Second * time.Duration(a.TokenExpiresIn)),
 		IsBlocked:        false,
-		Scopes:           roles,
+		Roles:            roles,
 	}
 
 	sKey := datastore.NewIncompleteKey(ctx, SessionKind, nil)
@@ -70,37 +69,35 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, m
 	return s, nil
 }
 
-func StartSession(ctx Context, token *jwt.Token) (*Session, error) {
+func StartSession(ctx Context, token *jwt.Token) *Session {
 	var err error
 	var s = new(Session)
 	if token != nil {
 		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
 			err = datastore.Get(ctx, claims.Id, s)
 			if err != nil {
-				return s, err
+				return s
 			}
 			if s.IsBlocked {
-				return s, errors.New("session expired")
+				return s
 			}
 
 			s.isAuthenticated = true
-			s.Scopes = append(s.Scopes, AllAuthenticatedUsers)
+			s.Roles = append(s.Roles, AllAuthenticatedUsers)
 			s.token = token
 		} else {
-			return s, errors.New("invalid claims type")
+			return s
 		}
 	}
-
 	s.isValid = true
-	s.Scopes = append(s.Scopes, AllUsers)
+	s.Roles = append(s.Roles, AllUsers)
 	if !s.isAuthenticated {
 		s.Member = datastore.NewKey(ctx, "Group", AllUsers, 0, nil)
 	}
-
-	return s, nil
+	return s
 }
 
-var(
+var (
 	// User groups
 	AllUsers              = "allUsers"              // given to all requests
 	AllAuthenticatedUsers = "allAuthenticatedUsers" // giver to all authenticated requests
@@ -112,8 +109,8 @@ var(
 	Delete      = "delete"
 )
 
-func (s *Session) HasScope(scopes ...string) bool {
-	return ContainsScope(s.Scopes, scopes...)
+func (s *Session) HasRole(roles ...string) bool {
+	return ContainsScope(s.Roles, roles...)
 }
 
 // extend by seconds from now

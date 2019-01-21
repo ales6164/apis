@@ -19,32 +19,32 @@ type Context struct {
 	hasReadBody bool
 	body        []byte
 	session     *Session
-	groupKey    *datastore.Key
-	key         *datastore.Key
 }
 
 func (a *Apis) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context) {
-	return Context{Context: appengine.NewContext(r), w: w, r: r, a: a}
-}
-
-func (ctx Context) WithSession() (Context, bool) {
+	ctx = Context{Context: appengine.NewContext(r), w: w, r: r, a: a}
 	var token *jwt.Token
 	if ctx.a.hasAuth {
 		token, _ = ctx.a.auth.middleware.CheckJWT(ctx.w, ctx.r)
 	}
-	var err error
-	ctx.session, err = StartSession(ctx, token)
-	if err != nil {
-		ctx.PrintError(err.Error(), http.StatusForbidden)
-		return ctx, false
-	}
-	return ctx, true
+	ctx.session = StartSession(ctx, token)
+	return ctx
 }
 
-func (ctx Context) HasRole(roles ...Roles) bool {
-	for _, rs := range roles {
-		if ok := ctx.session.HasScope(rs...); ok {
-			return true
+func (ctx Context) HasAccess(rules Rules, scopes ...string) bool {
+	var ruleScopes []string
+	if ctx.session.isValid {
+		for key, value := range rules.Permissions {
+			if ctx.session.HasRole(key) {
+				ruleScopes = append(ruleScopes, value...)
+			}
+		}
+		for _, s := range scopes {
+			for _, s2 := range ruleScopes {
+				if s == s2 {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -58,18 +58,6 @@ func (ctx Context) Body() []byte {
 		ctx.hasReadBody = true
 	}
 	return ctx.body
-}
-
-func (ctx Context) HasScope(scopes ...string) bool {
-	return ctx.session.HasScope(scopes...)
-}
-
-func (ctx Context) Group() *datastore.Key {
-	return ctx.groupKey
-}
-
-func (ctx Context) Key() *datastore.Key {
-	return ctx.key
 }
 
 func (ctx Context) Member() *datastore.Key {
