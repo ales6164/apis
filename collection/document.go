@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-type Document struct {
+type document struct {
 	kind               kind.Kind
 	member             *datastore.Key
 	defaultCtx         context.Context
@@ -20,15 +20,76 @@ type Document struct {
 	value              reflect.Value
 	hasInputData       bool // when updating
 	hasLoadedData      bool
-	isAuthenticated    bool
 	rollbackProperties []datastore.Property
 	ancestor           kind.Doc
 	hasAncestor        bool
+	meta               *meta
 	kind.Doc
 }
 
 type DocumentCollectionRelationship struct {
 	Roles []string // fullControl, ...
+}
+
+func NewDoc(ctx context.Context, kind kind.Kind, key *datastore.Key, ancestor kind.Doc) (*document, error) {
+	if key != nil && key.Kind() != kind.Name() {
+		key = nil
+	}
+	doc := &document{
+		kind:        kind,
+		defaultCtx:  ctx,
+		ctx:         ctx,
+		value:       reflect.New(kind.Type()),
+		key:         key,
+		ancestor:    ancestor,
+		hasAncestor: ancestor != nil,
+	}
+
+	_, err := doc.Meta()
+
+	return doc, err
+}
+
+func (d *document) Meta() (kind.Meta, error) {
+	var err error
+	var ancestorMeta kind.Meta
+	if d.hasAncestor {
+		ancestorMeta, err = d.ancestor.Meta()
+		if err != nil {
+			return d.meta, err
+		}
+	}
+
+	if d.meta != nil {
+		return d.meta, nil
+	}
+
+	if d.key == nil {
+		d.key = datastore.NewIncompleteKey(d.defaultCtx, d.Kind().Name(), nil)
+	}
+
+	d.meta, err = getMeta(d.defaultCtx, d, ancestorMeta)
+	if err != nil {
+		return d.meta, err
+	}
+
+	if d.ctx, d.key, err = SetNamespace(d.ctx, d.key, d.meta.value.GroupId); err != nil {
+		return d.meta, err
+	}
+
+	return d.meta, err
+}
+
+func (d *document) Commit() error {
+	if d.meta == nil {
+		return errors.New("entry doesn't match meta")
+	}
+	err := d.meta.Save(d.defaultCtx, d, d.meta.group)
+	return err
+}
+
+func (d *document) Context() context.Context {
+	return d.ctx
 }
 
 /*
@@ -47,19 +108,45 @@ var (
 	keyType = reflect.TypeOf(&datastore.Key{})
 )
 
-func (d *Document) Value() reflect.Value {
+func (d *document) Value() reflect.Value {
 	return d.value
 }
 
-func (d *Document) Key() *datastore.Key {
+func (d *document) Key() *datastore.Key {
 	return d.key
 }
 
-func (d *Document) Type() reflect.Type {
+// SetKey(key *datastore.Key)
+//	Copy() Doc
+
+func (d *document) SetKey(key *datastore.Key) {
+	if key != nil && key.Kind() != d.kind.Name() {
+		key = nil
+	}
+	d.key = key
+}
+
+func (d *document) Copy() kind.Doc {
+	return &document{
+		kind:               d.kind,
+		member:             d.member,
+		defaultCtx:         d.defaultCtx,
+		ctx:                d.ctx,
+		key:                d.key,
+		value:              reflect.New(d.kind.Type()),
+		hasInputData:       d.hasAncestor,
+		hasLoadedData:      d.hasLoadedData,
+		rollbackProperties: d.rollbackProperties,
+		ancestor:           d.ancestor,
+		hasAncestor:        d.hasAncestor,
+	}
+}
+
+func (d *document) Type() reflect.Type {
 	return d.kind.Type()
 }
 
-func (d *Document) Parse(body []byte) error {
+func (d *document) Parse(body []byte) error {
 	d.hasInputData = true
 	var value = reflect.New(d.Type()).Interface()
 	err := json.Unmarshal(body, &value)
@@ -69,7 +156,7 @@ func (d *Document) Parse(body []byte) error {
 
 // Loads relationship table and checks if user has access to the specified namespace.
 // Then adds the parent and rewrites document key and context.
-/*func (d *Document) SetParent(doc kind.Doc) (kind.Doc, error) {
+/*func (d *document) SetParent(doc kind.Doc) (kind.Doc, error) {
 	if doc != nil {
 		m, err := kind.GetMeta(d.ctx, doc)
 		if err != nil {
@@ -81,11 +168,11 @@ func (d *Document) Parse(body []byte) error {
 	return d, nil
 }*/
 
-func (d *Document) Ancestor() kind.Doc {
+func (d *document) Ancestor() kind.Doc {
 	return d.ancestor
 }
 
-func (d *Document) HasAncestor() bool {
+func (d *document) HasAncestor() bool {
 	return d.hasAncestor
 }
 
@@ -98,21 +185,11 @@ const (
 	op_copy    = "copy"
 )
 
-func (d *Document) Get() (kind.Doc, error) {
-	_, m, _, err := kind.Meta(d.ctx, d)
-	if err != nil {
-		return d, err
-	}
-
-	d.ctx, d.key, err = kind.SetNamespace(d.ctx, d.key, m.GroupID)
-	if err != nil {
-		return d, err
-	}
-
+func (d *document) Get() (kind.Doc, error) {
 	return d, datastore.Get(d.ctx, d.key, d)
 }
 
-func (d *Document) Patch(data []byte) error {
+func (d *document) Patch(data []byte) error {
 	var endErr error
 	var cb = func(err error) {
 		endErr = err
@@ -247,11 +324,17 @@ func (d *Document) Patch(data []byte) error {
 	return endErr
 }
 
-func (d *Document) Delete() error {
-	return datastore.Delete(d.ctx, d.key)
+func (d *document) Delete() error {
+	return datastore.RunInTransaction(d.ctx, func(tc context.Context) error {
+		err := datastore.Delete(tc, d.key)
+		if err != nil {
+			return err
+		}
+		return d.kind.Decrement(tc)
+	}, &datastore.TransactionOptions{XG: true})
 }
 
-func (d *Document) Set(data interface{}) (kind.Doc, error) {
+func (d *document) Set(data interface{}) (kind.Doc, error) {
 	var err error
 	if d.key == nil || d.key.Incomplete() {
 		return d, errors.New("can't set value for undefined key")
@@ -274,14 +357,13 @@ func (d *Document) Set(data interface{}) (kind.Doc, error) {
 	return d, err
 }
 
-func (d *Document) SetMember(member *datastore.Key, isAuthenticated bool) {
+func (d *document) SetMember(member *datastore.Key) {
 	d.member = member
-	d.isAuthenticated = isAuthenticated
 }
 
 // todo: some function for giving access to this document
 // Run from inside a transaction.
-func (d *Document) Add(data interface{}) (kind.Doc, error) {
+func (d *document) Add(data interface{}) (kind.Doc, error) {
 	// 1. Parse value
 	var err error
 	var value reflect.Value
@@ -305,48 +387,46 @@ func (d *Document) Add(data interface{}) (kind.Doc, error) {
 		d.key = datastore.NewIncompleteKey(d.ctx, d.Kind().Name(), nil)
 	}
 
-	// 3. Set namespace
-	_, m, deferFun, err := kind.Meta(d.ctx, d)
-	if err != nil {
-		return d, err
-	}
-
-	if d.ctx, d.key, err = kind.SetNamespace(d.ctx, d.key, m.GroupID); err != nil {
-		return d, err
-	}
-
 	// 4. Store value
 	if d.key.Incomplete() {
 		d.value.Elem().Set(value)
 		err = datastore.RunInTransaction(d.ctx, func(tc context.Context) error {
-			d.key, err = datastore.Put(d.ctx, d.key, d)
+			d.key, err = datastore.Put(tc, d.key, d)
 			if err != nil {
 				return err
 			}
-			return deferFun()
-		}, nil)
+			err = d.kind.Increment(tc)
+			if err != nil {
+				return err
+			}
+			return d.Commit()
+		}, &datastore.TransactionOptions{XG: true})
 	} else {
-		err = datastore.RunInTransaction(d.ctx, func(ctx context.Context) error {
-			err = datastore.Get(ctx, d.key, d)
+		err = datastore.RunInTransaction(d.ctx, func(tc context.Context) error {
+			err = datastore.Get(tc, d.key, d)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					// ok
 					d.value.Elem().Set(value)
-					d.key, err = datastore.Put(ctx, d.key, d)
+					d.key, err = datastore.Put(tc, d.key, d)
 					if err != nil {
 						return err
 					}
-					return deferFun()
+					err = d.kind.Increment(tc)
+					if err != nil {
+						return err
+					}
+					return d.Commit()
 				}
 				return err
 			}
 			return kind.ErrEntityAlreadyExists
-		}, nil)
+		}, &datastore.TransactionOptions{XG: true})
 	}
 	return d, err
 }
 
-func (d *Document) SetRole(member *datastore.Key, role ...string) error {
+func (d *document) SetRole(member *datastore.Key, role ...string) error {
 	if d.key == nil || d.key.Incomplete() {
 		return errors.New("can't set role if key is incomplete")
 	}
@@ -356,7 +436,7 @@ func (d *Document) SetRole(member *datastore.Key, role ...string) error {
 	return err
 }
 
-func (d *Document) HasRole(member *datastore.Key, role ...string) bool {
+func (d *document) HasRole(member *datastore.Key, role ...string) bool {
 	var iam = new(GroupRelationship)
 	err := datastore.Get(d.defaultCtx, datastore.NewKey(d.defaultCtx, "_groupRelationship", d.key.Encode(), 0, member), iam)
 	if err == nil && ContainsScope(iam.Roles, role...) {
@@ -365,11 +445,11 @@ func (d *Document) HasRole(member *datastore.Key, role ...string) bool {
 	return false
 }
 
-func (d *Document) Kind() kind.Kind {
+func (d *document) Kind() kind.Kind {
 	return d.kind
 }
 
-func (d *Document) Load(ps []datastore.Property) error {
+func (d *document) Load(ps []datastore.Property) error {
 	d.hasLoadedData = true
 	d.rollbackProperties = ps
 	if d.hasInputData {
@@ -385,7 +465,7 @@ func (d *Document) Load(ps []datastore.Property) error {
 	return err
 }
 
-func (d *Document) Save() ([]datastore.Property, error) {
+func (d *document) Save() ([]datastore.Property, error) {
 	//var now = reflect.ValueOf(time.Now())
 	//v := reflect.ValueOf(d.value).Elem()
 	/*for _, meta := range d.Kind.MetaFields {

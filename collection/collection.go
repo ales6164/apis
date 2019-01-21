@@ -245,17 +245,6 @@ func (c *Collection) Data(doc kind.Doc) interface{} {
 	return reflectValue.Interface()
 }
 
-func (c *Collection) Doc(ctx context.Context, key *datastore.Key, ancestor kind.Doc) kind.Doc {
-	if key != nil && key.Kind() != c.name {
-		key = nil
-	}
-	return &Document{
-		kind:        c,
-		defaultCtx:  ctx,
-		ctx:         ctx,
-		value:       reflect.New(c.t),
-		key:         key,
-		ancestor:    ancestor,
-		hasAncestor: ancestor != nil,
-	}
+func (c *Collection) Doc(ctx context.Context, key *datastore.Key, ancestor kind.Doc) (kind.Doc, error) {
+	return NewDoc(ctx, c, key, ancestor)
 }

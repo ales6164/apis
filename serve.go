@@ -4,6 +4,7 @@ import (
 	"github.com/ales6164/apis/kind"
 	"google.golang.org/appengine/datastore"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -34,7 +35,7 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
-				document = k.Doc(ctx, key, document)
+				document, err = k.Doc(ctx, key, document)
 
 				if err != nil {
 					ctx.PrintError(err.Error(), http.StatusBadRequest)
@@ -70,7 +71,7 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if document.Key() != nil {
+		if !document.Key().Incomplete() {
 			document, err = document.Get()
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
@@ -82,7 +83,13 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 			}
 			ctx.PrintJSON(document.Kind().Data(document), http.StatusOK)
 		} else {
-			ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+			queryResults, err := Query(document, ctx.r, ctx.r.URL.Query())
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			ctx.PrintJSON(queryResults.Items, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
 		}
 	case http.MethodPost:
 		// check rules
@@ -99,7 +106,7 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if document.Key() != nil {
+		if !document.Key().Incomplete() {
 			ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 		} else {
 			document, err = document.Add(ctx.Body())
@@ -108,6 +115,58 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			err = document.SetRole(ctx.Member(), FullControl)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
+			}
+			ctx.PrintJSON(document.Kind().Data(document), http.StatusOK)
+		}
+	case http.MethodDelete:
+		// check rules
+		if ok := ctx.HasAccess(rules, Delete, FullControl); !ok {
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+
+		// check group access
+		if document.HasAncestor() {
+			if ok := document.Ancestor().HasRole(ctx.Member(), Delete, FullControl); !ok {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
+		}
+
+		if !document.Key().Incomplete() {
+			ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+		} else {
+			err = document.Delete()
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			ctx.PrintStatus(http.StatusText(http.StatusOK), http.StatusOK)
+		}
+
+	case http.MethodPut:
+		// check rules
+		if ok := ctx.HasAccess(rules, ReadWrite, FullControl); !ok {
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+
+		// check group access
+		if document.HasAncestor() {
+			if ok := document.Ancestor().HasRole(ctx.Member(), ReadWrite, FullControl); !ok {
+				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
+		}
+
+		if document.Key().Incomplete() {
+			ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+		} else {
+			document, err = document.Set(ctx.Body())
 			if err != nil {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return

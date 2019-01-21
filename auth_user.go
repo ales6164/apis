@@ -20,7 +20,11 @@ var UserKind = collection.New("users", User{})
 // TrustUserEmail should be always false.
 func (a *Auth) CreateUser(ctx context.Context, userEmail string, trustUserEmail bool) (kind.Doc, error) {
 	userKey := datastore.NewKey(ctx, UserKind.Name(), userEmail, 0, nil)
-	userHolder, err := UserKind.Doc(ctx, userKey, nil).Add(&User{
+	userHolder, err :=  UserKind.Doc(ctx, userKey, nil)
+	if err != nil {
+		return userHolder, nil
+	}
+	userHolder, err = userHolder.Add(&User{
 		Id:             userEmail,
 		EmailConfirmed: trustUserEmail,
 		Email:          userEmail,

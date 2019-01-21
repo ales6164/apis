@@ -1,4 +1,4 @@
-package kind
+package collection
 
 import (
 	"golang.org/x/net/context"

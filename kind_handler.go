@@ -1,5 +1,13 @@
 package apis
 
+import (
+	"github.com/ales6164/apis/kind"
+	"google.golang.org/appengine/datastore"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
 type QueryResult struct {
 	Items      []interface{}
 	Total      int
@@ -17,13 +25,13 @@ Filters param is an array of filter pairs:
 filters[0][filterStr] "fieldName >"
 filters[0][value] "fieldValue"
  */
-/*func (k *Kind) Query(ctx Context, params map[string][]string) (QueryResult, error) {
+func Query(doc kind.Doc, req *http.Request, params map[string][]string) (QueryResult, error) {
 	r := QueryResult{
 		Limit: 25,
 		Items: []interface{}{},
 	}
 
-	q := datastore.NewQuery(k.Name)
+	q := datastore.NewQuery(doc.Kind().Name())
 	var filterMap = map[string]map[string]string{}
 	for name, values := range params {
 		switch name {
@@ -72,22 +80,22 @@ filters[0][value] "fieldValue"
 	q = q.Offset(r.Offset)
 
 	var err error
-	r.Total, err = Count(ctx, k.Name)
+	r.Total, err = doc.Kind().Count(doc.Context())
 	if err != nil {
 		return r, err
 	}
 
-	t := q.Run(ctx)
+	t := q.Run(doc.Context())
 	for {
-		var h = k.NewHolder(nil)
-		h.Key, err = t.Next(h)
-
+		var h = doc.Copy()
+		key, err := t.Next(h)
+		h.SetKey(key)
 		if err == datastore.Done {
 			break
 		}
 
 		r.Count++
-		r.Items = append(r.Items, h.GetValue())
+		r.Items = append(r.Items, doc.Kind().Data(h))
 	}
 
 	if r.Count > 0 {
@@ -99,36 +107,36 @@ filters[0][value] "fieldValue"
 	var linkHeader []string
 	if (r.Total - r.Offset - r.Count) > 0 {
 		// has more items to fetch
-		q := ctx.r.URL.Query()
+		q := req.URL.Query()
 		q.Set("offset", strconv.Itoa(r.Offset+r.Count))
-		linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.r)+ctx.r.URL.Path+"?"+q.Encode()+`>; rel="next"`)
+		linkHeader = append(linkHeader, "<"+getSchemeAndHost(req)+req.URL.Path+"?"+q.Encode()+`>; rel="next"`)
 		if (r.Total - r.Offset - r.Count - r.Limit) > 0 {
 			// next is not last
-			q := ctx.r.URL.Query()
+			q := req.URL.Query()
 			q.Set("offset", strconv.Itoa(r.Total+r.Limit))
-			linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.r)+ctx.r.URL.Path+"?"+q.Encode()+`>; rel="last"`)
+			linkHeader = append(linkHeader, "<"+getSchemeAndHost(req)+req.URL.Path+"?"+q.Encode()+`>; rel="last"`)
 		}
 	}
 	if r.Offset > 0 {
 		// get previous link
-		q := ctx.r.URL.Query()
+		q := req.URL.Query()
 		offset := r.Offset - r.Limit
 		if offset < 0 {
 			offset = 0
 		}
 		q.Set("offset", strconv.Itoa(r.Offset-r.Limit))
-		linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.r)+ctx.r.URL.Path+"?"+q.Encode()+`>; rel="prev"`)
+		linkHeader = append(linkHeader, "<"+getSchemeAndHost(req)+req.URL.Path+"?"+q.Encode()+`>; rel="prev"`)
 		if offset > 0 {
 			// previous is not first
 			q.Set("offset", "0")
-			linkHeader = append(linkHeader, "<"+getSchemeAndHost(ctx.r)+ctx.r.URL.Path+"?"+q.Encode()+`>; rel="first"`)
+			linkHeader = append(linkHeader, "<"+getSchemeAndHost(req)+req.URL.Path+"?"+q.Encode()+`>; rel="first"`)
 		}
 	}
 
 	r.LinkHeader = strings.Join(linkHeader, ",")
 
 	return r, nil
-}*/
+}
 
 /*
 /kinds QUERY, POST
