@@ -36,6 +36,7 @@ func init() {
 
 	// Set-up API, define user roles and permissions
 	api := apis.New(&apis.Options{
+		Auth: auth,
 		Rules: apis.Rules{
 			Match: apis.Match{
 				projects: apis.Rules{
@@ -93,7 +94,7 @@ func init() {
 	})*/
 
 	// Serve
-	http.Handle("/", api)
+	http.Handle("/", api.Handler())
 }
 
 // Collections

@@ -5,10 +5,8 @@ import (
 	"github.com/ales6164/apis"
 	"github.com/asaskevich/govalidator"
 	"github.com/buger/jsonparser"
-	"golang.org/x/net/context"
-	"google.golang.org/appengine/datastore"
+	"github.com/gorilla/mux"
 	"net/http"
-	"github.com/ales6164/apis/kind"
 )
 
 var (
@@ -38,7 +36,7 @@ func New(config *Config) *Provider {
 	}
 }
 
-func (p *Provider) GetName() string {
+func (p *Provider) Name() string {
 	return "emailpassword"
 }
 
@@ -68,20 +66,19 @@ func (p *Provider) Login(ctx apis.Context) {
 		return
 	}
 
-	identity, err := p.GetIdentity(ctx, p, email, password)
+	// create user
+	identity, err := p.Auth.GetIdentity(ctx, p, email, password)
 	if err != nil {
-		ctx.PrintError(err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	user, err := identity.GetUser(ctx)
-	if err != nil {
-		ctx.PrintError(err.Error(), http.StatusInternalServerError)
+		ctx.PrintError(err.Error(), http.StatusConflict)
 		return
 	}
 
 	// create session
-	session, err := p.NewSession(ctx, identity.Id, identity.User, user.Roles...)
+	session, err := p.NewSession(ctx, identity.IdentityKey, identity.UserKey, identity.User.Roles...)
+	if err != nil {
+		ctx.PrintError(err.Error(), http.StatusConflict)
+		return
+	}
 
 	signedToken, err := p.Auth.SignedToken(session)
 	if err != nil {
@@ -90,7 +87,7 @@ func (p *Provider) Login(ctx apis.Context) {
 	}
 
 	ctx.PrintJSON(apis.AuthResponse{
-		User: user,
+		User: identity.User,
 		Token: apis.Token{
 			Id:        signedToken,
 			ExpiresAt: session.ExpiresAt.Unix(),
@@ -124,25 +121,15 @@ func (p *Provider) Register(ctx apis.Context) {
 		return
 	}
 
-	var userDoc kind.Doc
-	var user *apis.User
-	var session *apis.Session
-	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
-		// connect identity to account
-		var err error
-		userDoc, err = p.CreateUser(tc, email, false)
-		if err != nil {
-			return err
-		}
-		user = apis.UserKind.Data(userDoc).(*apis.User)
-		identity, err := p.CreateIdentity(ctx, p, userDoc.Key(), password)
-		if err != nil {
-			return err
-		}
-		// create session
-		session, err = p.NewSession(ctx, identity.Id, userDoc.Key(), user.Roles...)
-		return err
-	}, &datastore.TransactionOptions{XG: true})
+	// create user
+	identity, err := p.Auth.CreateUser(ctx, p, email, false, password)
+	if err != nil {
+		ctx.PrintError(err.Error(), http.StatusConflict)
+		return
+	}
+
+	// create session
+	session, err := p.NewSession(ctx, identity.IdentityKey, identity.UserKey, identity.User.Roles...)
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusConflict)
 		return
@@ -155,7 +142,7 @@ func (p *Provider) Register(ctx apis.Context) {
 	}
 
 	ctx.PrintJSON(apis.AuthResponse{
-		User: user,
+		User: identity.User,
 		Token: apis.Token{
 			Id:        signedToken,
 			ExpiresAt: session.ExpiresAt.Unix(),
@@ -167,6 +154,15 @@ func (p *Provider) Callback(ctx apis.Context) {
 
 }
 
-func (p *Provider) ServeHTTP(ctx apis.Context) {
-
+func (p *Provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	path := mux.Vars(r)["path"]
+	ctx := p.Auth.NewContext(w, r)
+	if len(path) > 0 {
+		switch path {
+		case "login":
+			p.Login(ctx)
+		case "register":
+			p.Register(ctx)
+		}
+	}
 }

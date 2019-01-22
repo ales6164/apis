@@ -7,7 +7,7 @@ import (
 )
 
 type Auth struct {
-	a *Apis
+	*Apis
 	*AuthOptions
 	middleware *JWTMiddleware
 }

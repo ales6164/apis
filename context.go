@@ -25,7 +25,7 @@ func (a *Apis) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context) 
 	ctx = Context{Context: appengine.NewContext(r), w: w, r: r, a: a}
 	var token *jwt.Token
 	if ctx.a.hasAuth {
-		token, _ = ctx.a.auth.middleware.CheckJWT(ctx.w, ctx.r)
+		token, _ = ctx.a.Auth.middleware.CheckJWT(ctx.w, ctx.r)
 	}
 	ctx.session = StartSession(ctx, token)
 	return ctx

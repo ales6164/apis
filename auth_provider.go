@@ -2,23 +2,19 @@ package apis
 
 import (
 	"fmt"
+	"net/http"
 )
 
 type Provider interface {
-	GetName() string
-
+	Name() string
 	ConfigAuth(*Auth)
-	Login(Context)
-	Logout(Context)
-	Register(Context)
-	Callback(Context)
-	ServeHTTP(Context)
+	http.Handler
 }
 
 func (a *Auth) RegisterProvider(provider Provider) {
-	name := provider.GetName()
+	name := provider.Name()
 	for _, p := range a.providers {
-		if p.GetName() == name {
+		if p.Name() == name {
 			fmt.Printf("warning: auth provider %v already registered", name)
 			return
 		}
@@ -31,7 +27,7 @@ func (a *Auth) RegisterProvider(provider Provider) {
 // GetProvider get provider with name
 func (a *Auth) GetProvider(name string) Provider {
 	for _, provider := range a.providers {
-		if provider.GetName() == name {
+		if provider.Name() == name {
 			return provider
 		}
 	}

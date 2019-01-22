@@ -10,15 +10,15 @@ import (
 type Apis struct {
 	//router *mux.Router
 	*Options
-	auth       *Auth
-	hasAuth    bool
-	authRouter *mux.Router
-	kinds      map[string]kind.Kind
+	hasAuth bool
+	kinds   map[string]kind.Kind
 	//roles      map[string][]string
-	http.Handler
+	//http.Handler
+	router *mux.Router
 }
 
 type Options struct {
+	Auth  *Auth
 	Rules Rules
 }
 
@@ -43,8 +43,58 @@ func New(options *Options) *Apis {
 		kinds: map[string]kind.Kind{},
 	}
 
+	a.router = mux.NewRouter()
+
+	if a.Auth != nil {
+		a.hasAuth = true
+		a.Auth.Apis = a
+		for _, p := range a.Auth.providers {
+			a.router.Handle(`/auth/`+p.Name()+`/{path:[a-zA-Z0-9=\-\/]+}`, p)
+		}
+	}
+
+	a.router.HandleFunc(`/{path:[a-zA-Z0-9=\-\/]+}`, func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers",
+				"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
+					"X-Requested-With")
+		}
+
+		if r.Method == http.MethodOptions {
+			return
+		}
+
+		a.serve(w, r)
+	})
+
 	return a
 }
+
+/*func (a *Apis) SetAuth(auth *Auth) {
+	a.auth = auth
+	auth.a = a
+	a.hasAuth = auth != nil
+	for _, p := range auth.providers {
+		a.authRouter.HandleFunc(joinPath(p.GetName(), "login"), func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+			p.Login(ctx)
+		}).Methods(http.MethodPost)
+		a.authRouter.HandleFunc(joinPath(p.GetName(), "register"), func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := a.NewContext(w, r)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusForbidden)
+				return
+			}
+			p.Register(ctx)
+		}).Methods(http.MethodPost)
+	}
+}*/
 
 func (a *Apis) HandleKind(k kind.Kind) {
 	a.kinds[k.Name()] = k
@@ -62,21 +112,8 @@ type PathPair struct {
 	Rules          Rules          `json:"rules"`
 }
 
-func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if origin := r.Header.Get("Origin"); origin != "" {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers",
-			"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
-				"X-Requested-With")
-	}
-
-	if r.Method == http.MethodOptions {
-		return
-	}
-
-	a.serve(w, r)
-	return
+func (a *Apis) Handler() http.Handler {
+	return a.router
 }
 
 // TODO: before finishing all methods figure out how to handle group keys and keys containing namespace
