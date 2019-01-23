@@ -1,6 +1,8 @@
 package apis
 
 import (
+	"errors"
+	"github.com/ales6164/apis/collection"
 	"github.com/ales6164/apis/kind"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/net/context"
@@ -9,7 +11,6 @@ import (
 )
 
 const IdentityKind = "_identity"
-const UserKind = "_user"
 
 type Identity struct {
 	User        *User          `datastore:"-" json:"-"`
@@ -28,41 +29,59 @@ type User struct {
 	Roles          []string `json:"roles"`
 }
 
+var (
+	UserCollection = collection.New("users", User{})
+)
+
 // Creates identity - should not exist; creates user if doesn't exist, otherwise connects user to the new identity if trustEmail is true
 func (a *Auth) CreateUser(ctx context.Context, provider Provider, userEmail string, trustUserEmail bool, unlockKey string) (*Identity, error) {
 	// 1. Create identity and user
-	userKey := datastore.NewKey(ctx, UserKind, userEmail, 0, nil)
+	userKey := datastore.NewKey(ctx, UserCollection.Name(), userEmail, 0, nil)
+	var userDocument kind.Doc
+
 	identityKey := datastore.NewKey(ctx, IdentityKind, provider.Name()+":"+userEmail, 0, userKey)
 	var user = new(User)
 	var identity = new(Identity)
 
 	err := datastore.RunInTransaction(ctx, func(ctx context.Context) error {
+		var err error
+		userDocument, err = UserCollection.Doc(ctx, userKey, nil)
+		if err != nil {
+			return err
+		}
 
-		err := datastore.Get(ctx, identityKey, identity)
+		err = datastore.Get(ctx, identityKey, identity)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
 				// ok
 
-				// get user
-				err = datastore.Get(ctx, userKey, user)
-				if err != nil {
-					if err == datastore.ErrNoSuchEntity {
-						// user doesn't exist -- VERY SAFE
-						// create user
+				if !userDocument.Exists() {
+					// user doesn't exist -- VERY SAFE
+					// create user
+					user.Email = userEmail
+					user.EmailConfirmed = trustUserEmail
+					user.Roles = a.DefaultRoles
 
-						user.Email = userEmail
-						user.EmailConfirmed = trustUserEmail
-						user.Roles = a.DefaultRoles
+					userDocument, err = userDocument.Set(user)
+					if err != nil {
+						return err
+					}
 
-						_, err = datastore.Put(ctx, userKey, user)
-						if err != nil {
-							return err
-						}
-					} else {
+					err = userDocument.SetRole(userDocument.Key(), FullControl)
+					if err != nil {
 						return err
 					}
 				} else {
 					// user exists -- OOPS!!!
+
+					// load user
+					userDocument, err = userDocument.Get()
+					if err != nil {
+						return err
+					}
+
+					user = UserCollection.Data(userDocument, false).(*User)
+
 					if trustUserEmail {
 						// this means that we trust provided email and can add any identity to the existing user account -- UNSAFE!!!!
 
@@ -84,7 +103,7 @@ func (a *Auth) CreateUser(ctx context.Context, provider Provider, userEmail stri
 						}
 						user.Roles = append(user.Roles, toAppend...)
 
-						_, err = datastore.Put(ctx, userKey, user)
+						userDocument, err = userDocument.Set(user)
 						if err != nil {
 							return err
 						}
@@ -123,12 +142,19 @@ func (a *Auth) CreateUser(ctx context.Context, provider Provider, userEmail stri
 }
 
 func (a *Auth) GetIdentity(ctx context.Context, provider Provider, userEmail string, unlockKey string) (*Identity, error) {
-	userKey := datastore.NewKey(ctx, UserKind, userEmail, 0, nil)
+	userKey := datastore.NewKey(ctx, UserCollection.Name(), userEmail, 0, nil)
+	userDocument, err := UserCollection.Doc(ctx, userKey, nil)
+	if err != nil {
+		return nil, err
+	}
+	if !userDocument.Exists() {
+		return nil, errors.New("user doesn't exist")
+	}
+
 	identityKey := datastore.NewKey(ctx, IdentityKind, provider.Name()+":"+userEmail, 0, userKey)
-	var user = new(User)
 	var identity = new(Identity)
 
-	err := datastore.RunInTransaction(ctx, func(ctx context.Context) error {
+	err = datastore.RunInTransaction(ctx, func(ctx context.Context) error {
 		err := datastore.Get(ctx, identityKey, identity)
 		if err != nil {
 			return err
@@ -140,14 +166,14 @@ func (a *Auth) GetIdentity(ctx context.Context, provider Provider, userEmail str
 			return err
 		}
 
-		err = datastore.Get(ctx, userKey, user)
+		userDocument, err = userDocument.Get()
 		return err
 	}, &datastore.TransactionOptions{XG: true})
 	if err != nil {
 		return nil, err
 	}
 
-	identity.User = user
+	identity.User = UserCollection.Data(userDocument, false).(*User)
 	identity.IdentityKey = identityKey
 	identity.isOk = true
 

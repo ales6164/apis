@@ -14,6 +14,7 @@ type meta struct {
 	groupKey *datastore.Key `datastore:"-" json:"-"`
 	group    kind.Meta      `datastore:"-" json:"-"`
 	value    metaValue
+	exists   bool
 	kind.Meta
 }
 
@@ -46,17 +47,23 @@ func getMeta(ctx context.Context, d kind.Doc, groupMeta kind.Meta) (*meta, error
 	} else {
 		k := metaKey(ctx, d, groupKey)
 		err = datastore.Get(ctx, k, &m.value)
-		if err == datastore.ErrNoSuchEntity {
-			m.value.CreatedAt = time.Now()
-			m.value.UpdatedAt = m.value.CreatedAt
-			m.value.GroupId = groupId
-			m.value.Id = RandStringBytesMaskImprSrc(LetterNumberBytes, 6)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				m.value.CreatedAt = time.Now()
+				m.value.UpdatedAt = m.value.CreatedAt
+				m.value.GroupId = groupId
+				m.value.Id = RandStringBytesMaskImprSrc(LetterNumberBytes, 6)
+			} else {
+				return m, err
+			}
+		} else {
+			m.exists = true
 		}
 		m.key = k
 	}
 	m.group = groupMeta
 	m.groupKey = groupKey
-	return m, err
+	return m, nil
 }
 
 /*func setMeta(ctx context.Context, d kind.Doc, m *metaValue, ancestor *datastore.Key) error {
@@ -69,8 +76,34 @@ func (m *meta) ID() string {
 	return m.value.Id
 }
 
+type OutputMeta struct {
+	Id        string      `json:"id"`
+	CreatedAt time.Time   `json:"createdAt"`
+	UpdatedAt time.Time   `json:"updatedAt"`
+	Value     interface{} `json:"value"`
+}
+
+func (m *meta) Print(d kind.Doc, value interface{}) interface{} {
+	var id string
+	if d.Key().IntID() > 0 {
+		id = d.Key().Encode()
+	} else {
+		id = d.Key().StringID()
+	}
+	return &OutputMeta{
+		Id:        id,
+		CreatedAt: m.value.CreatedAt,
+		UpdatedAt: m.value.UpdatedAt,
+		Value:     value,
+	}
+}
+
 func (m *meta) Key() *datastore.Key {
 	return m.key
+}
+
+func (m *meta) Exists() bool {
+	return m.exists
 }
 
 func (m *meta) Save(ctx context.Context, d kind.Doc, groupMeta kind.Meta) error {
@@ -88,6 +121,7 @@ func (m *meta) Save(ctx context.Context, d kind.Doc, groupMeta kind.Meta) error 
 		m.value.UpdatedAt = time.Now()
 	}
 	m.key, err = datastore.Put(ctx, m.key, &m.value)
+	m.exists = err == nil
 	return err
 }
 

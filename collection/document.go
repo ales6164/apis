@@ -50,6 +50,10 @@ func NewDoc(ctx context.Context, kind kind.Kind, key *datastore.Key, ancestor ki
 	return doc, err
 }
 
+func (d *document) Exists() bool {
+	return d.meta.exists
+}
+
 func (d *document) Meta() (kind.Meta, error) {
 	var err error
 	var ancestorMeta kind.Meta
@@ -353,7 +357,14 @@ func (d *document) Set(data interface{}) (kind.Doc, error) {
 	} else {
 		return d, errors.New("field value can't be set")
 	}
+
 	d.key, err = datastore.Put(d.ctx, d.key, d)
+	if err != nil {
+		return d, err
+	}
+
+	err = d.Commit()
+
 	return d, err
 }
 

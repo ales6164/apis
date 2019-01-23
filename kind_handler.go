@@ -30,7 +30,7 @@ func Query(doc kind.Doc, req *http.Request, params map[string][]string) (QueryRe
 		Limit: 25,
 		Items: []interface{}{},
 	}
-
+	hasIncludeMetaHeader := len(req.Header.Get("X-Include-Meta")) > 0
 	q := datastore.NewQuery(doc.Kind().Name())
 	var filterMap = map[string]map[string]string{}
 	for name, values := range params {
@@ -95,7 +95,7 @@ func Query(doc kind.Doc, req *http.Request, params map[string][]string) (QueryRe
 		}
 
 		r.Count++
-		r.Items = append(r.Items, doc.Kind().Data(h))
+		r.Items = append(r.Items, doc.Kind().Data(h, hasIncludeMetaHeader))
 	}
 
 	if r.Count > 0 {

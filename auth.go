@@ -1,6 +1,7 @@
 package apis
 
 import (
+	"errors"
 	"github.com/dgrijalva/jwt-go"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
@@ -11,7 +12,6 @@ type Auth struct {
 	*AuthOptions
 	middleware *JWTMiddleware
 }
-
 
 type AuthOptions struct {
 	SigningKey          []byte
@@ -60,18 +60,39 @@ func NewAuth(opt *AuthOptions) *Auth {
 		SigningMethod:       auth.SigningMethod,
 		CredentialsOptional: auth.CredentialsOptional,
 	})
+	UserCollection.KeyGen = func(ctx context.Context, str string, member *datastore.Key) *datastore.Key {
+		if str == "me" {
+			if member.Kind() == UserCollection.Name() {
+				return member
+			}
+		} else {
+			key, err := datastore.DecodeKey(str)
+			if err != nil {
+				key = datastore.NewKey(ctx, UserCollection.Name(), str, 0, nil)
+			}
+			return key
+		}
+		return nil
+	}
 	return auth
 }
 
-func (a *Auth) NewSession(ctx context.Context, providerIdentity *datastore.Key, subject *datastore.Key, scopes ...string) (*Session, error) {
-	return newSession(a, ctx, providerIdentity, subject, scopes...)
+func (a *Auth) NewSession(ctx context.Context, provider string, providerIdentity *datastore.Key, subject *datastore.Key, scopes ...string) (*Session, error) {
+	return newSession(a, ctx, provider, providerIdentity, subject, scopes...)
 }
 
 func (a *Auth) SignedToken(s *Session) (string, error) {
-	return s.token.SignedString(a.SigningKey)
+	return s.Token.SignedString(a.SigningKey)
 }
 
-
+func (a *Auth) User(ctx context.Context, member *datastore.Key) (*User, error) {
+	if member == nil || member.Kind() != UserCollection.Name() {
+		return nil, errors.New("member key not of user")
+	}
+	var user = new(User)
+	err := datastore.Get(ctx, member, user)
+	return user, err
+}
 
 // when project selected - switch namespace
 // when on some project endpoint check for project namespace??

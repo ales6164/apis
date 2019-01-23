@@ -48,28 +48,64 @@ func New(options *Options) *Apis {
 	if a.Auth != nil {
 		a.hasAuth = true
 		a.Auth.Apis = a
+
+		// renew token
+		a.router.Handle("/auth/renew", Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := a.NewContext(w, r)
+
+			err := ctx.ExtendSession(a.Auth.TokenExpiresIn)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			user, err := a.Auth.User(ctx, ctx.Member())
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			signedToken, err := a.Auth.SignedToken(ctx.session)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			ctx.PrintJSON(AuthResponse{
+				User: user,
+				Token: Token{
+					Id:        signedToken,
+					ExpiresAt: ctx.session.ExpiresAt.Unix(),
+				},
+			}, http.StatusOK)
+		}))).Methods(http.MethodOptions, http.MethodPost)
+
 		for _, p := range a.Auth.providers {
-			a.router.Handle(`/auth/`+p.Name()+`/{path:[a-zA-Z0-9=\-\/]+}`, p)
+			a.router.Handle(`/auth/`+p.Name()+`/{path:[a-zA-Z0-9=\-\/]+}`, Middleware(p))
 		}
 	}
 
-	a.router.HandleFunc(`/{path:[a-zA-Z0-9=\-\/]+}`, func(w http.ResponseWriter, r *http.Request) {
+	a.router.Handle(`/{path:[a-zA-Z0-9=\-\/]+}`, Middleware(a))
+
+	return a
+}
+
+func Middleware(h http.Handler) http.Handler {
+	return http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 			w.Header().Set("Access-Control-Allow-Headers",
 				"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
-					"X-Requested-With")
+					"X-Requested-With, X-Include-Meta")
 		}
 
 		if r.Method == http.MethodOptions {
 			return
 		}
 
-		a.serve(w, r)
-	})
-
-	return a
+		h.ServeHTTP(w, r)
+	}))
 }
 
 /*func (a *Apis) SetAuth(auth *Auth) {

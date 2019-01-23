@@ -41,12 +41,12 @@ func init() {
 			Match: apis.Match{
 				projects: apis.Rules{
 					Permissions: apis.Permissions{
-						apis.AllUsers: []string{apis.FullControl},
+						apis.AllAuthenticatedUsers: []string{apis.FullControl},
 					},
 					Match: apis.Match{
 						objects: apis.Rules{
 							Permissions: apis.Permissions{
-								apis.AllUsers: []string{apis.FullControl},
+								apis.AllAuthenticatedUsers: []string{apis.FullControl},
 							},
 						},
 					},
@@ -59,39 +59,12 @@ func init() {
 			},
 		},
 	})
-	//api.SetAuth(auth)
 
 	// Expose collections
 	api.HandleKind(projects)
 	api.HandleKind(objects)
 	//api.HandleKind(projects)
 
-	// Custom handlers
-	// Prints datastore info
-	/*api.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Print all the kinds in the datastore, with all the indexed
-		// properties (and their representations) for each.
-		ctx := appengine.NewContext(r)
-
-		kinds, err := datastore.Kinds(ctx)
-		if err != nil {
-
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		for _, kind := range kinds {
-			fmt.Fprintf(w, "%s:\n", kind)
-			props, err := datastore.KindProperties(ctx, kind)
-			if err != nil {
-				fmt.Fprintln(w, "\t(unable to retrieve properties)")
-				continue
-			}
-			for p, rep := range props {
-				fmt.Fprintf(w, "\t-%s (%s)\n", p, strings.Join(rep, ", "))
-			}
-		}
-	})*/
 
 	// Serve
 	http.Handle("/", api.Handler())

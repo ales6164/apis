@@ -74,7 +74,7 @@ func (p *Provider) Login(ctx apis.Context) {
 	}
 
 	// create session
-	session, err := p.NewSession(ctx, identity.IdentityKey, identity.UserKey, identity.User.Roles...)
+	session, err := p.NewSession(ctx, p.Name(), identity.IdentityKey, identity.UserKey, identity.User.Roles...)
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusConflict)
 		return
@@ -95,9 +95,6 @@ func (p *Provider) Login(ctx apis.Context) {
 	}, http.StatusOK)
 }
 
-func (p *Provider) Logout(ctx apis.Context) {
-
-}
 
 func (p *Provider) Register(ctx apis.Context) {
 	body := ctx.Body()
@@ -129,7 +126,7 @@ func (p *Provider) Register(ctx apis.Context) {
 	}
 
 	// create session
-	session, err := p.NewSession(ctx, identity.IdentityKey, identity.UserKey, identity.User.Roles...)
+	session, err := p.NewSession(ctx, p.Name(), identity.IdentityKey, identity.UserKey, identity.User.Roles...)
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusConflict)
 		return
@@ -148,10 +145,6 @@ func (p *Provider) Register(ctx apis.Context) {
 			ExpiresAt: session.ExpiresAt.Unix(),
 		},
 	}, http.StatusOK)
-}
-
-func (p *Provider) Callback(ctx apis.Context) {
-
 }
 
 func (p *Provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {

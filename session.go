@@ -1,6 +1,7 @@
 package apis
 
 import (
+	"errors"
 	"github.com/dgrijalva/jwt-go"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
@@ -12,15 +13,18 @@ const NotBeforeCorrection = -10 // seconds
 
 // db entry
 type Session struct {
-	isValid          bool           `datastore:"-"`
-	isAuthenticated  bool           `datastore:"-"`
-	ProviderIdentity *datastore.Key `json:"-"`
-	Member           *datastore.Key `json:"-"`
+	Key              *datastore.Key `datastore:"-"`
+	Claims           *Claims        `datastore:"-"`
+	IsValid          bool           `datastore:"-"`
+	IsAuthenticated  bool           `datastore:"-"`
+	ProviderIdentity *datastore.Key
+	Member           *datastore.Key
 	CreatedAt        time.Time
 	ExpiresAt        time.Time
+	Provider         string
 	IsBlocked        bool
 	Roles            []string
-	token            *jwt.Token `datastore:"-"`
+	Token            *jwt.Token `datastore:"-"`
 }
 
 type Claims struct {
@@ -29,31 +33,32 @@ type Claims struct {
 	jwt.StandardClaims
 }
 
-func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, member *datastore.Key, roles ...string) (*Session, error) {
+func newSession(a *Auth, ctx context.Context, provider string, providerIdentity *datastore.Key, member *datastore.Key, roles ...string) (*Session, error) {
 	now := time.Now()
 	s := &Session{
 		ProviderIdentity: providerIdentity,
 		Member:           member,
+		Provider:         provider,
 		CreatedAt:        now,
 		ExpiresAt:        now.Add(time.Second * time.Duration(a.TokenExpiresIn)),
 		IsBlocked:        false,
 		Roles:            roles,
+		Key:              datastore.NewIncompleteKey(ctx, SessionKind, nil),
 	}
 
-	sKey := datastore.NewIncompleteKey(ctx, SessionKind, nil)
-
-	sKey, err := datastore.Put(ctx, sKey, s)
+	var err error
+	s.Key, err = datastore.Put(ctx, s.Key, s)
 	if err != nil {
 		return s, err
 	}
 
-	claims := Claims{
-		sKey,
-		[]string{},
+	s.Claims = &Claims{
+		s.Key,
+		roles,
 		jwt.StandardClaims{
 			Issuer:    a.TokenIssuer,
 			NotBefore: now.Add(time.Second * time.Duration(NotBeforeCorrection)).Unix(),
-			Id:        sKey.Encode(),
+			Id:        s.Key.Encode(),
 			Subject:   member.Encode(),
 			Audience:  a.TokenAudience,
 			IssuedAt:  now.Unix(),
@@ -61,40 +66,44 @@ func newSession(a *Auth, ctx context.Context, providerIdentity *datastore.Key, m
 	}
 
 	if !a.AutoExtendToken {
-		claims.ExpiresAt = s.ExpiresAt.Unix()
+		s.Claims.ExpiresAt = s.ExpiresAt.Unix()
 	}
 
-	s.token = jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	s.Token = jwt.NewWithClaims(jwt.SigningMethodHS256, *s.Claims)
 
 	return s, nil
 }
 
-func StartSession(ctx Context, token *jwt.Token) *Session {
+func StartSession(ctx Context, token *jwt.Token) (*Session, error) {
 	var err error
 	var s = new(Session)
 	if token != nil {
 		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
 			err = datastore.Get(ctx, claims.Id, s)
 			if err != nil {
-				return s
+				return s, err
 			}
 			if s.IsBlocked {
-				return s
+				return s, errors.New("session is blocked")
 			}
 
-			s.isAuthenticated = true
-			s.Roles = append(s.Roles, AllAuthenticatedUsers)
-			s.token = token
+			s.Claims = claims
+			s.Key = claims.Id
+			s.IsAuthenticated = true
+			s.Token = token
+			s.IsValid = true
 		} else {
-			return s
+			return s, errors.New("token is invalid")
 		}
+	} else {
+		return s, errors.New("token is not present")
 	}
-	s.isValid = true
-	s.Roles = append(s.Roles, AllUsers)
-	if !s.isAuthenticated {
+
+	if !s.IsAuthenticated {
+		// anonymous
 		s.Member = datastore.NewKey(ctx, "Group", AllUsers, 0, nil)
 	}
-	return s
+	return s, nil
 }
 
 var (
@@ -109,13 +118,11 @@ var (
 	Delete      = "delete"
 )
 
-func (s *Session) HasRole(roles ...string) bool {
-	return ContainsScope(s.Roles, roles...)
-}
+
 
 // extend by seconds from now
 func (s *Session) Extend(ctx context.Context, seconds int64) error {
 	s.ExpiresAt = time.Now().Add(time.Second * time.Duration(seconds))
-	_, err := datastore.Put(ctx, s.token.Claims.(Claims).Id, s)
+	_, err := datastore.Put(ctx, s.Key, s)
 	return err
 }

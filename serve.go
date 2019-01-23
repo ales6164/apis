@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
+func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := getPath(r.URL.Path)
 
 	rules := a.Rules
@@ -28,10 +28,10 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 				// create key
 				var key *datastore.Key
 				if (i + 1) < len(path) {
-					var err error
-					key, err = datastore.DecodeKey(path[i+1])
-					if err != nil {
-						key = datastore.NewKey(ctx, k.Name(), path[i+1], 0, nil)
+					key = k.Key(ctx, path[i+1], ctx.Member())
+					if key == nil {
+						ctx.PrintError("error decoding key", http.StatusBadRequest)
+						return
 					}
 				}
 
@@ -59,7 +59,8 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		// check rules
 		if ok := ctx.HasAccess(rules, ReadOnly, ReadWrite, FullControl); !ok {
-			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			//ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			ctx.PrintJSON(ctx.session, http.StatusForbidden)
 			return
 		}
 
@@ -81,7 +82,7 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
-			ctx.PrintJSON(document.Kind().Data(document), http.StatusOK)
+			ctx.PrintJSON(document.Kind().Data(document, ctx.hasIncludeMetaHeader), http.StatusOK)
 		} else {
 			queryResults, err := Query(document, ctx.r, ctx.r.URL.Query())
 			if err != nil {
@@ -119,7 +120,7 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
-			ctx.PrintJSON(document.Kind().Data(document), http.StatusOK)
+			ctx.PrintJSON(document.Kind().Data(document, ctx.hasIncludeMetaHeader), http.StatusOK)
 		}
 	case http.MethodDelete:
 		// check rules
@@ -171,7 +172,7 @@ func (a *Apis) serve(w http.ResponseWriter, r *http.Request) {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
-			ctx.PrintJSON(document.Kind().Data(document), http.StatusOK)
+			ctx.PrintJSON(document.Kind().Data(document, ctx.hasIncludeMetaHeader), http.StatusOK)
 		}
 	default:
 		ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)

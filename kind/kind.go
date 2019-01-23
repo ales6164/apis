@@ -37,6 +37,7 @@ type Doc interface {
 	HasAncestor() bool
 	Context() context.Context
 	Meta() (Meta, error)
+	Exists() bool
 	/*SetParent(doc Doc) (Doc, error)*/
 }
 
@@ -44,11 +45,14 @@ type Meta interface {
 	Save(ctx context.Context, doc Doc, groupMeta Meta) error
 	Key() *datastore.Key
 	ID() string
+	Exists() bool
+	Print(doc Doc, value interface{}) interface{}
 }
 
 type Kind interface {
 	Name() string
-	Data(doc Doc) interface{}
+	Key(ctx context.Context, str string, member *datastore.Key) *datastore.Key
+	Data(doc Doc, includeMeta bool) interface{}
 	ValueAt(value reflect.Value, path []string) (reflect.Value, error)
 	Fields() map[string]Field
 	Scopes(scopes ...string) []string
