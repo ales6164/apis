@@ -90,7 +90,10 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			ctx.PrintJSON(queryResults.Items, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader, "X-Last-Update", queryResults.UpdatedAt.String())
+			ctx.PrintJSON(map[string]interface{}{
+				"value": queryResults.Items,
+				"lastUpdate": queryResults.UpdatedAt.String(),
+			}, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
 		}
 	case http.MethodPost:
 		// check rules
