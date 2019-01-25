@@ -76,6 +76,14 @@ func (m *meta) ID() string {
 	return m.value.Id
 }
 
+func (m *meta) UpdatedAt() time.Time {
+	return m.value.UpdatedAt
+}
+
+func (m *meta) CreatedAt() time.Time {
+	return m.value.CreatedAt
+}
+
 type OutputMeta struct {
 	Id        string      `json:"id"`
 	CreatedAt time.Time   `json:"createdAt"`

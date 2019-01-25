@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type QueryResult struct {
 	Items      []interface{}
 	Total      int
 	Count      int
+	UpdatedAt  time.Time // entry with latest updatedAt
 	Limit      int
 	Offset     int
 	Order      string
@@ -92,6 +94,12 @@ func Query(doc kind.Doc, req *http.Request, params map[string][]string) (QueryRe
 		h.SetKey(key)
 		if err == datastore.Done {
 			break
+		}
+		if hasIncludeMetaHeader {
+			m, _ := h.Meta()
+			if m.UpdatedAt().After(r.UpdatedAt) {
+				r.UpdatedAt = m.UpdatedAt()
+			}
 		}
 
 		r.Count++

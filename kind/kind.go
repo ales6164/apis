@@ -5,6 +5,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
 	"reflect"
+	"time"
 )
 
 var (
@@ -46,6 +47,8 @@ type Meta interface {
 	Key() *datastore.Key
 	ID() string
 	Exists() bool
+	UpdatedAt() time.Time
+	CreatedAt() time.Time
 	Print(doc Doc, value interface{}) interface{}
 }
 
