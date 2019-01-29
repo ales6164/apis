@@ -33,6 +33,7 @@ type Doc interface {
 	Key() *datastore.Key
 	SetKey(key *datastore.Key)
 	Copy() Doc
+	// TODO: SetRole and HasRole rename into SetAccess and HasAccess ... and only check for these if Rule.EnableAccessControl is true
 	SetRole(member *datastore.Key, role ...string) error
 	HasRole(member *datastore.Key, role ...string) bool
 	HasAncestor() bool

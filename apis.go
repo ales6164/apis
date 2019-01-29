@@ -19,10 +19,10 @@ type Apis struct {
 
 type Options struct {
 	Auth  *Auth
-	Rules Rules
+	Rules *Rules
 }
 
-type Match map[kind.Kind]Rules
+type Match map[kind.Kind]*Rules
 type Roles []string
 
 type Rules struct {

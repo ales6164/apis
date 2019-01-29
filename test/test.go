@@ -37,21 +37,21 @@ func init() {
 	// Set-up API, define user roles and permissions
 	api := apis.New(&apis.Options{
 		Auth: auth,
-		Rules: apis.Rules{
+		Rules: &apis.Rules{
 			Match: apis.Match{
-				projects: apis.Rules{
+				projects: &apis.Rules{
 					Permissions: apis.Permissions{
 						apis.AllAuthenticatedUsers: []string{apis.FullControl},
 					},
 					Match: apis.Match{
-						objects: apis.Rules{
+						objects: &apis.Rules{
 							Permissions: apis.Permissions{
 								apis.AllAuthenticatedUsers: []string{apis.FullControl},
 							},
 						},
 					},
 				},
-				objects: apis.Rules{
+				objects: &apis.Rules{
 					Permissions: apis.Permissions{
 						apis.AllUsers: []string{apis.FullControl},
 					},

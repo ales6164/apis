@@ -20,7 +20,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// analyse path in pairs
 	for i := 0; i < len(path); i += 2 {
 		// get collection kind and match it to rules
-		if k, ok := a.kinds[path[i]]; ok {
+		if k, ok := a.kinds[path[i]]; ok && rules != nil {
 			if rules, ok = rules.Match[k]; ok {
 				// got latest rules
 				var err error
@@ -48,12 +48,15 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. Variable "lastAccessCheckDocument" saves the latest collection document that has defined "EnableAccessControl" under rules
+	// 2. Use that variable in method switch cases to check for the new HasAccess function (kind.Document) instead of general group access check
+
 	var err error
 
 	switch r.Method {
 	case http.MethodGet:
 		// check rules
-		if ok := ctx.HasAccess(rules, ReadOnly, ReadWrite, FullControl); !ok {
+		if ok := ctx.HasAccess(*rules, ReadOnly, ReadWrite, FullControl); !ok {
 			//ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			ctx.PrintJSON(ctx.session, http.StatusForbidden)
 			return
@@ -92,7 +95,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case http.MethodPost:
 		// check rules
-		if ok := ctx.HasAccess(rules, ReadWrite, FullControl); !ok {
+		if ok := ctx.HasAccess(*rules, ReadWrite, FullControl); !ok {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
 		}
@@ -119,7 +122,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ctx.PrintJSON(document.Kind().Data(document, ctx.hasIncludeMetaHeader), http.StatusOK)
 	case http.MethodDelete:
 		// check rules
-		if ok := ctx.HasAccess(rules, Delete, FullControl); !ok {
+		if ok := ctx.HasAccess(*rules, Delete, FullControl); !ok {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
 		}
@@ -146,7 +149,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPut:
 		// check rules
-		if ok := ctx.HasAccess(rules, ReadWrite, FullControl); !ok {
+		if ok := ctx.HasAccess(*rules, ReadWrite, FullControl); !ok {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
 		}
