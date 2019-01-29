@@ -48,11 +48,6 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//document.SetMember(ctx.Member(), ctx.session.isAuthenticated)
-
-	// TODO: Check api.Rules for access
-	// TODO: document.HasRole ...
-
 	var err error
 
 	switch r.Method {
@@ -110,23 +105,6 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		/*if !document.Key().Incomplete() {
-			ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
-		} else {
-			document, err = document.Add(ctx.Body())
-			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusInternalServerError)
-				return
-			}
-			err = document.SetRole(ctx.Member(), FullControl)
-			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusInternalServerError)
-				return
-			}
-			ctx.PrintJSON(document.Kind().Data(document, ctx.hasIncludeMetaHeader), http.StatusOK)
-		}*/
-
-
 		document, err = document.Add(ctx.Body())
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusInternalServerError)
@@ -137,6 +115,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ctx.PrintError(err.Error(), http.StatusInternalServerError)
 			return
 		}
+
 		ctx.PrintJSON(document.Kind().Data(document, ctx.hasIncludeMetaHeader), http.StatusOK)
 	case http.MethodDelete:
 		// check rules
@@ -188,26 +167,18 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
+			err = document.SetRole(ctx.Member(), FullControl)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
+			}
 			ctx.PrintJSON(document.Kind().Data(document, ctx.hasIncludeMetaHeader), http.StatusOK)
 		}
 	default:
 		ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 
 	}
-
-	//collector.ServeContent(r.Method, rules)
 }
-
-/*func ContainsScope(arr []string, scopes ...string) bool {
-	for _, scp := range scopes {
-		for _, r := range arr {
-			if r == scp {
-				return true
-			}
-		}
-	}
-	return false
-}*/
 
 func getPath(p string) []string {
 	if p[:1] == "/" {

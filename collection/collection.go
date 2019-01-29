@@ -50,7 +50,7 @@ func New(name string, i interface{}) *Collection {
 	c := &Collection{
 		name: name,
 		t:    t,
-		KeyGen: func(ctx context.Context, str string, member *datastore.Key) *datastore.Key {
+		KeyGen: func(ctx context.Context, str string, _ *datastore.Key) *datastore.Key {
 			key, err := datastore.DecodeKey(str)
 			if err != nil {
 				key = datastore.NewKey(ctx, name, str, 0, nil)
