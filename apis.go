@@ -153,6 +153,14 @@ func (a *Apis) Handler() http.Handler {
 	return a.router
 }
 
+func (a *Apis) Handle(path string, handler http.Handler) *mux.Route {
+	return a.router.Handle(path, handler)
+}
+
+func (a *Apis) HandleFunc(path string, f func(w http.ResponseWriter, r *http.Request)) *mux.Route {
+	return a.router.HandleFunc(path, f)
+}
+
 // TODO: before finishing all methods figure out how to handle group keys and keys containing namespace
 func (a *Apis) handleKind(rootPath string, k kind.Kind) {
 	//pathWId := joinPath("/", rootPath, "{id}")
