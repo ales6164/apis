@@ -5,6 +5,7 @@ import (
 	"github.com/ales6164/apis/collection"
 	"github.com/ales6164/apis/providers/emailpassword"
 	"github.com/dgrijalva/jwt-go"
+	_ "google.golang.org/appengine/remote_api"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -64,7 +65,6 @@ func init() {
 	api.HandleKind(projects)
 	api.HandleKind(objects)
 	//api.HandleKind(projects)
-
 
 	// Serve
 	http.Handle("/", api.Handler())

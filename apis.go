@@ -90,6 +90,7 @@ func New(options *Options) *Apis {
 	return a
 }
 
+
 func Middleware(h http.Handler) http.Handler {
 	return http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" {

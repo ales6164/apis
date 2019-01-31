@@ -25,7 +25,7 @@ type Identity struct {
 
 type User struct {
 	Email          string   `json:"email"`
-	EmailConfirmed bool     `json:"emailConfirmed"`
+	EmailConfirmed bool     `json:"emailConfirmed"` // TODO: this should be stored with identity provider -- email has to be confirmed for each provider seperately... If user exists, it has at least one provider with confirmed email
 	Roles          []string `json:"roles"`
 }
 
