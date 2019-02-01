@@ -7,6 +7,7 @@ import (
 
 type Provider interface {
 	Name() string
+	TrustProvidedEmail() bool
 	ConfigAuth(*Auth)
 	http.Handler
 }

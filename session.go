@@ -77,6 +77,7 @@ func newSession(a *Auth, ctx context.Context, provider string, providerIdentity 
 func StartSession(ctx Context, token *jwt.Token) (*Session, error) {
 	var err error
 	var s = new(Session)
+
 	if token != nil {
 		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
 			err = datastore.Get(ctx, claims.Id, s)
@@ -91,18 +92,20 @@ func StartSession(ctx Context, token *jwt.Token) (*Session, error) {
 			s.Key = claims.Id
 			s.IsAuthenticated = true
 			s.Token = token
-			s.IsValid = true
-		} else {
+		} /*else {
 			return s, errors.New("token is invalid")
-		}
-	} else {
+		}*/
+	} /*else {
 		return s, errors.New("token is not present")
-	}
+	}*/
 
 	if !s.IsAuthenticated {
 		// anonymous
 		s.Member = datastore.NewKey(ctx, "Group", AllUsers, 0, nil)
 	}
+
+	s.IsValid = true
+
 	return s, nil
 }
 

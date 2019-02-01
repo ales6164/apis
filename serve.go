@@ -57,8 +57,16 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		// check rules
 		if ok := ctx.HasAccess(*rules, ReadOnly, ReadWrite, FullControl); !ok {
-			//ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			ctx.PrintJSON(ctx.session, http.StatusForbidden)
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			/*if ctx.authError != nil {
+				ctx.PrintError(ctx.authError.Error(), http.StatusInternalServerError)
+				return
+			}
+			if ctx.sessError != nil {
+				ctx.PrintError(ctx.sessError.Error(), http.StatusInternalServerError)
+				return
+			}
+			ctx.PrintJSON(ctx.session, http.StatusForbidden)*/
 			return
 		}
 

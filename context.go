@@ -75,6 +75,10 @@ func (ctx Context) Member() *datastore.Key {
 	return ctx.session.Member
 }
 
+func (ctx Context) IsAuthenticated() bool {
+	return ctx.session.IsAuthenticated
+}
+
 func (ctx Context) ExtendSession(seconds int64) error {
 	return ctx.session.Extend(ctx, seconds)
 }

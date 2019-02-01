@@ -40,6 +40,10 @@ func (p *Provider) Name() string {
 	return "emailpassword"
 }
 
+func (p *Provider) TrustProvidedEmail() bool {
+	return false
+}
+
 func (p *Provider) ConfigAuth(a *apis.Auth) {
 	p.Auth = a
 }
