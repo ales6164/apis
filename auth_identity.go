@@ -272,7 +272,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 
 					// send email for email confirmation and to continue connecting identity to user
 					// TODO:
-					
+
 					return errors.New("error sending confirmation email")
 				}
 			}
