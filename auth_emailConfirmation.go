@@ -38,9 +38,9 @@ func sendEmailConfirmation(ctx context.Context, provider Provider, identityKey *
 		return ErrSendingConfirmationEmail
 	}
 
-	url, err := createConfirmationURL(ctx, key)
+	url := createConfirmationURL(ctx, key)
 	msg := &mail.Message{
-		Sender:  "No-Reply <no-reply@" + appengine.ModuleName(ctx) + ".appspotmail.com>",
+		Sender:  "No-Reply <no-reply@" + appengine.AppID(ctx) + ".appspotmail.com>",
 		To:      []string{email},
 		Subject: "Confirm your email",
 		Body:    fmt.Sprintf(confirmMessage, url),

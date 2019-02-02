@@ -170,7 +170,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 		// identity exists
 
 		if !identity.EmailConfirmed {
-			return ErrEmailIsWaitingConfirmation
+			return sendEmailConfirmation(ctx, provider, identityKey, userEmail)
 		}
 
 		if !userDocument.Exists() {
@@ -211,7 +211,6 @@ var (
 )
 
 func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error) {
-
 
 	emailWaitingConfirmationKey, err := datastore.DecodeKey(code)
 	if err != nil {
@@ -349,13 +348,18 @@ func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error)
 	return identity, nil
 }
 
-func createConfirmationURL(ctx context.Context, key *datastore.Key) (string, error) {
-	hostname, err := appengine.ModuleHostname(ctx, "", "", appengine.InstanceID())
-	if err != nil {
-		return "", err
+func createConfirmationURL(ctx context.Context, key *datastore.Key) string {
+	var hostname string
+	var module = appengine.ModuleName(ctx)
+	var app = appengine.AppID(ctx)
+
+	if len(module) > 0 {
+		hostname += module + "-dot-"
 	}
 
-	return "https://" + hostname + "/auth/confirm/" + key.Encode(), nil
+	hostname += app
+
+	return "https://" + hostname + ".appspot.com/auth/confirm/" + key.Encode()
 }
 
 func decrypt(hash []byte, password []byte) error {
