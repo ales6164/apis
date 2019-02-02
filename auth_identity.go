@@ -6,6 +6,7 @@ import (
 	"github.com/ales6164/apis/kind"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/net/context"
+	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"
 	"time"
 )
@@ -35,120 +36,10 @@ var (
 	ErrEmailIsWaitingConfirmation = errors.New("email is waiting confirmation")
 	ErrUserConnectionFailure      = errors.New("user connection failure")
 	ErrUnlockingIdentity          = errors.New("error unlocking identity")
-	ErrEncryptingIdentity          = errors.New("error encrypting identity")
+	ErrEncryptingIdentity         = errors.New("error encrypting identity")
 	ErrDatabaseConnection         = errors.New("database connection error")
-)
-
-// Creates identity - should not exist; creates user if doesn't exist, otherwise connects user to the new identity if trustEmail is true
-func (a *Auth) CreateUser(ctx context.Context, provider Provider, userEmail string, unlockKey string) (*Identity, error) {
-	// 1. Create identity and user
-	userKey := datastore.NewKey(ctx, UserCollection.Name(), userEmail, 0, nil)
-	var userDocument kind.Doc
-
-	identityKey := datastore.NewKey(ctx, IdentityKind, provider.Name()+":"+userEmail, 0, userKey)
-	var user = new(User)
-	var identity = new(Identity)
-
-	err := datastore.RunInTransaction(ctx, func(ctx context.Context) error {
-		var err error
-		userDocument, err = UserCollection.Doc(ctx, userKey, nil)
-		if err != nil {
-			return err
-		}
-
-		err = datastore.Get(ctx, identityKey, identity)
-		if err != nil {
-			if err == datastore.ErrNoSuchEntity {
-				// ok
-
-				if !userDocument.Exists() {
-					// user doesn't exist -- VERY SAFE
-					// create user
-					user.Email = userEmail
-					user.EmailConfirmed = trustUserEmail
-					user.Roles = a.DefaultRoles
-
-					userDocument, err = userDocument.Set(user)
-					if err != nil {
-						return err
-					}
-
-					err = userDocument.SetRole(userDocument.Key(), FullControl)
-					if err != nil {
-						return err
-					}
-				} else {
-					// user exists -- OOPS!!!
-
-					// load user
-					userDocument, err = userDocument.Get()
-					if err != nil {
-						return err
-					}
-
-					user = UserCollection.Data(userDocument, false).(*User)
-
-					if trustUserEmail {
-						// this means that we trust provided email and can add any identity to the existing user account -- UNSAFE!!!!
-
-						// since we trust this email, we can update the field
-						user.EmailConfirmed = trustUserEmail
-
-						// add default roles to the existing user
-						var toAppend []string
-						for _, r := range a.DefaultRoles {
-							var ok bool
-							for _, r2 := range user.Roles {
-								if r == r2 {
-									ok = true
-								}
-							}
-							if !ok {
-								toAppend = append(toAppend, r)
-							}
-						}
-						user.Roles = append(user.Roles, toAppend...)
-
-						userDocument, err = userDocument.Set(user)
-						if err != nil {
-							return err
-						}
-					} else {
-						// we don't trust the user email and since user already exists we return error!
-						return kind.ErrEntityAlreadyExists
-					}
-				}
-
-				// after checks above and having the user created, let's create identity
-				identity.User = user
-				identity.IdentityKey = identityKey
-				identity.isOk = true
-
-				identity.UserKey = userKey
-				identity.CreatedAt = time.Now()
-				identity.UpdatedAt = identity.CreatedAt
-				identity.Provider = provider.Name()
-				// create unlockKey hash
-				identity.Secret, err = crypt(a.HashingCost, []byte(unlockKey))
-				if err != nil {
-					return err
-				}
-
-				// save identity
-				_, err = datastore.Put(ctx, identityKey, identity)
-			}
-			return err
-		}
-		return kind.ErrEntityAlreadyExists
-	}, &datastore.TransactionOptions{XG: true})
-	if err != nil {
-		return nil, err
-	}
-	return identity, nil
-}
-
-var (
-	ErrUserDoesNotExist = errors.New("user doesn't exist")
+	ErrSendingConfirmationEmail   = errors.New("error sending confirmation email")
+	ErrUserDoesNotExist           = errors.New("user doesn't exist")
 )
 
 // Connects identity with user
@@ -252,7 +143,6 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 
 					identity.IdentityKey = identityKey
 					identity.isOk = true
-
 					identity.EmailConfirmed = false
 					identity.CreatedAt = time.Now()
 					identity.UpdatedAt = identity.CreatedAt
@@ -270,10 +160,8 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 						return ErrDatabaseConnection
 					}
 
-					// send email for email confirmation and to continue connecting identity to user
-					// TODO:
-
-					return errors.New("error sending confirmation email")
+					// create db entry and send email for confirmation and to continue connecting identity to user
+					return sendEmailConfirmation(ctx, provider, identityKey, userEmail)
 				}
 			}
 			return ErrDatabaseConnection
@@ -314,40 +202,160 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 	return identity, nil
 }
 
-func (a *Auth) GetIdentity(ctx context.Context, provider Provider, userEmail string, unlockKey string) (*Identity, error) {
-	userKey := datastore.NewKey(ctx, UserCollection.Name(), userEmail, 0, nil)
-	userDocument, err := UserCollection.Doc(ctx, userKey, nil)
+var (
+	ErrInvalidKey               = errors.New("invalid confirmation key")
+	ErrConfirmationKeyExpired   = errors.New("confirmation key expired")
+	ErrInvalidProvider          = errors.New("invalid provider")
+	ErrIdentityDoesNotExist     = errors.New("identity does not exist")
+	ErrIdentityAlreadyConfirmed = errors.New("identity is already confirmed")
+)
+
+func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error) {
+
+
+	emailWaitingConfirmationKey, err := datastore.DecodeKey(code)
 	if err != nil {
-		return nil, err
-	}
-	if !userDocument.Exists() {
-		return nil, ErrUserDoesNotExist
+		return nil, ErrInvalidKey
 	}
 
-	identityKey := datastore.NewKey(ctx, IdentityKind, provider.Name()+":"+userEmail, 0, userKey)
 	var identity = new(Identity)
 
-	err = datastore.Get(ctx, identityKey, identity)
+	err = datastore.RunInTransaction(ctx, func(ctx context.Context) error {
+		var emailWaitingConfirmation = new(EmailWaitingConfirmation)
+		err = datastore.Get(ctx, emailWaitingConfirmationKey, emailWaitingConfirmation)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				return ErrInvalidKey
+			}
+			return ErrDatabaseConnection
+		}
+
+		if !time.Now().Before(emailWaitingConfirmation.ValidUntil) {
+			return ErrConfirmationKeyExpired
+		}
+
+		if emailWaitingConfirmation.Confirmed {
+			return ErrConfirmationKeyExpired
+		}
+
+		var userEmail = emailWaitingConfirmation.Email
+
+		// get provider
+		var provider = a.GetProvider(emailWaitingConfirmation.Provider)
+		if provider == nil {
+			return ErrInvalidProvider
+		}
+
+		// get identity and check if everything okay there
+		err = datastore.Get(ctx, emailWaitingConfirmation.Identity, identity)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				return ErrIdentityDoesNotExist
+			}
+			return ErrDatabaseConnection
+		}
+
+		if identity.EmailConfirmed {
+			return ErrIdentityAlreadyConfirmed
+		}
+
+		// get user and check if everything okay there
+		var userKey = datastore.NewKey(ctx, UserCollection.Name(), userEmail, 0, nil)
+		var userDocument kind.Doc
+		var user = new(User)
+		userDocument, err = UserCollection.Doc(ctx, userKey, nil)
+		if err != nil {
+			return ErrDatabaseConnection
+		}
+
+		// save user
+		if !userDocument.Exists() {
+			// create user
+
+			user.Email = userEmail
+			user.Roles = a.DefaultRoles
+
+			userDocument, err = userDocument.Set(user)
+			if err != nil {
+				return ErrDatabaseConnection
+			}
+
+			err = userDocument.SetRole(userDocument.Key(), FullControl)
+			if err != nil {
+				return ErrDatabaseConnection
+			}
+		} else {
+			// load user and save changes
+
+			userDocument, err = userDocument.Get()
+			if err != nil {
+				return ErrDatabaseConnection
+			}
+
+			user = UserCollection.Data(userDocument, false).(*User)
+
+			// add default roles to the existing user
+			var toAppend []string
+			for _, r := range a.DefaultRoles {
+				var ok bool
+				for _, r2 := range user.Roles {
+					if r == r2 {
+						ok = true
+					}
+				}
+				if !ok {
+					toAppend = append(toAppend, r)
+				}
+			}
+			user.Roles = append(user.Roles, toAppend...)
+
+			// save user
+			userDocument, err = userDocument.Set(user)
+			if err != nil {
+				return ErrDatabaseConnection
+			}
+
+		}
+
+		// connect identity to user and save
+
+		identity.User = user
+		identity.IdentityKey = emailWaitingConfirmation.Identity
+		identity.isOk = true
+		identity.EmailConfirmed = true
+		identity.UserKey = userKey
+		identity.UpdatedAt = identity.CreatedAt
+		identity.Provider = provider.Name()
+
+		// save identity
+		_, err = datastore.Put(ctx, emailWaitingConfirmation.Identity, identity)
+		if err != nil {
+			return ErrDatabaseConnection
+		}
+
+		// make confirmation expired and save to db
+		emailWaitingConfirmation.Confirmed = true
+		_, err = datastore.Put(ctx, emailWaitingConfirmationKey, emailWaitingConfirmation)
+		if err != nil {
+			return ErrDatabaseConnection
+		}
+
+		return nil
+	}, &datastore.TransactionOptions{XG: true})
 	if err != nil {
 		return nil, err
 	}
-
-	// check unlockKey
-	err = decrypt(identity.Secret, []byte(unlockKey))
-	if err != nil {
-		return nil, err
-	}
-
-	userDocument, err = userDocument.Get()
-	if err != nil {
-		return nil, err
-	}
-
-	identity.User = UserCollection.Data(userDocument, false).(*User)
-	identity.IdentityKey = identityKey
-	identity.isOk = true
 
 	return identity, nil
+}
+
+func createConfirmationURL(ctx context.Context, key *datastore.Key) (string, error) {
+	hostname, err := appengine.ModuleHostname(ctx, "", "", appengine.InstanceID())
+	if err != nil {
+		return "", err
+	}
+
+	return "https://" + hostname + "/auth/confirm/" + key.Encode(), nil
 }
 
 func decrypt(hash []byte, password []byte) error {

@@ -80,6 +80,21 @@ func New(options *Options) *Apis {
 			}, http.StatusOK)
 		}))).Methods(http.MethodOptions, http.MethodPost)
 
+		// confirm email
+		a.router.Handle("/auth/confirm/{code}", Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := a.NewContext(w, r)
+
+			_, err := a.Auth.ConfirmEmail(ctx, mux.Vars(r)["code"])
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			// TODO: redirect user
+
+			ctx.PrintStatus(http.StatusText(http.StatusOK), http.StatusOK)
+		}))).Methods(http.MethodGet)
+
 		for _, p := range a.Auth.providers {
 			a.router.Handle(`/auth/`+p.Name()+`/{path:[a-zA-Z0-9=\-\/]+}`, Middleware(p))
 		}

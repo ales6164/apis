@@ -70,10 +70,14 @@ func (p *Provider) Login(ctx apis.Context) {
 		return
 	}
 
-	// create user
-	identity, err := p.Auth.GetIdentity(ctx, p, email, password)
+	identity, err := p.Auth.Connect(ctx, p, email, password)
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusConflict)
+		return
+	}
+
+	if !identity.EmailConfirmed {
+		ctx.PrintStatus("confirm email", http.StatusOK)
 		return
 	}
 
@@ -123,9 +127,14 @@ func (p *Provider) Register(ctx apis.Context) {
 	}
 
 	// create user
-	identity, err := p.Auth.CreateUser(ctx, p, email, false, password)
+	identity, err := p.Auth.Connect(ctx, p, email, password)
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusConflict)
+		return
+	}
+
+	if !identity.EmailConfirmed {
+		ctx.PrintStatus("confirm email", http.StatusOK)
 		return
 	}
 
