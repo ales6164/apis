@@ -3,6 +3,7 @@ package varanox
 import (
 	"errors"
 	"github.com/ales6164/apis"
+	"github.com/asaskevich/govalidator"
 	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
 	"net/http"
@@ -52,6 +53,22 @@ func (p *Provider) Connect(ctx apis.Context) {
 
 	email, _ := jsonparser.GetString(body, "email")
 	secret, _ := jsonparser.GetString(body, "secret")
+
+	if len(email) == 0 {
+		ctx.PrintError(ErrEmailUndefined.Error(), http.StatusBadRequest)
+		return
+	} else if !govalidator.IsEmail(email) || len(email) > 128 || len(email) < 5 {
+		ctx.PrintError(ErrInvalidEmail.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if len(secret) > 256 {
+		ctx.PrintError(ErrPasswordTooLong.Error(), http.StatusBadRequest)
+		return
+	} else if len(secret) < 6 {
+		ctx.PrintError(ErrPasswordTooShort.Error(), http.StatusBadRequest)
+		return
+	}
 
 	identity, err := p.Auth.Connect(ctx, p, email, secret)
 	if err != nil {

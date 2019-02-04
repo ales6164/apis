@@ -55,7 +55,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 		var err error
 		userDocument, err = UserCollection.Doc(ctx, userKey, nil)
 		if err != nil {
-			return ErrDatabaseConnection
+			return errors.New("0" + err.Error())
 		}
 
 		err = datastore.Get(ctx, identityKey, identity)
@@ -74,19 +74,19 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 
 						userDocument, err = userDocument.Set(user)
 						if err != nil {
-							return ErrDatabaseConnection
+							return errors.New("1" + err.Error())
 						}
 
 						err = userDocument.SetRole(userDocument.Key(), FullControl)
 						if err != nil {
-							return ErrDatabaseConnection
+							return errors.New("2" + err.Error())
 						}
 					} else {
 						// load user and save changes
 
 						userDocument, err = userDocument.Get()
 						if err != nil {
-							return ErrDatabaseConnection
+							return errors.New("3" + err.Error())
 						}
 
 						user = UserCollection.Data(userDocument, false).(*User)
@@ -109,7 +109,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 						// save user
 						userDocument, err = userDocument.Set(user)
 						if err != nil {
-							return ErrDatabaseConnection
+							return errors.New("4" + err.Error())
 						}
 
 					}
@@ -128,13 +128,13 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 					// encrypt and save unlock key
 					identity.Secret, err = crypt(a.HashingCost, []byte(unlockKey))
 					if err != nil {
-						return ErrEncryptingIdentity
+						return errors.New("6" + err.Error())
 					}
 
 					// save identity
 					_, err = datastore.Put(ctx, identityKey, identity)
 					if err != nil {
-						return ErrDatabaseConnection
+						return errors.New("5" + err.Error())
 					}
 
 					return nil
@@ -151,20 +151,20 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 					// encrypt and save unlock key
 					identity.Secret, err = crypt(a.HashingCost, []byte(unlockKey))
 					if err != nil {
-						return ErrEncryptingIdentity
+						return errors.New("7" + err.Error())
 					}
 
 					// save identity
 					_, err = datastore.Put(ctx, identityKey, identity)
 					if err != nil {
-						return ErrDatabaseConnection
+						return errors.New("8" + err.Error())
 					}
 
 					// create db entry and send email for confirmation and to continue connecting identity to user
 					return sendEmailConfirmation(ctx, provider, identityKey, userEmail)
 				}
 			}
-			return ErrDatabaseConnection
+			return errors.New("9" + err.Error())
 		}
 
 		// identity exists
@@ -174,19 +174,19 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 		}
 
 		if !userDocument.Exists() {
-			return ErrUserConnectionFailure
+			return errors.New("10" + err.Error())
 		}
 
 		// check unlock key
 		err = decrypt(identity.Secret, []byte(unlockKey))
 		if err != nil {
-			return ErrUnlockingIdentity
+			return errors.New("11" + err.Error())
 		}
 
 		// get user
 		userDocument, err = userDocument.Get()
 		if err != nil {
-			return ErrDatabaseConnection
+			return errors.New("12" + err.Error())
 		}
 
 		identity.User = UserCollection.Data(userDocument, false).(*User)

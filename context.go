@@ -75,6 +75,10 @@ func (ctx Context) Member() *datastore.Key {
 	return ctx.session.Member
 }
 
+func (ctx Context) User() string {
+	return ctx.session.Member.StringID()
+}
+
 func (ctx Context) IsAuthenticated() bool {
 	return ctx.session.IsAuthenticated
 }
