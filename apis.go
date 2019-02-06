@@ -161,8 +161,8 @@ type PathPair struct {
 	Rules          Rules          `json:"rules"`
 }
 
-func (a *Apis) Handler() http.Handler {
-	a.router.Handle(`/{path:[a-zA-Z0-9=\-\/]+}`, Middleware(a))
+func (a *Apis) Handler() *mux.Router {
+	a.router.Handle(`/{path:[a-zA-Z0-9=\-\_\/]+}`, Middleware(a))
 	return a.router
 }
 
