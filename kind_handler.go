@@ -96,10 +96,10 @@ func Query(doc kind.Doc, req *http.Request, params map[string][]string) (QueryRe
 			break
 		}
 		if hasIncludeMetaHeader {
-			m, _ := h.Meta()
+			/*m, _ := h.Meta()
 			if m.UpdatedAt().After(r.UpdatedAt) {
 				r.UpdatedAt = m.UpdatedAt()
-			}
+			}*/
 		}
 
 		r.Count++

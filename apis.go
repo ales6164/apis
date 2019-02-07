@@ -26,8 +26,9 @@ type Match map[kind.Kind]*Rules
 type Roles []string
 
 type Rules struct {
-	Permissions Permissions
-	Match       Match `json:"-"`
+	AccessControl bool
+	Permissions   Permissions
+	Match         Match `json:"-"`
 }
 
 type Permissions map[string]Roles

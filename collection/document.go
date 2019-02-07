@@ -9,96 +9,67 @@ import (
 	"google.golang.org/appengine/datastore"
 	"reflect"
 	"strings"
+	"time"
 )
 
 type document struct {
-	kind               kind.Kind
-	author             *datastore.Key
-	defaultCtx         context.Context
-	ctx                context.Context
-	key                *datastore.Key
-	value              reflect.Value
-	hasInputData       bool // when updating
-	hasLoadedData      bool
-	rollbackProperties []datastore.Property
-	ancestor           kind.Doc
-	hasAncestor        bool
-	meta               *meta
+	kind                kind.Kind
+	owner               *datastore.Key
+	defaultCtx          context.Context
+	ctx                 context.Context
+	key                 *datastore.Key
+	value               reflect.Value
+	hasInputData        bool // when updating
+	hasLoadedData       bool
+	rollbackProperties  []datastore.Property
+	accessControllerDoc kind.Doc
+	metaWrapper         *metaWrapper
+
 	kind.Doc
+}
+
+type Meta struct {
+	CreatedAt       time.Time      `json:"createdAt"`
+	UpdatedAt       time.Time      `json:"updatedAt"`
+	CreatedBy       *datastore.Key `json:"createdBy"`
+	UpdatedBy       *datastore.Key `json:"updatedBy"`
+	Version         int64          `json:"version"`
+	Namespace       string         `json:"-"`
+	ParentNamespace string         `json:"-"`
+}
+
+type metaWrapper struct {
+	Meta *Meta `datastore:"_"`
 }
 
 type DocumentCollectionRelationship struct {
 	Roles []string // fullControl, ...
 }
 
-func NewDoc(ctx context.Context, kind kind.Kind, key *datastore.Key, ancestor kind.Doc) (*document, error) {
+func NewDoc(ctx context.Context, kind kind.Kind, key *datastore.Key, accessControllerDoc kind.Doc) *document {
 	if key != nil && key.Kind() != kind.Name() {
 		key = nil
 	}
 	doc := &document{
 		kind:        kind,
-		defaultCtx:  ctx,
+		/*defaultCtx:  ctx,*/
 		ctx:         ctx,
 		value:       reflect.New(kind.Type()),
 		key:         key,
-		ancestor:    ancestor,
-		hasAncestor: ancestor != nil,
+		accessControllerDoc:       accessControllerDoc,
+		metaWrapper: &metaWrapper{new(Meta)},
 	}
 
-	_, err := doc.Meta()
-
-	return doc, err
+	return doc
 }
 
-func (d *document) Exists() bool {
-	return d.meta.exists
+
+func (d *document) SetOwner(key *datastore.Key) {
+	d.owner = key
 }
 
-func (d *document) SetAuthor(author *datastore.Key) {
-	d.author = author
-}
-
-func (d *document) GetAuthor() *datastore.Key {
-	return d.author
-}
-
-func (d *document) Meta() (kind.Meta, error) {
-	var err error
-	var ancestorMeta kind.Meta
-	if d.hasAncestor {
-		ancestorMeta, err = d.ancestor.Meta()
-		if err != nil {
-			return d.meta, err
-		}
-	}
-
-	if d.meta != nil {
-		return d.meta, nil
-	}
-
-	if d.key == nil {
-		d.key = datastore.NewIncompleteKey(d.defaultCtx, d.Kind().Name(), nil)
-	}
-
-	d.meta, err = getMeta(d.defaultCtx, d, ancestorMeta)
-	if err != nil {
-		return d.meta, err
-	}
-
-	if d.ctx, d.key, err = SetNamespace(d.ctx, d.key, d.meta.value.GroupId); err != nil {
-		return d.meta, err
-	}
-
-	return d.meta, err
-}
-
-func (d *document) Commit() error {
-	if d.meta == nil {
-		return errors.New("entry doesn't match meta")
-	}
-
-	err := d.meta.Save(d.defaultCtx, d, d.meta.group)
-	return err
+func (d *document) GetOwner() *datastore.Key {
+	return d.owner
 }
 
 func (d *document) DefaultContext() context.Context {
@@ -143,22 +114,6 @@ func (d *document) SetKey(key *datastore.Key) {
 	d.key = key
 }
 
-func (d *document) Copy() kind.Doc {
-	return &document{
-		kind:               d.kind,
-		author:             d.author,
-		defaultCtx:         d.defaultCtx,
-		ctx:                d.ctx,
-		key:                d.key,
-		value:              reflect.New(d.kind.Type()),
-		hasInputData:       d.hasAncestor,
-		hasLoadedData:      d.hasLoadedData,
-		rollbackProperties: d.rollbackProperties,
-		ancestor:           d.ancestor,
-		hasAncestor:        d.hasAncestor,
-	}
-}
-
 func (d *document) Type() reflect.Type {
 	return d.kind.Type()
 }
@@ -171,28 +126,6 @@ func (d *document) Parse(body []byte) error {
 	return err
 }
 
-// Loads relationship table and checks if user has access to the specified namespace.
-// Then adds the parent and rewrites document key and context.
-/*func (d *document) SetParent(doc kind.Doc) (kind.Doc, error) {
-	if doc != nil {
-		m, err := kind.GetMeta(d.ctx, doc)
-		if err != nil {
-			return d, err
-		}
-
-		d.parent = doc
-	}
-	return d, nil
-}*/
-
-func (d *document) Ancestor() kind.Doc {
-	return d.ancestor
-}
-
-func (d *document) HasAncestor() bool {
-	return d.hasAncestor
-}
-
 const (
 	op_test    = "test"
 	op_remove  = "remove"
@@ -202,11 +135,22 @@ const (
 	op_copy    = "copy"
 )
 
+func (d *document) SetAccessControl(enable bool) {
+	if enable {
+		d.accessControllerDoc = d
+	}
+}
+
 func (d *document) Get() (kind.Doc, error) {
 	return d, datastore.Get(d.ctx, d.key, d)
 }
 
+// not implemented!
 func (d *document) Patch(data []byte) error {
+	return errors.New("not implemented")
+
+	// todo: add access control and meta
+
 	var endErr error
 	var cb = func(err error) {
 		endErr = err
@@ -371,13 +315,40 @@ func (d *document) Set(data interface{}) (kind.Doc, error) {
 		return d, errors.New("field value can't be set")
 	}
 
-	d.key, err = datastore.Put(d.ctx, d.key, d)
-	if err != nil {
-		return d, err
+	if d.accessControl {
+		d.metaWrapper.Meta.Namespace = RandStringBytesMaskImprSrc(LetterNumberBytes, 6)
 	}
 
-	err = d.Commit()
+	now := time.Now()
+	err = datastore.RunInTransaction(d.ctx, func(tc context.Context) error {
+		err = datastore.Get(tc, d.key, d)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				// creating new
 
+				d.metaWrapper.Meta.CreatedAt = now
+				d.metaWrapper.Meta.CreatedBy = d.owner
+				d.metaWrapper.Meta.Version = 0
+
+				d.key, err = datastore.Put(tc, d.key, d)
+				if err != nil {
+					return err
+				}
+				return d.kind.Increment(tc)
+			}
+			return err
+		}
+		// overwriting existing
+
+		d.metaWrapper.Meta.UpdatedAt = now
+		d.metaWrapper.Meta.UpdatedBy = d.owner
+		d.metaWrapper.Meta.Version += 1
+
+		d.key, err = datastore.Put(tc, d.key, d)
+		return err
+	}, &datastore.TransactionOptions{XG: true})
+
+	d.key, err = datastore.Put(d.ctx, d.key, d)
 	return d, err
 }
 
@@ -398,6 +369,8 @@ func (d *document) Add(data interface{}) (kind.Doc, error) {
 		} else {
 			value = reflect.ValueOf(data).Elem()
 		}
+
+		d.value.Elem().Set(value)
 	} else {
 		return d, errors.New("field value can't be set" + d.value.String())
 	}
@@ -407,19 +380,25 @@ func (d *document) Add(data interface{}) (kind.Doc, error) {
 		d.key = datastore.NewIncompleteKey(d.ctx, d.Kind().Name(), nil)
 	}
 
+	if d.accessControl {
+		d.metaWrapper.Meta.Namespace = RandStringBytesMaskImprSrc(LetterNumberBytes, 6)
+	}
+
+	now := time.Now()
+
 	// 4. Store value
 	if d.key.Incomplete() {
-		d.value.Elem().Set(value)
 		err = datastore.RunInTransaction(d.ctx, func(tc context.Context) error {
+
+			d.metaWrapper.Meta.CreatedAt = now
+			d.metaWrapper.Meta.CreatedBy = d.owner
+			d.metaWrapper.Meta.Version = 0
+
 			d.key, err = datastore.Put(tc, d.key, d)
 			if err != nil {
 				return err
 			}
-			err = d.kind.Increment(tc)
-			if err != nil {
-				return err
-			}
-			return d.Commit()
+			return d.kind.Increment(tc)
 		}, &datastore.TransactionOptions{XG: true})
 	} else {
 		err = datastore.RunInTransaction(d.ctx, func(tc context.Context) error {
@@ -427,16 +406,16 @@ func (d *document) Add(data interface{}) (kind.Doc, error) {
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					// ok
-					d.value.Elem().Set(value)
+
+					d.metaWrapper.Meta.CreatedAt = now
+					d.metaWrapper.Meta.CreatedBy = d.owner
+					d.metaWrapper.Meta.Version = 0
+
 					d.key, err = datastore.Put(tc, d.key, d)
 					if err != nil {
 						return err
 					}
-					err = d.kind.Increment(tc)
-					if err != nil {
-						return err
-					}
-					return d.Commit()
+					return d.kind.Increment(tc)
 				}
 				return err
 			}
@@ -446,7 +425,7 @@ func (d *document) Add(data interface{}) (kind.Doc, error) {
 	return d, err
 }
 
-func (d *document) SetRole(member *datastore.Key, role ...string) error {
+/*func (d *document) SetRole(member *datastore.Key, role ...string) error {
 	if d.key == nil || d.key.Incomplete() {
 		return errors.New("can't set role if key is incomplete")
 	}
@@ -463,7 +442,7 @@ func (d *document) HasRole(member *datastore.Key, role ...string) bool {
 		return true
 	}
 	return false
-}
+}*/
 
 func (d *document) Kind() kind.Kind {
 	return d.kind
@@ -481,25 +460,34 @@ func (d *document) Load(ps []datastore.Property) error {
 		d.value = reflect.ValueOf(n)
 		return nil
 	}
-	err := datastore.LoadStruct(d.value.Interface(), ps)
-	return err
+
+	// just remove meta for now
+	var metaPs []datastore.Property
+	noMetaPs := ps[:0]
+	for _, p := range ps {
+		if string(p.Name[0]) == "_" {
+			metaPs = append(metaPs, p)
+		} else {
+			noMetaPs = append(noMetaPs, p)
+		}
+	}
+
+	err := datastore.LoadStruct(d.metaWrapper, metaPs)
+	if err != nil {
+		return err
+	}
+
+	return datastore.LoadStruct(d.value.Interface(), noMetaPs)
 }
 
 func (d *document) Save() ([]datastore.Property, error) {
-	//var now = reflect.ValueOf(time.Now())
-	//v := reflect.ValueOf(d.value).Elem()
-	/*for _, meta := range d.Kind.MetaFields {
-		field := v.FieldByName(meta.FieldName)
-		if field.CanSet() {
-			switch meta.Type {
-			case "updatedat":
-				field.Set(now)
-			case "createdat":
-				if !d.hasLoadedData {
-					field.Set(now)
-				}
-			}
-		}
-	}*/
-	return datastore.SaveStruct(d.value.Interface())
+
+	// meta
+	metaPs, err := datastore.SaveStruct(d.metaWrapper)
+	if err != nil {
+		return metaPs, err
+	}
+
+	ps, err := datastore.SaveStruct(d.value.Interface())
+	return append(metaPs, ps...), err
 }

@@ -256,13 +256,13 @@ func (c *Collection) Data(doc kind.Doc, includeMeta bool) interface{} {
 	}
 
 	if includeMeta {
-		meta, _ := doc.Meta()
-		return meta.Print(doc, reflectValue.Interface())
+		/*meta, _ := doc.Meta()
+		return meta.Print(doc, reflectValue.Interface())*/
 	}
 
 	return reflectValue.Interface()
 }
 
-func (c *Collection) Doc(ctx context.Context, key *datastore.Key, ancestor kind.Doc) (kind.Doc, error) {
+func (c *Collection) Doc(ctx context.Context, key *datastore.Key, ancestor kind.Doc) kind.Doc {
 	return NewDoc(ctx, c, key, ancestor)
 }

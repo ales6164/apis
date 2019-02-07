@@ -14,22 +14,18 @@ import (
 const IdentityKind = "_identity"
 
 type Identity struct {
-	User           *collection.User          `datastore:"-" json:"-"`
-	IdentityKey    *datastore.Key `datastore:"-" json:"-"`
-	UserKey        *datastore.Key `json:"-"`
-	CreatedAt      time.Time      `json:"createdAt"`
-	UpdatedAt      time.Time      `json:"createdAt"`
-	Provider       string         `json:"provider"`
-	EmailConfirmed bool           `json:"emailConfirmed"` // TODO: this should be stored with identity provider -- email has to be confirmed for each provider seperately... If user exists, it has at least one provider with confirmed email
-	Secret         []byte         `datastore:",noindex" json:"-"`
-	isOk           bool           `datastore:"-"` // this should always be true
+	User           *collection.User `datastore:"-" json:"-"`
+	IdentityKey    *datastore.Key   `datastore:"-" json:"-"`
+	UserKey        *datastore.Key   `json:"-"`
+	CreatedAt      time.Time        `json:"createdAt"`
+	UpdatedAt      time.Time        `json:"createdAt"`
+	Provider       string           `json:"provider"`
+	EmailConfirmed bool             `json:"emailConfirmed"` // TODO: this should be stored with identity provider -- email has to be confirmed for each provider seperately... If user exists, it has at least one provider with confirmed email
+	Secret         []byte           `datastore:",noindex" json:"-"`
+	isOk           bool             `datastore:"-"` // this should always be true
 }
 
-
-
 var (
-
-
 	ErrEmailIsWaitingConfirmation = errors.New("email is waiting confirmation")
 	ErrUserConnectionFailure      = errors.New("user connection failure")
 	ErrUnlockingIdentity          = errors.New("error unlocking identity")
@@ -50,10 +46,9 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 
 	err := datastore.RunInTransaction(ctx, func(ctx context.Context) error {
 		var err error
-		userDocument, err = collection.UserCollection.Doc(ctx, userKey, nil)
-		if err != nil {
-			return errors.New("0" + err.Error())
-		}
+		userDocument = collection.UserCollection.Doc(ctx, userKey, nil)
+		userDocument, err = userDocument.Get()
+		var userDocumentExists = err == nil
 
 		err = datastore.Get(ctx, identityKey, identity)
 		if err != nil {
@@ -63,7 +58,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 				if provider.TrustProvidedEmail() {
 					// create identity and connect with user
 
-					if !userDocument.Exists() {
+					if !userDocumentExists {
 						// create user
 
 						user.Email = userEmail
@@ -74,7 +69,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 							return errors.New("1" + err.Error())
 						}
 
-						err = userDocument.SetRole(userDocument.Key(), FullControl)
+						err = userDocument.SetAccess(userDocument.Key(), FullControl)
 						if err != nil {
 							return errors.New("2" + err.Error())
 						}
@@ -170,7 +165,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 			return sendEmailConfirmation(ctx, provider, identityKey, userEmail)
 		}
 
-		if !userDocument.Exists() {
+		if !userDocumentExists {
 			return errors.New("10" + err.Error())
 		}
 
@@ -259,13 +254,12 @@ func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error)
 		var userKey = datastore.NewKey(ctx, collection.UserCollection.Name(), userEmail, 0, nil)
 		var userDocument kind.Doc
 		var user = new(collection.User)
-		userDocument, err = collection.UserCollection.Doc(ctx, userKey, nil)
-		if err != nil {
-			return ErrDatabaseConnection
-		}
+		userDocument = collection.UserCollection.Doc(ctx, userKey, nil)
+		userDocument, err = userDocument.Get()
+		var userDocumentExists = err == nil
 
 		// save user
-		if !userDocument.Exists() {
+		if !userDocumentExists {
 			// create user
 
 			user.Email = userEmail
@@ -276,7 +270,7 @@ func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error)
 				return ErrDatabaseConnection
 			}
 
-			err = userDocument.SetRole(userDocument.Key(), FullControl)
+			err = userDocument.SetAccess(userDocument.Key(), FullControl)
 			if err != nil {
 				return ErrDatabaseConnection
 			}

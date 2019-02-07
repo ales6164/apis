@@ -1,6 +1,7 @@
 package apis
 
 import (
+	"github.com/ales6164/apis/collection"
 	"github.com/ales6164/apis/kind"
 	"google.golang.org/appengine/datastore"
 	"net/http"
@@ -15,6 +16,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx := a.NewContext(w, r)
 
+	var group kind.Doc
 	var document kind.Doc
 
 	// analyse path in pairs
@@ -23,7 +25,6 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if k, ok := a.kinds[path[i]]; ok && rules != nil {
 			if rules, ok = rules.Match[k]; ok {
 				// got latest rules
-				var err error
 
 				// create key
 				var key *datastore.Key
@@ -35,12 +36,12 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
-				document, err = k.Doc(ctx, key, document)
-
-				if err != nil {
-					ctx.PrintError(err.Error(), http.StatusBadRequest)
-					return
+				document = k.Doc(ctx, key, group)
+				if rules.AccessControl {
+					document.SetAccessControl(rules.AccessControl)
+					group = document
 				}
+
 				continue
 			}
 		}
@@ -70,12 +71,11 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// check group access
-		if document.HasAncestor() {
-			if ok := document.Ancestor().HasRole(ctx.Member(), ReadOnly, ReadWrite, FullControl); !ok {
-				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-				return
-			}
+		// check access
+		collection.CheckAccess(document)
+		if ok := document.HasAccess(ctx.Member(), ReadOnly, ReadWrite, FullControl); !ok {
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
 		}
 
 		if !document.Key().Incomplete() {
@@ -97,7 +97,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 
 			ctx.PrintJSON(map[string]interface{}{
-				"value": queryResults.Items,
+				"value":      queryResults.Items,
 				"lastUpdate": queryResults.UpdatedAt.String(),
 			}, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
 		}
@@ -110,20 +110,20 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// check group access
 		if document.HasAncestor() {
-			if ok := document.Ancestor().HasRole(ctx.Member(), ReadWrite, FullControl); !ok {
+			if ok := document.Ancestor().HasAccess(ctx.Member(), ReadWrite, FullControl); !ok {
 				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 				return
 			}
 		}
 
-		document.SetAuthor(ctx.Member())
+		document.SetOwner(ctx.Member())
 
 		document, err = document.Add(ctx.Body())
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusInternalServerError)
 			return
 		}
-		err = document.SetRole(ctx.Member(), FullControl)
+		err = document.SetAccess(ctx.Member(), FullControl)
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusInternalServerError)
 			return
@@ -139,7 +139,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// check group access
 		if document.HasAncestor() {
-			if ok := document.Ancestor().HasRole(ctx.Member(), Delete, FullControl); !ok {
+			if ok := document.Ancestor().HasAccess(ctx.Member(), Delete, FullControl); !ok {
 				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 				return
 			}
@@ -166,13 +166,13 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// check group access
 		if document.HasAncestor() {
-			if ok := document.Ancestor().HasRole(ctx.Member(), ReadWrite, FullControl); !ok {
+			if ok := document.Ancestor().HasAccess(ctx.Member(), ReadWrite, FullControl); !ok {
 				ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 				return
 			}
 		}
 
-		document.SetAuthor(ctx.Member())
+		document.SetOwner(ctx.Member())
 
 		if document.Key().Incomplete() {
 			ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
@@ -182,7 +182,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
-			err = document.SetRole(ctx.Member(), FullControl)
+			err = document.SetAccess(ctx.Member(), FullControl)
 			if err != nil {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
