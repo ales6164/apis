@@ -2,6 +2,7 @@ package apis
 
 import (
 	"errors"
+	"github.com/ales6164/apis/collection"
 	"github.com/dgrijalva/jwt-go"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
@@ -37,7 +38,7 @@ type Token struct {
 }
 
 type AuthResponse struct {
-	User  *User `json:"user"`
+	User  *collection.User `json:"user"`
 	Token Token `json:"token"`
 }
 
@@ -60,15 +61,15 @@ func NewAuth(opt *AuthOptions) *Auth {
 		SigningMethod:       auth.SigningMethod,
 		CredentialsOptional: auth.CredentialsOptional,
 	})
-	UserCollection.KeyGen = func(ctx context.Context, str string, member *datastore.Key) *datastore.Key {
+	collection.UserCollection.KeyGen = func(ctx context.Context, str string, member *datastore.Key) *datastore.Key {
 		if str == "me" {
-			if member.Kind() == UserCollection.Name() {
+			if member.Kind() == collection.UserCollection.Name() {
 				return member
 			}
 		} else {
 			key, err := datastore.DecodeKey(str)
 			if err != nil {
-				key = datastore.NewKey(ctx, UserCollection.Name(), str, 0, nil)
+				key = datastore.NewKey(ctx, collection.UserCollection.Name(), str, 0, nil)
 			}
 			return key
 		}
@@ -85,11 +86,11 @@ func (a *Auth) SignedToken(s *Session) (string, error) {
 	return s.Token.SignedString(a.SigningKey)
 }
 
-func (a *Auth) User(ctx context.Context, member *datastore.Key) (*User, error) {
-	if member == nil || member.Kind() != UserCollection.Name() {
+func (a *Auth) User(ctx context.Context, member *datastore.Key) (*collection.User, error) {
+	if member == nil || member.Kind() != collection.UserCollection.Name() {
 		return nil, errors.New("member key not of user")
 	}
-	var user = new(User)
+	var user = new(collection.User)
 	err := datastore.Get(ctx, member, user)
 	return user, err
 }

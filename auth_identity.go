@@ -14,7 +14,7 @@ import (
 const IdentityKind = "_identity"
 
 type Identity struct {
-	User           *User          `datastore:"-" json:"-"`
+	User           *collection.User          `datastore:"-" json:"-"`
 	IdentityKey    *datastore.Key `datastore:"-" json:"-"`
 	UserKey        *datastore.Key `json:"-"`
 	CreatedAt      time.Time      `json:"createdAt"`
@@ -25,13 +25,10 @@ type Identity struct {
 	isOk           bool           `datastore:"-"` // this should always be true
 }
 
-type User struct {
-	Email string   `json:"email"`
-	Roles []string `json:"roles"`
-}
+
 
 var (
-	UserCollection = collection.New("users", User{})
+
 
 	ErrEmailIsWaitingConfirmation = errors.New("email is waiting confirmation")
 	ErrUserConnectionFailure      = errors.New("user connection failure")
@@ -44,16 +41,16 @@ var (
 
 // Connects identity with user
 func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string, unlockKey string) (*Identity, error) {
-	var userKey = datastore.NewKey(ctx, UserCollection.Name(), userEmail, 0, nil)
+	var userKey = datastore.NewKey(ctx, collection.UserCollection.Name(), userEmail, 0, nil)
 	var identityKey = datastore.NewKey(ctx, IdentityKind, provider.Name()+":"+userEmail, 0, userKey)
 
 	var userDocument kind.Doc
-	var user = new(User)
+	var user = new(collection.User)
 	var identity = new(Identity)
 
 	err := datastore.RunInTransaction(ctx, func(ctx context.Context) error {
 		var err error
-		userDocument, err = UserCollection.Doc(ctx, userKey, nil)
+		userDocument, err = collection.UserCollection.Doc(ctx, userKey, nil)
 		if err != nil {
 			return errors.New("0" + err.Error())
 		}
@@ -89,7 +86,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 							return errors.New("3" + err.Error())
 						}
 
-						user = UserCollection.Data(userDocument, false).(*User)
+						user = collection.UserCollection.Data(userDocument, false).(*collection.User)
 
 						// add default roles to the existing user
 						var toAppend []string
@@ -189,7 +186,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 			return errors.New("12" + err.Error())
 		}
 
-		identity.User = UserCollection.Data(userDocument, false).(*User)
+		identity.User = collection.UserCollection.Data(userDocument, false).(*collection.User)
 		identity.IdentityKey = identityKey
 		identity.isOk = true
 
@@ -259,10 +256,10 @@ func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error)
 		}
 
 		// get user and check if everything okay there
-		var userKey = datastore.NewKey(ctx, UserCollection.Name(), userEmail, 0, nil)
+		var userKey = datastore.NewKey(ctx, collection.UserCollection.Name(), userEmail, 0, nil)
 		var userDocument kind.Doc
-		var user = new(User)
-		userDocument, err = UserCollection.Doc(ctx, userKey, nil)
+		var user = new(collection.User)
+		userDocument, err = collection.UserCollection.Doc(ctx, userKey, nil)
 		if err != nil {
 			return ErrDatabaseConnection
 		}
@@ -291,7 +288,7 @@ func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error)
 				return ErrDatabaseConnection
 			}
 
-			user = UserCollection.Data(userDocument, false).(*User)
+			user = collection.UserCollection.Data(userDocument, false).(*collection.User)
 
 			// add default roles to the existing user
 			var toAppend []string

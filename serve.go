@@ -116,6 +116,8 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		document.SetAuthor(ctx.Member())
+
 		document, err = document.Add(ctx.Body())
 		if err != nil {
 			ctx.PrintError(err.Error(), http.StatusInternalServerError)
@@ -169,6 +171,8 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+
+		document.SetAuthor(ctx.Member())
 
 		if document.Key().Incomplete() {
 			ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)

@@ -13,7 +13,7 @@ import (
 
 type document struct {
 	kind               kind.Kind
-	member             *datastore.Key
+	author             *datastore.Key
 	defaultCtx         context.Context
 	ctx                context.Context
 	key                *datastore.Key
@@ -54,6 +54,14 @@ func (d *document) Exists() bool {
 	return d.meta.exists
 }
 
+func (d *document) SetAuthor(author *datastore.Key) {
+	d.author = author
+}
+
+func (d *document) GetAuthor() *datastore.Key {
+	return d.author
+}
+
 func (d *document) Meta() (kind.Meta, error) {
 	var err error
 	var ancestorMeta kind.Meta
@@ -88,8 +96,13 @@ func (d *document) Commit() error {
 	if d.meta == nil {
 		return errors.New("entry doesn't match meta")
 	}
+
 	err := d.meta.Save(d.defaultCtx, d, d.meta.group)
 	return err
+}
+
+func (d *document) DefaultContext() context.Context {
+	return d.defaultCtx
 }
 
 func (d *document) Context() context.Context {
@@ -133,7 +146,7 @@ func (d *document) SetKey(key *datastore.Key) {
 func (d *document) Copy() kind.Doc {
 	return &document{
 		kind:               d.kind,
-		member:             d.member,
+		author:             d.author,
 		defaultCtx:         d.defaultCtx,
 		ctx:                d.ctx,
 		key:                d.key,
@@ -366,10 +379,6 @@ func (d *document) Set(data interface{}) (kind.Doc, error) {
 	err = d.Commit()
 
 	return d, err
-}
-
-func (d *document) SetMember(member *datastore.Key) {
-	d.member = member
 }
 
 // todo: some function for giving access to this document

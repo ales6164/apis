@@ -19,10 +19,12 @@ type meta struct {
 }
 
 type metaValue struct {
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
-	GroupId   string    `json:"-"`
-	Id        string    `json:"-"` // every entry should have unique namespace --- or maybe auto generated if needed
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	CreatedBy *datastore.Key `json:"createdBy"`
+	UpdatedBy *datastore.Key `json:"updatedBy"`
+	GroupId   string         `json:"-"`
+	Id        string         `json:"-"` // every entry should have unique namespace --- or maybe auto generated if needed
 }
 
 func metaKey(ctx context.Context, d kind.Doc, groupKey *datastore.Key) *datastore.Key {
@@ -40,6 +42,8 @@ func getMeta(ctx context.Context, d kind.Doc, groupMeta kind.Meta) (*meta, error
 		groupId = groupMeta.ID()
 	}
 	if d.Key() == nil || d.Key().Incomplete() {
+		m.value.CreatedBy = d.GetAuthor()
+		m.value.UpdatedBy = d.GetAuthor()
 		m.value.CreatedAt = time.Now()
 		m.value.UpdatedAt = m.value.CreatedAt
 		m.value.GroupId = groupId
@@ -49,6 +53,8 @@ func getMeta(ctx context.Context, d kind.Doc, groupMeta kind.Meta) (*meta, error
 		err = datastore.Get(ctx, k, &m.value)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
+				m.value.CreatedBy = d.GetAuthor()
+				m.value.UpdatedBy = d.GetAuthor()
 				m.value.CreatedAt = time.Now()
 				m.value.UpdatedAt = m.value.CreatedAt
 				m.value.GroupId = groupId
@@ -66,12 +72,6 @@ func getMeta(ctx context.Context, d kind.Doc, groupMeta kind.Meta) (*meta, error
 	return m, nil
 }
 
-/*func setMeta(ctx context.Context, d kind.Doc, m *metaValue, ancestor *datastore.Key) error {
-	k := metaKey(ctx, d, ancestor)
-	_, err := datastore.Put(ctx, k, m)
-	return err
-}*/
-
 func (m *meta) ID() string {
 	return m.value.Id
 }
@@ -84,10 +84,20 @@ func (m *meta) CreatedAt() time.Time {
 	return m.value.CreatedAt
 }
 
+func (m *meta) CreatedBy() *datastore.Key {
+	return m.value.CreatedBy
+}
+
+func (m *meta) UpdatedBy() *datastore.Key {
+	return m.value.UpdatedBy
+}
+
 type OutputMeta struct {
 	Id        string      `json:"id"`
 	CreatedAt time.Time   `json:"createdAt"`
 	UpdatedAt time.Time   `json:"updatedAt"`
+	CreatedBy interface{} `json:"createdBy,omitempty"`
+	UpdatedBy interface{} `json:"updatedBy,omitempty"`
 	Value     interface{} `json:"value"`
 }
 
@@ -98,10 +108,19 @@ func (m *meta) Print(d kind.Doc, value interface{}) interface{} {
 	} else {
 		id = d.Key().StringID()
 	}
+
+	createdBy, _ := PublicUserCollection.Doc(d.DefaultContext(), m.CreatedBy(), nil)
+	updatedBy, _ := PublicUserCollection.Doc(d.DefaultContext(), m.UpdatedBy(), nil)
+
+	createdBy, _ = createdBy.Get()
+	updatedBy, _ = updatedBy.Get()
+
 	return &OutputMeta{
 		Id:        id,
 		CreatedAt: m.value.CreatedAt,
 		UpdatedAt: m.value.UpdatedAt,
+		CreatedBy: PublicUserCollection.Data(createdBy, false),
+		UpdatedBy: PublicUserCollection.Data(updatedBy, false),
 		Value:     value,
 	}
 }
@@ -125,70 +144,17 @@ func (m *meta) Save(ctx context.Context, d kind.Doc, groupMeta kind.Meta) error 
 			groupMetaKey = groupMeta.Key()
 		}
 		m.key = metaKey(ctx, d, groupMetaKey)
-	} else {
-		m.value.UpdatedAt = time.Now()
 	}
+	if m.value.CreatedBy == nil {
+		m.value.CreatedBy = d.GetAuthor()
+	}
+	m.value.UpdatedBy = d.GetAuthor()
+	m.value.UpdatedAt = time.Now()
+
 	m.key, err = datastore.Put(ctx, m.key, &m.value)
 	m.exists = err == nil
 	return err
 }
-
-// Loads relationship table and checks if user has access to the specified namespace.
-// Then adds the parent and rewrites document key and context.
-/*func Meta(ctx context.Context, d kind.Doc) (*meta, func() error, error) {
-	var ancestorMeta *meta
-	var err error
-	if d.Ancestor() != nil {
-		ancestorMeta, _, err = Meta(ctx, d.Ancestor())
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-
-	var entryMeta = new(meta)
-	entryMeta.AncestorKey = ancestorMeta.Key
-
-	if d.Key() == nil || d.Key().Incomplete() {
-		entryMeta.metaValue = new(metaValue)
-		if ancestorMeta != nil {
-			entryMeta.metaValue.GroupID = ancestorMeta.ID
-		}
-		entryMeta.metaValue.ID = RandStringBytesMaskImprSrc(LetterNumberBytes, 6)
-		entryMeta.metaValue.UpdatedAt = time.Now()
-		entryMeta.metaValue.CreatedAt = entryMeta.metaValue.UpdatedAt
-		return entryMeta, func() error {
-			return setMeta(ctx, d, entryMeta.metaValue, ancestorMeta.Key)
-		}, nil
-	}
-
-	err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-		entryMeta.Key, entryMeta.metaValue, err = getMeta(ctx, d, ancestorMeta.Key)
-		if err != nil {
-			return err
-		}
-		if len(entryMeta.metaValue.ID) == 0 {
-			entryMeta.metaValue.ID = RandStringBytesMaskImprSrc(LetterNumberBytes, 6)
-		}
-		if ancestorMeta != nil {
-			if entryMeta.metaValue.GroupID != ancestorMeta.ID {
-				if len(entryMeta.metaValue.GroupID) == 0 {
-					entryMeta.metaValue.UpdatedAt = time.Now()
-					entryMeta.metaValue.GroupID = ancestorMeta.ID
-					err = setMeta(ctx, d, entryMeta.metaValue, ancestorMeta.Key)
-				} else {
-					return errors.New("hierarchy error")
-				}
-			}
-		}
-
-		return err
-	}, nil)
-	if err != nil {
-		return entryMeta, nil, err
-	}
-
-	return entryMeta, nil, err
-}*/
 
 func SetNamespace(ctx context.Context, key *datastore.Key, namespace string) (context.Context, *datastore.Key, error) {
 	var err error

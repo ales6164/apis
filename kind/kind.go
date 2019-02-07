@@ -30,6 +30,8 @@ type Doc interface {
 	Delete() error
 	Kind() Kind
 	Value() reflect.Value
+	SetAuthor(key *datastore.Key)
+	GetAuthor() *datastore.Key
 	Key() *datastore.Key
 	SetKey(key *datastore.Key)
 	Copy() Doc
@@ -38,6 +40,7 @@ type Doc interface {
 	HasRole(member *datastore.Key, role ...string) bool
 	HasAncestor() bool
 	Context() context.Context
+	DefaultContext() context.Context
 	Meta() (Meta, error)
 	Exists() bool
 	/*SetParent(doc Doc) (Doc, error)*/
@@ -50,6 +53,8 @@ type Meta interface {
 	Exists() bool
 	UpdatedAt() time.Time
 	CreatedAt() time.Time
+	CreatedBy() *datastore.Key
+	UpdatedBy() *datastore.Key
 	Print(doc Doc, value interface{}) interface{}
 }
 
