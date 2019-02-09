@@ -77,7 +77,7 @@ func SetAccess(ctx context.Context, doc kind.Doc, member *datastore.Key, permiss
 			}
 			return err
 		}
-		
+
 		// TODO: get and update/store DocUserRelationship
 
 		return nil
