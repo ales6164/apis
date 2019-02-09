@@ -20,11 +20,11 @@ type Field interface {
 type Doc interface {
 	Type() reflect.Type
 	Parse(body []byte) error
-	Get() (Doc, error)
-	Add(data interface{}) (Doc, error) // transaction function in 1/2 case
-	Set(data interface{}) (Doc, error)
-	Patch(data []byte) error // transaction function
-	Delete() error
+	Get(ctx context.Context) (Doc, error)
+	Add(ctx context.Context, data interface{}) (Doc, error) // transaction function in 1/2 case
+	Set(ctx context.Context, data interface{}) (Doc, error)
+	Patch(ctx context.Context, data []byte) error // transaction function
+	Delete(ctx context.Context) error
 	Kind() Kind
 	Value() reflect.Value
 	SetOwner(key *datastore.Key)
@@ -46,5 +46,5 @@ type Kind interface {
 	Count(ctx context.Context) (int, error)
 	Increment(ctx context.Context) error
 	Decrement(ctx context.Context) error
-	Doc(ctx context.Context, key *datastore.Key, ancestor Doc) Doc
+	Doc(key *datastore.Key, ancestor Doc) Doc
 }

@@ -263,6 +263,6 @@ func (c *Collection) Data(doc kind.Doc, includeMeta bool) interface{} {
 	return reflectValue.Interface()
 }
 
-func (c *Collection) Doc(ctx context.Context, key *datastore.Key, ancestor kind.Doc) kind.Doc {
-	return NewDoc(ctx, c, key, ancestor)
+func (c *Collection) Doc(key *datastore.Key, ancestor kind.Doc) kind.Doc {
+	return NewDoc(c, key, ancestor)
 }

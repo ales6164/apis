@@ -16,7 +16,6 @@ type document struct {
 	kind                kind.Kind
 	owner               *datastore.Key
 	defaultCtx          context.Context
-	ctx                 context.Context
 	key                 *datastore.Key
 	value               reflect.Value
 	hasInputData        bool // when updating
@@ -46,14 +45,13 @@ type DocumentCollectionRelationship struct {
 	Roles []string // fullControl, ...
 }
 
-func NewDoc(ctx context.Context, kind kind.Kind, key *datastore.Key, accessControllerDoc kind.Doc) *document {
+func NewDoc(kind kind.Kind, key *datastore.Key, accessControllerDoc kind.Doc) *document {
 	if key != nil && key.Kind() != kind.Name() {
 		key = nil
 	}
 	doc := &document{
 		kind:        kind,
 		/*defaultCtx:  ctx,*/
-		ctx:         ctx,
 		value:       reflect.New(kind.Type()),
 		key:         key,
 		accessControllerDoc:       accessControllerDoc,
