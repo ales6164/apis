@@ -1,7 +1,9 @@
 package apis
 
 import (
+	"github.com/ales6164/apis/iam"
 	"github.com/ales6164/apis/kind"
+	gctx "github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
 	"net/http"
@@ -18,7 +20,7 @@ type Apis struct {
 }
 
 type Options struct {
-	Auth  *Auth
+	IAM   *iam.IAM
 	Rules *Rules
 }
 
@@ -46,46 +48,27 @@ func New(options *Options) *Apis {
 
 	a.router = mux.NewRouter()
 
-	if a.Auth != nil {
+	if a.IAM != nil {
 		a.hasAuth = true
-		a.Auth.Apis = a
 
 		// renew token
-		a.router.Handle("/auth/renew", Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := a.NewContext(w, r)
+		a.router.Handle("/auth/renew", authMiddleware(a, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := a.IAM.NewContext(w, r)
 
-			err := ctx.ExtendSession(a.Auth.TokenExpiresIn)
+			session, err := a.IAM.RenewSession(ctx)
 			if err != nil {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
 
-			user, err := a.Auth.User(ctx, ctx.Member())
-			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			signedToken, err := a.Auth.SignedToken(ctx.session)
-			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			ctx.PrintJSON(AuthResponse{
-				User: user,
-				Token: Token{
-					Id:        signedToken,
-					ExpiresAt: ctx.session.ExpiresAt.Unix(),
-				},
-			}, http.StatusOK)
+			a.IAM.PrintResponse(session)
 		}))).Methods(http.MethodOptions, http.MethodPost)
 
 		// confirm email
-		a.router.Handle("/auth/confirm/{code}", Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := a.NewContext(w, r)
+		a.router.Handle("/auth/confirm/{code}", authMiddleware(a, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := a.IAM.NewContext(w, r)
 
-			_, err := a.Auth.ConfirmEmail(ctx, mux.Vars(r)["code"])
+			_, err := a.IAM.ConfirmEmail(ctx, mux.Vars(r)["code"])
 			if err != nil {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
@@ -96,15 +79,36 @@ func New(options *Options) *Apis {
 			ctx.PrintStatus(http.StatusText(http.StatusOK), http.StatusOK)
 		}))).Methods(http.MethodGet)
 
-		for _, p := range a.Auth.providers {
-			a.router.Handle(`/auth/`+p.Name()+`/{path:[a-zA-Z0-9=\-\/]+}`, Middleware(p))
+		for _, p := range a.IAM.GetProviders() {
+			a.router.Handle(`/auth/`+p.Name()+`/{path:[a-zA-Z0-9=\-\/]+}`, authMiddleware(a, p))
 		}
 	}
 
 	return a
 }
 
-func Middleware(h http.Handler) http.Handler {
+func authMiddleware(a *Apis, h http.Handler) http.Handler {
+	return http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers",
+				"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
+					"X-Requested-With, X-Include-Meta")
+		}
+
+		if r.Method == http.MethodOptions {
+			return
+		}
+
+		tkn, _ := a.IAM.Middleware().CheckJWT(w, r)
+		gctx.Set(r, "token", tkn)
+
+		h.ServeHTTP(w, r)
+	}))
+}
+
+func defaultMiddleware(h http.Handler) http.Handler {
 	return http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
@@ -121,30 +125,6 @@ func Middleware(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	}))
 }
-
-/*func (a *Apis) SetAuth(auth *Auth) {
-	a.auth = auth
-	auth.a = a
-	a.hasAuth = auth != nil
-	for _, p := range auth.providers {
-		a.authRouter.HandleFunc(joinPath(p.GetName(), "login"), func(w http.ResponseWriter, r *http.Request) {
-			ctx, err := a.NewContext(w, r)
-			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusForbidden)
-				return
-			}
-			p.Login(ctx)
-		}).Methods(http.MethodPost)
-		a.authRouter.HandleFunc(joinPath(p.GetName(), "register"), func(w http.ResponseWriter, r *http.Request) {
-			ctx, err := a.NewContext(w, r)
-			if err != nil {
-				ctx.PrintError(err.Error(), http.StatusForbidden)
-				return
-			}
-			p.Register(ctx)
-		}).Methods(http.MethodPost)
-	}
-}*/
 
 func (a *Apis) HandleKind(k kind.Kind) {
 	a.kinds[k.Name()] = k
@@ -163,7 +143,11 @@ type PathPair struct {
 }
 
 func (a *Apis) Handler() *mux.Router {
-	a.router.Handle(`/{path:[a-zA-Z0-9=\-\_\/]+}`, Middleware(a))
+	if a.hasAuth {
+		a.router.Handle(`/{path:[a-zA-Z0-9=\-\_\/]+}`, authMiddleware(a, a))
+	} else {
+		a.router.Handle(`/{path:[a-zA-Z0-9=\-\_\/]+}`, defaultMiddleware(a))
+	}
 	return a.router
 }
 

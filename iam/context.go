@@ -1,8 +1,9 @@
-package apis
+package iam
 
 import (
 	"encoding/json"
 	"github.com/dgrijalva/jwt-go"
+	gctx "github.com/gorilla/context"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"
@@ -12,29 +13,29 @@ import (
 )
 
 type Context struct {
+	*IAM
 	context.Context
-	a                    *Apis
+	def                  context.Context
 	r                    *http.Request
 	w                    http.ResponseWriter
 	hasReadBody          bool
 	body                 []byte
-	session              *Session
-	hasIncludeMetaHeader bool
-	authError            error
-	sessError            error
+	token                *jwt.Token
+	session              *session
+	HasIncludeMetaHeader bool
 }
 
-func (a *Apis) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context) {
-	ctx = Context{Context: appengine.NewContext(r), w: w, r: r, a: a, hasIncludeMetaHeader: len(r.Header.Get("X-Include-Meta")) > 0}
-	var token *jwt.Token
-	if ctx.a.hasAuth {
-		token, ctx.authError = ctx.a.Auth.middleware.CheckJWT(ctx.w, ctx.r)
+func (iam *IAM) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context) {
+	gae := appengine.NewContext(r)
+	ctx = Context{IAM: iam, Context: gae, def: gae, w: w, r: r, HasIncludeMetaHeader: len(r.Header.Get("X-Include-Meta")) > 0}
+	if t, ok := gctx.Get(r, "token").(*jwt.Token); ok {
+		ctx.token = t
 	}
-	ctx.session, ctx.sessError = StartSession(ctx, token)
+	ctx.session, _ = startSession(ctx, ctx.token)
 	return ctx
 }
 
-func (ctx Context) HasAccess(rules Rules, scopes ...string) bool {
+/*func (ctx Context) HasAccess(rules Rules, scopes ...string) bool {
 	var ruleScopes []string
 	if ctx.session.IsValid {
 		var sessRoles []string
@@ -59,7 +60,7 @@ func (ctx Context) HasAccess(rules Rules, scopes ...string) bool {
 		}
 	}
 	return false
-}
+}*/
 
 // reads body once and stores contents
 func (ctx Context) Body() []byte {
@@ -71,20 +72,20 @@ func (ctx Context) Body() []byte {
 	return ctx.body
 }
 
+func (ctx Context) Default() context.Context {
+	return ctx.def
+}
+
 func (ctx Context) Member() *datastore.Key {
-	return ctx.session.Member
+	return ctx.session.stored.Subject
 }
 
 func (ctx Context) User() string {
-	return ctx.session.Member.StringID()
+	return ctx.session.stored.Subject.StringID()
 }
 
 func (ctx Context) IsAuthenticated() bool {
 	return ctx.session.IsAuthenticated
-}
-
-func (ctx Context) ExtendSession(seconds int64) error {
-	return ctx.session.Extend(ctx, seconds)
 }
 
 /**

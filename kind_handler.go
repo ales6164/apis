@@ -1,6 +1,7 @@
 package apis
 
 import (
+	"github.com/ales6164/apis/iam"
 	"github.com/ales6164/apis/kind"
 	"google.golang.org/appengine/datastore"
 	"net/http"
@@ -27,7 +28,7 @@ Filters param is an array of filter pairs:
 filters[0][filterStr] "fieldName >"
 filters[0][value] "fieldValue"
  */
-func Query(doc kind.Doc, req *http.Request, params map[string][]string) (QueryResult, error) {
+func Query(ctx iam.Context, doc kind.Doc, req *http.Request, params map[string][]string) (QueryResult, error) {
 	r := QueryResult{
 		Limit: 25,
 		Items: []interface{}{},
@@ -82,14 +83,14 @@ func Query(doc kind.Doc, req *http.Request, params map[string][]string) (QueryRe
 	q = q.Offset(r.Offset)
 
 	var err error
-	r.Total, err = doc.Kind().Count(doc.Context())
+	r.Total, err = doc.Kind().Count(ctx.Default())
 	if err != nil {
 		return r, err
 	}
 
-	t := q.Run(doc.Context())
+	t := q.Run(ctx)
 	for {
-		var h = doc.Copy()
+		var h = doc
 		key, err := t.Next(h)
 		h.SetKey(key)
 		if err == datastore.Done {

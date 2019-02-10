@@ -1,4 +1,4 @@
-package apis
+package iam
 
 import (
 	"fmt"
@@ -54,7 +54,6 @@ type MiddlewareOptions struct {
 }
 
 type JWTMiddleware struct {
-	Auth    *Auth
 	Options MiddlewareOptions
 }
 
@@ -63,7 +62,7 @@ func OnError(w http.ResponseWriter, r *http.Request, err string) {
 }
 
 // New constructs a new Secure instance with supplied options.
-func middleware(a *Auth, options ...MiddlewareOptions) *JWTMiddleware {
+func middleware(options ...MiddlewareOptions) *JWTMiddleware {
 	var opts MiddlewareOptions
 	if len(options) == 0 {
 		opts = MiddlewareOptions{}
@@ -84,7 +83,6 @@ func middleware(a *Auth, options ...MiddlewareOptions) *JWTMiddleware {
 	}
 
 	return &JWTMiddleware{
-		Auth:    a,
 		Options: opts,
 	}
 }
@@ -201,7 +199,7 @@ func (m *JWTMiddleware) CheckJWT(w http.ResponseWriter, r *http.Request) (*jwt.T
 	// Now parse the token
 	parser := new(jwt.Parser)
 	parser.SkipClaimsValidation = true
-	parsedToken, err := parser.ParseWithClaims(token, &Claims{}, m.Options.ValidationKeyGetter)
+	parsedToken, err := parser.ParseWithClaims(token, &claims{}, m.Options.ValidationKeyGetter)
 
 	// Check if there was an error in parsing...
 	if err != nil {

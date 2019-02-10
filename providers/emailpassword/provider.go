@@ -2,7 +2,7 @@ package emailpassword
 
 import (
 	"errors"
-	"github.com/ales6164/apis"
+	"github.com/ales6164/apis/iam"
 	"github.com/asaskevich/govalidator"
 	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
@@ -20,8 +20,8 @@ var (
 
 type Provider struct {
 	*Config
-	*apis.Auth
-	apis.Provider
+	*iam.IAM
+	iam.Provider
 }
 
 type Config struct {
@@ -44,11 +44,11 @@ func (p *Provider) TrustProvidedEmail() bool {
 	return false
 }
 
-func (p *Provider) ConfigAuth(a *apis.Auth) {
-	p.Auth = a
+func (p *Provider) ConfigAuth(a *iam.IAM) {
+	p.IAM = a
 }
 
-func (p *Provider) Login(ctx apis.Context) {
+func (p *Provider) Login(ctx iam.Context) {
 	body := ctx.Body()
 
 	email, _ := jsonparser.GetString(body, "email")
@@ -70,7 +70,7 @@ func (p *Provider) Login(ctx apis.Context) {
 		return
 	}
 
-	identity, err := p.Auth.Connect(ctx, p, email, password)
+	identity, err := p.IAM.Connect(ctx, p, email, password)
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusConflict)
 		return
@@ -82,29 +82,17 @@ func (p *Provider) Login(ctx apis.Context) {
 	}
 
 	// create session
-	session, err := p.NewSession(ctx, p.Name(), identity.IdentityKey, identity.UserKey, identity.User.Roles...)
+	session, err := p.IAM.NewSession(ctx, p, identity)
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusConflict)
 		return
 	}
 
-	signedToken, err := p.Auth.SignedToken(session)
-	if err != nil {
-		ctx.PrintError(err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	ctx.PrintJSON(apis.AuthResponse{
-		User: identity.User,
-		Token: apis.Token{
-			Id:        signedToken,
-			ExpiresAt: session.ExpiresAt.Unix(),
-		},
-	}, http.StatusOK)
+	p.IAM.PrintResponse(session)
 }
 
 
-func (p *Provider) Register(ctx apis.Context) {
+func (p *Provider) Register(ctx iam.Context) {
 	body := ctx.Body()
 
 	email, _ := jsonparser.GetString(body, "email")
@@ -127,7 +115,7 @@ func (p *Provider) Register(ctx apis.Context) {
 	}
 
 	// create user
-	identity, err := p.Auth.Connect(ctx, p, email, password)
+	identity, err := p.IAM.Connect(ctx, p, email, password)
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusConflict)
 		return
@@ -139,30 +127,18 @@ func (p *Provider) Register(ctx apis.Context) {
 	}
 
 	// create session
-	session, err := p.NewSession(ctx, p.Name(), identity.IdentityKey, identity.UserKey, identity.User.Roles...)
+	session, err := p.IAM.NewSession(ctx, p, identity)
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusConflict)
 		return
 	}
 
-	signedToken, err := p.Auth.SignedToken(session)
-	if err != nil {
-		ctx.PrintError(err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	ctx.PrintJSON(apis.AuthResponse{
-		User: identity.User,
-		Token: apis.Token{
-			Id:        signedToken,
-			ExpiresAt: session.ExpiresAt.Unix(),
-		},
-	}, http.StatusOK)
+	p.IAM.PrintResponse(session)
 }
 
 func (p *Provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := mux.Vars(r)["path"]
-	ctx := p.Auth.NewContext(w, r)
+	ctx := p.IAM.NewContext(w, r)
 	if len(path) > 0 {
 		switch path {
 		case "login":

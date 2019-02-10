@@ -1,4 +1,4 @@
-package apis
+package iam
 
 import (
 	"errors"
@@ -36,7 +36,7 @@ var (
 )
 
 // Connects identity with user
-func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string, unlockKey string) (*Identity, error) {
+func (iam *IAM) Connect(ctx context.Context, provider Provider, userEmail string, unlockKey string) (*Identity, error) {
 	var userKey = datastore.NewKey(ctx, collection.UserCollection.Name(), userEmail, 0, nil)
 	var identityKey = datastore.NewKey(ctx, IdentityKind, provider.Name()+":"+userEmail, 0, userKey)
 
@@ -46,8 +46,8 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 
 	err := datastore.RunInTransaction(ctx, func(ctx context.Context) error {
 		var err error
-		userDocument = collection.UserCollection.Doc(ctx, userKey, nil)
-		userDocument, err = userDocument.Get()
+		userDocument = collection.UserCollection.Doc(userKey, nil)
+		userDocument, err = userDocument.Get(ctx)
 		var userDocumentExists = err == nil
 
 		err = datastore.Get(ctx, identityKey, identity)
@@ -62,21 +62,21 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 						// create user
 
 						user.Email = userEmail
-						user.Roles = a.DefaultRoles
+						user.Roles = iam.DefaultRoles
 
-						userDocument, err = userDocument.Set(user)
+						userDocument, err = userDocument.Set(ctx, user)
 						if err != nil {
 							return errors.New("1" + err.Error())
 						}
 
-						err = userDocument.SetAccess(userDocument.Key(), FullControl)
+						err = collection.SetAccess(ctx, userDocument, userDocument.Key(), FullControl)
 						if err != nil {
 							return errors.New("2" + err.Error())
 						}
 					} else {
 						// load user and save changes
 
-						userDocument, err = userDocument.Get()
+						userDocument, err = userDocument.Get(ctx)
 						if err != nil {
 							return errors.New("3" + err.Error())
 						}
@@ -85,7 +85,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 
 						// add default roles to the existing user
 						var toAppend []string
-						for _, r := range a.DefaultRoles {
+						for _, r := range iam.DefaultRoles {
 							var ok bool
 							for _, r2 := range user.Roles {
 								if r == r2 {
@@ -99,7 +99,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 						user.Roles = append(user.Roles, toAppend...)
 
 						// save user
-						userDocument, err = userDocument.Set(user)
+						userDocument, err = userDocument.Set(ctx, user)
 						if err != nil {
 							return errors.New("4" + err.Error())
 						}
@@ -118,7 +118,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 					identity.Provider = provider.Name()
 
 					// encrypt and save unlock key
-					identity.Secret, err = crypt(a.HashingCost, []byte(unlockKey))
+					identity.Secret, err = crypt(iam.HashingCost, []byte(unlockKey))
 					if err != nil {
 						return errors.New("6" + err.Error())
 					}
@@ -141,7 +141,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 					identity.Provider = provider.Name()
 
 					// encrypt and save unlock key
-					identity.Secret, err = crypt(a.HashingCost, []byte(unlockKey))
+					identity.Secret, err = crypt(iam.HashingCost, []byte(unlockKey))
 					if err != nil {
 						return errors.New("7" + err.Error())
 					}
@@ -176,7 +176,7 @@ func (a *Auth) Connect(ctx context.Context, provider Provider, userEmail string,
 		}
 
 		// get user
-		userDocument, err = userDocument.Get()
+		userDocument, err = userDocument.Get(ctx)
 		if err != nil {
 			return errors.New("12" + err.Error())
 		}
@@ -202,7 +202,7 @@ var (
 	ErrIdentityAlreadyConfirmed = errors.New("identity is already confirmed")
 )
 
-func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error) {
+func (iam *IAM) ConfirmEmail(ctx context.Context, code string) (*Identity, error) {
 
 	emailWaitingConfirmationKey, err := datastore.DecodeKey(code)
 	if err != nil {
@@ -232,7 +232,7 @@ func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error)
 		var userEmail = emailWaitingConfirmation.Email
 
 		// get provider
-		var provider = a.GetProvider(emailWaitingConfirmation.Provider)
+		var provider = iam.GetProvider(emailWaitingConfirmation.Provider)
 		if provider == nil {
 			return ErrInvalidProvider
 		}
@@ -254,8 +254,8 @@ func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error)
 		var userKey = datastore.NewKey(ctx, collection.UserCollection.Name(), userEmail, 0, nil)
 		var userDocument kind.Doc
 		var user = new(collection.User)
-		userDocument = collection.UserCollection.Doc(ctx, userKey, nil)
-		userDocument, err = userDocument.Get()
+		userDocument = collection.UserCollection.Doc(userKey, nil)
+		userDocument, err = userDocument.Get(ctx)
 		var userDocumentExists = err == nil
 
 		// save user
@@ -263,21 +263,21 @@ func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error)
 			// create user
 
 			user.Email = userEmail
-			user.Roles = a.DefaultRoles
+			user.Roles = iam.DefaultRoles
 
-			userDocument, err = userDocument.Set(user)
+			userDocument, err = userDocument.Set(ctx, user)
 			if err != nil {
 				return ErrDatabaseConnection
 			}
 
-			err = userDocument.SetAccess(userDocument.Key(), FullControl)
+			err = collection.SetAccess(ctx, userDocument, userDocument.Key(), FullControl)
 			if err != nil {
 				return ErrDatabaseConnection
 			}
 		} else {
 			// load user and save changes
 
-			userDocument, err = userDocument.Get()
+			userDocument, err = userDocument.Get(ctx)
 			if err != nil {
 				return ErrDatabaseConnection
 			}
@@ -286,7 +286,7 @@ func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error)
 
 			// add default roles to the existing user
 			var toAppend []string
-			for _, r := range a.DefaultRoles {
+			for _, r := range iam.DefaultRoles {
 				var ok bool
 				for _, r2 := range user.Roles {
 					if r == r2 {
@@ -300,7 +300,7 @@ func (a *Auth) ConfirmEmail(ctx context.Context, code string) (*Identity, error)
 			user.Roles = append(user.Roles, toAppend...)
 
 			// save user
-			userDocument, err = userDocument.Set(user)
+			userDocument, err = userDocument.Set(ctx, user)
 			if err != nil {
 				return ErrDatabaseConnection
 			}

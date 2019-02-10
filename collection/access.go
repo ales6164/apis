@@ -79,8 +79,35 @@ func SetAccess(ctx context.Context, doc kind.Doc, member *datastore.Key, permiss
 		}
 
 		// TODO: get and update/store DocUserRelationship
+		var groupRel = new(DocUserRelationship)
+		var relKey = datastore.NewKey(ctx, "_rel", doc.Key().Encode(), 0, member)
+		err = datastore.Get(ctx, relKey, groupRel)
+		if err != nil {
+			if err == datastore.ErrNoSuchEntity {
+				groupRel.Roles = permission
+				_, err = datastore.Put(ctx, relKey, groupRel)
+				return err
+			}
+			return err
+		}
 
-		return nil
+		// add default roles to the existing user
+		var toAppend []string
+		for _, r := range permission {
+			var ok bool
+			for _, r2 := range groupRel.Roles {
+				if r == r2 {
+					ok = true
+				}
+			}
+			if !ok {
+				toAppend = append(toAppend, r)
+			}
+		}
+		groupRel.Roles = append(groupRel.Roles, toAppend...)
+		_, err = datastore.Put(ctx, relKey, groupRel)
+
+		return err
 	}, &datastore.TransactionOptions{
 		XG: true,
 	})

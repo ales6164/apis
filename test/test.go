@@ -3,6 +3,7 @@ package test
 import (
 	"github.com/ales6164/apis"
 	"github.com/ales6164/apis/collection"
+	"github.com/ales6164/apis/iam"
 	"github.com/ales6164/apis/providers/emailpassword"
 	"github.com/dgrijalva/jwt-go"
 	_ "google.golang.org/appengine/remote_api"
@@ -24,9 +25,9 @@ func init() {
 	}
 
 	// Built-in auth library
-	auth := apis.NewAuth(&apis.AuthOptions{
+	auth := iam.NewIAM(&iam.Options{
 		SigningKey:          signingKey,
-		Extractors:          []apis.TokenExtractor{apis.FromAuthHeader},
+		Extractors:          []iam.TokenExtractor{iam.FromAuthHeader},
 		CredentialsOptional: false,
 		DefaultRoles:        []string{subscriber},
 		SigningMethod:       jwt.SigningMethodHS256,
@@ -37,24 +38,24 @@ func init() {
 
 	// Set-up API, define user roles and permissions
 	api := apis.New(&apis.Options{
-		Auth: auth,
+		IAM: auth,
 		Rules: &apis.Rules{
 			Match: apis.Match{
 				projects: &apis.Rules{
 					Permissions: apis.Permissions{
-						apis.AllAuthenticatedUsers: []string{apis.FullControl},
+						iam.AllAuthenticatedUsers: []string{iam.FullControl},
 					},
 					Match: apis.Match{
 						objects: &apis.Rules{
 							Permissions: apis.Permissions{
-								apis.AllAuthenticatedUsers: []string{apis.FullControl},
+								iam.AllAuthenticatedUsers: []string{iam.FullControl},
 							},
 						},
 					},
 				},
 				objects: &apis.Rules{
 					Permissions: apis.Permissions{
-						apis.AllUsers: []string{apis.FullControl},
+						iam.AllUsers: []string{iam.FullControl},
 					},
 				},
 			},

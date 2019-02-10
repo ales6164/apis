@@ -1,4 +1,4 @@
-package apis
+package iam
 
 import (
 	"fmt"
@@ -8,26 +8,26 @@ import (
 type Provider interface {
 	Name() string
 	TrustProvidedEmail() bool
-	ConfigAuth(*Auth)
+	ConfigAuth(*IAM)
 	http.Handler
 }
 
-func (a *Auth) RegisterProvider(provider Provider) {
+func (iam *IAM) RegisterProvider(provider Provider) {
 	name := provider.Name()
-	for _, p := range a.providers {
+	for _, p := range iam.providers {
 		if p.Name() == name {
 			fmt.Printf("warning: auth provider %v already registered", name)
 			return
 		}
 	}
 
-	provider.ConfigAuth(a)
-	a.providers = append(a.providers, provider)
+	provider.ConfigAuth(iam)
+	iam.providers = append(iam.providers, provider)
 }
 
 // GetProvider get provider with name
-func (a *Auth) GetProvider(name string) Provider {
-	for _, provider := range a.providers {
+func (iam *IAM) GetProvider(name string) Provider {
+	for _, provider := range iam.providers {
 		if provider.Name() == name {
 			return provider
 		}
@@ -36,8 +36,8 @@ func (a *Auth) GetProvider(name string) Provider {
 }
 
 // GetProviders return registered providers
-func (a *Auth) GetProviders() (providers []Provider) {
-	for _, provider := range a.providers {
+func (iam *IAM) GetProviders() (providers []Provider) {
+	for _, provider := range iam.providers {
 		providers = append(providers, provider)
 	}
 	return
