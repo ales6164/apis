@@ -1,8 +1,8 @@
 package apis
 
 import (
+	"github.com/ales6164/apis/collection"
 	"github.com/ales6164/apis/iam"
-	"github.com/ales6164/apis/kind"
 	gctx "github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
@@ -13,7 +13,7 @@ type Apis struct {
 	//router *mux.Router
 	*Options
 	hasAuth bool
-	kinds   map[string]kind.Kind
+	kinds   map[string]collection.Kind
 	//roles      map[string][]string
 	//http.Handler
 	router *mux.Router
@@ -24,7 +24,7 @@ type Options struct {
 	Rules *Rules
 }
 
-type Match map[kind.Kind]*Rules
+type Match map[collection.Kind]*Rules
 type Roles []string
 
 type Rules struct {
@@ -43,7 +43,7 @@ func New(options *Options) *Apis {
 	a := &Apis{
 		Options: options,
 		/*Router:  mux.NewRouter(),*/
-		kinds: map[string]kind.Kind{},
+		kinds: map[string]collection.Kind{},
 	}
 
 	a.router = mux.NewRouter()
@@ -94,7 +94,7 @@ func authMiddleware(a *Apis, h http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 			w.Header().Set("Access-Control-Allow-Headers",
 				"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
-					"X-Requested-With, X-Include-Meta")
+					"X-Requested-With, X-Include-Meta, X-Resolve-Meta-Ref")
 		}
 
 		if r.Method == http.MethodOptions {
@@ -115,7 +115,7 @@ func defaultMiddleware(h http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 			w.Header().Set("Access-Control-Allow-Headers",
 				"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cache-Control, "+
-					"X-Requested-With, X-Include-Meta")
+					"X-Requested-With, X-Include-Meta, X-Resolve-Meta-Ref")
 		}
 
 		if r.Method == http.MethodOptions {
@@ -126,20 +126,20 @@ func defaultMiddleware(h http.Handler) http.Handler {
 	}))
 }
 
-func (a *Apis) HandleKind(k kind.Kind) {
+func (a *Apis) HandleKind(k collection.Kind) {
 	a.kinds[k.Name()] = k
 	//a.handleKind(k.Name(), k)
 }
 
 type PathPair struct {
-	CollectionName string         `json:"collectionName"`
-	CollectionId   string         `json:"collectionId"`
-	HasKey         bool           `json:"hasKey"`
-	CollectionKey  *datastore.Key `json:"collectionKey"`
-	CollectionKind kind.Kind      `json:"collectionKind"`
-	IsGroup        bool           `json:"isGroup"`
-	GroupKey       *datastore.Key `json:"groupKey"`
-	Rules          Rules          `json:"rules"`
+	CollectionName string          `json:"collectionName"`
+	CollectionId   string          `json:"collectionId"`
+	HasKey         bool            `json:"hasKey"`
+	CollectionKey  *datastore.Key  `json:"collectionKey"`
+	CollectionKind collection.Kind `json:"collectionKind"`
+	IsGroup        bool            `json:"isGroup"`
+	GroupKey       *datastore.Key  `json:"groupKey"`
+	Rules          Rules           `json:"rules"`
 }
 
 func (a *Apis) Handler() *mux.Router {

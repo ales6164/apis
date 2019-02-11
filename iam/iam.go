@@ -1,8 +1,6 @@
 package iam
 
 import (
-	"errors"
-	"github.com/ales6164/apis/collection"
 	"github.com/dgrijalva/jwt-go"
 	"google.golang.org/appengine/datastore"
 	"net/http"
@@ -147,6 +145,7 @@ func (iam *IAM) PrintResponse(session *session) {
 	}, http.StatusOK)
 }
 
+/*
 func (iam *IAM) User(ctx Context, member *datastore.Key) (*collection.User, error) {
 	if member == nil || member.Kind() != collection.UserCollection.Name() {
 		return nil, errors.New("member key not of user")
@@ -155,3 +154,4 @@ func (iam *IAM) User(ctx Context, member *datastore.Key) (*collection.User, erro
 	err := datastore.Get(ctx.Default(), member, user)
 	return user, err
 }
+*/

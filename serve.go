@@ -3,7 +3,6 @@ package apis
 import (
 	"github.com/ales6164/apis/collection"
 	"github.com/ales6164/apis/iam"
-	"github.com/ales6164/apis/kind"
 	"google.golang.org/appengine/datastore"
 	"net/http"
 	"strconv"
@@ -15,10 +14,11 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	rules := a.Rules
 
-	defaultCtx := a.IAM.NewContext(w, r)
+	ctx := a.IAM.NewContext(w, r)
 
-	var group kind.Doc
-	var document kind.Doc
+	var parent *datastore.Key
+	var group collection.Doc
+	var document collection.Doc
 
 	// analyse path in pairs
 	for i := 0; i < len(path); i += 2 {
@@ -30,12 +30,13 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// create key
 				var key *datastore.Key
 				if (i + 1) < len(path) {
-					key = k.Key(defaultCtx, path[i+1], defaultCtx.Member())
+					key = k.Key(ctx, path[i+1], parent, ctx.Member())
 					if key == nil {
-						defaultCtx.PrintError("error decoding key", http.StatusBadRequest)
+						ctx.PrintError("error decoding key", http.StatusBadRequest)
 						return
 					}
 				}
+				parent = key
 
 				document = k.Doc(key, group)
 				if rules.AccessControl {
@@ -46,7 +47,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		defaultCtx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 
@@ -57,91 +58,96 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		if ctx, ok := collection.CheckAccess(defaultCtx, document, defaultCtx.Member(), iam.ReadOnly, iam.ReadWrite, iam.FullControl); ok {
-			if !document.Key().Incomplete() {
+		if ctx, ok := iam.CheckAccess(ctx, document, ctx.Member(), iam.ReadOnly, iam.ReadWrite, iam.FullControl); ok {
+			if document.Key() != nil && !document.Key().Incomplete() {
 				document, err = document.Get(ctx)
 				if err != nil {
 					if err == datastore.ErrNoSuchEntity {
-						defaultCtx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
+						ctx.PrintError(http.StatusText(http.StatusNotFound), http.StatusNotFound)
 						return
 					}
-					defaultCtx.PrintError(err.Error(), http.StatusInternalServerError)
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
 					return
 				}
-				defaultCtx.PrintJSON(document.Kind().Data(document, defaultCtx.HasIncludeMetaHeader), http.StatusOK)
+				ctx.PrintJSON(document.Kind().Data(document, ctx.HasIncludeMetaHeader, ctx.HasResolveMetaRefHeader), http.StatusOK)
 			} else {
-				queryResults, err := Query(defaultCtx, document, r, r.URL.Query())
+				queryResults, err := Query(ctx, document, r, r.URL.Query())
 				if err != nil {
-					defaultCtx.PrintError(err.Error(), http.StatusBadRequest)
+					ctx.PrintError(err.Error(), http.StatusBadRequest)
 					return
 				}
 
-				defaultCtx.PrintJSON(map[string]interface{}{
-					"value":      queryResults.Items,
-					"lastUpdate": queryResults.UpdatedAt.String(),
-				}, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
+				if ctx.HasIncludeMetaHeader {
+					ctx.PrintJSON(map[string]interface{}{
+						"results":    queryResults.Items,
+						"lastUpdate": queryResults.UpdatedAt.String(),
+					}, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
+				} else {
+					ctx.PrintJSON(queryResults.Items, queryResults.StatusCode, "X-Total-Count", strconv.Itoa(queryResults.Total), "Link", queryResults.LinkHeader)
+				}
 			}
 		} else {
-			defaultCtx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
 	case http.MethodPost:
-		if ctx, ok := collection.CheckAccess(defaultCtx, document, defaultCtx.Member(), iam.ReadWrite, iam.FullControl); ok {
-			document.SetOwner(defaultCtx.Member())
-			document, err = document.Add(ctx, defaultCtx.Body())
+		if ctx, ok := iam.CheckAccess(ctx, document, ctx.Member(), iam.ReadWrite, iam.FullControl); ok {
+			document.SetOwner(ctx.Member())
+			document, err = document.Add(ctx, ctx.Body())
 			if err != nil {
-				defaultCtx.PrintError(err.Error(), http.StatusInternalServerError)
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
-			err = collection.SetAccess(defaultCtx, document, defaultCtx.Member(), iam.FullControl)
+			err = iam.SetAccess(ctx, document, ctx.Member(), iam.FullControl)
 			if err != nil {
-				defaultCtx.PrintError(err.Error(), http.StatusInternalServerError)
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
-			defaultCtx.PrintJSON(document.Kind().Data(document, defaultCtx.HasIncludeMetaHeader), http.StatusOK)
+			ctx.PrintJSON(document.Kind().Data(document, ctx.HasIncludeMetaHeader, ctx.HasResolveMetaRefHeader), http.StatusOK)
 		} else {
-			defaultCtx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
 	case http.MethodDelete:
-		if ctx, ok := collection.CheckAccess(defaultCtx, document, defaultCtx.Member(), iam.Delete, iam.FullControl); ok {
+		if ctx, ok := iam.CheckAccess(ctx, document, ctx.Member(), iam.Delete, iam.FullControl); ok {
 			if !document.Key().Incomplete() {
-				defaultCtx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+				ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 			} else {
 				err = document.Delete(ctx)
 				if err != nil {
-					defaultCtx.PrintError(err.Error(), http.StatusInternalServerError)
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
 					return
 				}
-				defaultCtx.PrintStatus(http.StatusText(http.StatusOK), http.StatusOK)
+				ctx.PrintStatus(http.StatusText(http.StatusOK), http.StatusOK)
 			}
-
 		} else {
-			defaultCtx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
 	case http.MethodPut:
-		if ctx, ok := collection.CheckAccess(defaultCtx, document, defaultCtx.Member(), iam.ReadWrite, iam.FullControl); ok {
-			document.SetOwner(defaultCtx.Member())
-			if document.Key().Incomplete() {
-				defaultCtx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+		if ctx, ok := iam.CheckAccess(ctx, document, ctx.Member(), iam.ReadWrite, iam.FullControl); ok {
+			document.SetOwner(ctx.Member())
+			if document.Key() == nil || document.Key().Incomplete() {
+				ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 			} else {
-				document, err = document.Set(ctx, defaultCtx.Body())
+				document, err = document.Set(ctx, ctx.Body())
 				if err != nil {
-					defaultCtx.PrintError(err.Error(), http.StatusInternalServerError)
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
 					return
 				}
 
-				err = collection.SetAccess(defaultCtx, document, defaultCtx.Member(), iam.FullControl)
+				err = iam.SetAccess(ctx, document, ctx.Member(), iam.FullControl)
 				if err != nil {
-					defaultCtx.PrintError(err.Error(), http.StatusInternalServerError)
+					ctx.PrintError(err.Error(), http.StatusInternalServerError)
 					return
 				}
 
-				defaultCtx.PrintJSON(document.Kind().Data(document, defaultCtx.HasIncludeMetaHeader), http.StatusOK)
+				//ctx.PrintJSON(ctx.Context, 200)
+
+				ctx.PrintJSON(document.Kind().Data(document, ctx.HasIncludeMetaHeader, ctx.HasResolveMetaRefHeader), http.StatusOK)
 			}
 		} else {
-			defaultCtx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
 	default:
-		defaultCtx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+		ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 
 	}
 }

@@ -9,7 +9,6 @@ import (
 	_ "google.golang.org/appengine/remote_api"
 	"io/ioutil"
 	"net/http"
-	"time"
 )
 
 const (
@@ -54,8 +53,23 @@ func init() {
 					},
 				},
 				objects: &apis.Rules{
+					AccessControl: true,
 					Permissions: apis.Permissions{
 						iam.AllUsers: []string{iam.FullControl},
+					},
+					Match: apis.Match{
+						objects: &apis.Rules{
+							Permissions: apis.Permissions{
+								iam.AllUsers: []string{iam.FullControl},
+							},
+							Match: apis.Match{
+								objects: &apis.Rules{
+									Permissions: apis.Permissions{
+										iam.AllUsers: []string{iam.FullControl},
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -84,9 +98,6 @@ type Project struct {
 }
 
 type Object struct {
-	Id        string    `datastore:"-" auto:"id" json:"id,omitempty"`
-	CreatedAt time.Time `datastore:"-" auto:"createdAt" json:"createdAt,omitempty"`
-	UpdatedAt time.Time `datastore:"-" auto:"updatedAt" json:"updatedAt,omitempty"`
-	Name      string    `json:"name"`
-	Stuff     []string  `json:"stuff"`
+	Name  string   `json:"name"`
+	Stuff []string `json:"stuff"`
 }

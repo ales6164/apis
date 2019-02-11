@@ -2,7 +2,6 @@ package collection
 
 import (
 	"errors"
-	"github.com/ales6164/apis/kind"
 	"github.com/asaskevich/govalidator"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
@@ -17,7 +16,7 @@ type Collection struct {
 	t       reflect.Type
 	isGroup bool
 	member  *datastore.Key
-	KeyGen  func(ctx context.Context, str string, member *datastore.Key) *datastore.Key
+	KeyGen  func(ctx context.Context, str string, parent *datastore.Key, member *datastore.Key) *datastore.Key
 
 	hasIdFieldName        bool
 	hasCreatedAtFieldName bool
@@ -34,7 +33,7 @@ type Collection struct {
 	updatedByFieldName string
 
 	fields map[string]*Field // map key is json representation for field name
-	kind.Kind
+	Kind
 }
 
 type Field struct {
@@ -50,10 +49,10 @@ func New(name string, i interface{}) *Collection {
 	c := &Collection{
 		name: name,
 		t:    t,
-		KeyGen: func(ctx context.Context, str string, _ *datastore.Key) *datastore.Key {
+		KeyGen: func(ctx context.Context, str string, parent *datastore.Key, _ *datastore.Key) *datastore.Key {
 			key, err := datastore.DecodeKey(str)
 			if err != nil {
-				key = datastore.NewKey(ctx, name, str, 0, nil)
+				key = datastore.NewKey(ctx, name, str, 0, parent)
 			}
 			return key
 		},
@@ -85,8 +84,8 @@ const (
 	updatedby = "updatedby"
 )
 
-func (c *Collection) Key(ctx context.Context, str string, member *datastore.Key) *datastore.Key {
-	return c.KeyGen(ctx, str, member)
+func (c *Collection) Key(ctx context.Context, str string, parent *datastore.Key, member *datastore.Key) *datastore.Key {
+	return c.KeyGen(ctx, str, parent, member)
 }
 
 func (c *Collection) Name() string {
@@ -240,7 +239,7 @@ func (c *Collection) SetMember(member *datastore.Key) {
 	c.member = member
 }
 
-func (c *Collection) Data(doc kind.Doc, includeMeta bool) interface{} {
+func (c *Collection) Data(doc Doc, includeMeta bool, resolveMetaRef bool) interface{} {
 	reflectValue := doc.Value()
 	key := doc.Key()
 	if c.hasIdFieldName && key != nil {
@@ -256,13 +255,12 @@ func (c *Collection) Data(doc kind.Doc, includeMeta bool) interface{} {
 	}
 
 	if includeMeta {
-		/*meta, _ := doc.Meta()
-		return meta.Print(doc, reflectValue.Interface())*/
+		return doc.Meta().WithValue(doc.Key(), reflectValue.Interface())
 	}
 
 	return reflectValue.Interface()
 }
 
-func (c *Collection) Doc(key *datastore.Key, ancestor kind.Doc) kind.Doc {
+func (c *Collection) Doc(key *datastore.Key, ancestor Doc) Doc {
 	return NewDoc(c, key, ancestor)
 }

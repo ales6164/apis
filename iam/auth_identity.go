@@ -3,7 +3,6 @@ package iam
 import (
 	"errors"
 	"github.com/ales6164/apis/collection"
-	"github.com/ales6164/apis/kind"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
@@ -36,15 +35,15 @@ var (
 )
 
 // Connects identity with user
-func (iam *IAM) Connect(ctx context.Context, provider Provider, userEmail string, unlockKey string) (*Identity, error) {
-	var userKey = datastore.NewKey(ctx, collection.UserCollection.Name(), userEmail, 0, nil)
-	var identityKey = datastore.NewKey(ctx, IdentityKind, provider.Name()+":"+userEmail, 0, userKey)
+func (iam *IAM) Connect(dctx Context, provider Provider, userEmail string, unlockKey string) (*Identity, error) {
+	var userKey = datastore.NewKey(dctx, collection.UserCollection.Name(), userEmail, 0, nil)
+	var identityKey = datastore.NewKey(dctx, IdentityKind, provider.Name()+":"+userEmail, 0, userKey)
 
-	var userDocument kind.Doc
+	var userDocument collection.Doc
 	var user = new(collection.User)
 	var identity = new(Identity)
 
-	err := datastore.RunInTransaction(ctx, func(ctx context.Context) error {
+	err := datastore.RunInTransaction(dctx, func(ctx context.Context) error {
 		var err error
 		userDocument = collection.UserCollection.Doc(userKey, nil)
 		userDocument, err = userDocument.Get(ctx)
@@ -69,7 +68,9 @@ func (iam *IAM) Connect(ctx context.Context, provider Provider, userEmail string
 							return errors.New("1" + err.Error())
 						}
 
-						err = collection.SetAccess(ctx, userDocument, userDocument.Key(), FullControl)
+						userDocument.SetOwner(userKey)
+
+						err = SetAccess(dctx, userDocument, userDocument.Key(), FullControl)
 						if err != nil {
 							return errors.New("2" + err.Error())
 						}
@@ -81,7 +82,7 @@ func (iam *IAM) Connect(ctx context.Context, provider Provider, userEmail string
 							return errors.New("3" + err.Error())
 						}
 
-						user = collection.UserCollection.Data(userDocument, false).(*collection.User)
+						user = collection.UserCollection.Data(userDocument, false, false).(*collection.User)
 
 						// add default roles to the existing user
 						var toAppend []string
@@ -181,7 +182,7 @@ func (iam *IAM) Connect(ctx context.Context, provider Provider, userEmail string
 			return errors.New("12" + err.Error())
 		}
 
-		identity.User = collection.UserCollection.Data(userDocument, false).(*collection.User)
+		identity.User = collection.UserCollection.Data(userDocument, false, false).(*collection.User)
 		identity.IdentityKey = identityKey
 		identity.isOk = true
 
@@ -202,7 +203,7 @@ var (
 	ErrIdentityAlreadyConfirmed = errors.New("identity is already confirmed")
 )
 
-func (iam *IAM) ConfirmEmail(ctx context.Context, code string) (*Identity, error) {
+func (iam *IAM) ConfirmEmail(dctx Context, code string) (*Identity, error) {
 
 	emailWaitingConfirmationKey, err := datastore.DecodeKey(code)
 	if err != nil {
@@ -211,7 +212,7 @@ func (iam *IAM) ConfirmEmail(ctx context.Context, code string) (*Identity, error
 
 	var identity = new(Identity)
 
-	err = datastore.RunInTransaction(ctx, func(ctx context.Context) error {
+	err = datastore.RunInTransaction(dctx, func(ctx context.Context) error {
 		var emailWaitingConfirmation = new(EmailWaitingConfirmation)
 		err = datastore.Get(ctx, emailWaitingConfirmationKey, emailWaitingConfirmation)
 		if err != nil {
@@ -252,7 +253,7 @@ func (iam *IAM) ConfirmEmail(ctx context.Context, code string) (*Identity, error
 
 		// get user and check if everything okay there
 		var userKey = datastore.NewKey(ctx, collection.UserCollection.Name(), userEmail, 0, nil)
-		var userDocument kind.Doc
+		var userDocument collection.Doc
 		var user = new(collection.User)
 		userDocument = collection.UserCollection.Doc(userKey, nil)
 		userDocument, err = userDocument.Get(ctx)
@@ -270,7 +271,9 @@ func (iam *IAM) ConfirmEmail(ctx context.Context, code string) (*Identity, error
 				return ErrDatabaseConnection
 			}
 
-			err = collection.SetAccess(ctx, userDocument, userDocument.Key(), FullControl)
+			userDocument.SetOwner(userKey)
+
+			err = SetAccess(dctx, userDocument, userDocument.Key(), FullControl)
 			if err != nil {
 				return ErrDatabaseConnection
 			}
@@ -282,7 +285,7 @@ func (iam *IAM) ConfirmEmail(ctx context.Context, code string) (*Identity, error
 				return ErrDatabaseConnection
 			}
 
-			user = collection.UserCollection.Data(userDocument, false).(*collection.User)
+			user = collection.UserCollection.Data(userDocument, false, false).(*collection.User)
 
 			// add default roles to the existing user
 			var toAppend []string

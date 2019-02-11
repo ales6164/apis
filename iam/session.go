@@ -78,18 +78,6 @@ func startSession(ctx Context, token *jwt.Token) (*session, error) {
 	return s, nil
 }
 
-var (
-	// User groups
-	AllUsers              = "allUsers"              // given to all requests
-	AllAuthenticatedUsers = "allAuthenticatedUsers" // giver to all authenticated requests
-
-	// Scopes
-	FullControl = "fullcontrol"
-	ReadOnly    = "readonly"
-	ReadWrite   = "readwrite"
-	Delete      = "delete"
-)
-
 // extend by seconds from now
 func (s *session) Extend(seconds int64) (*session, error) {
 	s.stored.ExpiresAt = time.Now().Add(time.Second * time.Duration(seconds))

@@ -1,8 +1,8 @@
 package apis
 
 import (
+	"github.com/ales6164/apis/collection"
 	"github.com/ales6164/apis/iam"
-	"github.com/ales6164/apis/kind"
 	"google.golang.org/appengine/datastore"
 	"net/http"
 	"strconv"
@@ -28,7 +28,7 @@ Filters param is an array of filter pairs:
 filters[0][filterStr] "fieldName >"
 filters[0][value] "fieldValue"
  */
-func Query(ctx iam.Context, doc kind.Doc, req *http.Request, params map[string][]string) (QueryResult, error) {
+func Query(ctx iam.Context, doc collection.Doc, req *http.Request, params map[string][]string) (QueryResult, error) {
 	r := QueryResult{
 		Limit: 25,
 		Items: []interface{}{},
@@ -96,15 +96,18 @@ func Query(ctx iam.Context, doc kind.Doc, req *http.Request, params map[string][
 		if err == datastore.Done {
 			break
 		}
-		if hasIncludeMetaHeader {
-			/*m, _ := h.Meta()
-			if m.UpdatedAt().After(r.UpdatedAt) {
-				r.UpdatedAt = m.UpdatedAt()
-			}*/
-		}
-
 		r.Count++
-		r.Items = append(r.Items, doc.Kind().Data(h, hasIncludeMetaHeader))
+
+		if hasIncludeMetaHeader {
+			m := h.Meta().WithValue(key, h.Value().Interface())
+			if m.GetUpdatedAt().After(r.UpdatedAt) {
+				r.UpdatedAt = m.GetUpdatedAt()
+			}
+
+			r.Items = append(r.Items, m)
+		} else {
+			r.Items = append(r.Items, doc.Kind().Data(h, hasIncludeMetaHeader, false))
+		}
 	}
 
 	if r.Count > 0 {

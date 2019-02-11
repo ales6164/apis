@@ -15,24 +15,31 @@ import (
 type Context struct {
 	*IAM
 	context.Context
-	def                  context.Context
-	r                    *http.Request
-	w                    http.ResponseWriter
-	hasReadBody          bool
-	body                 []byte
-	token                *jwt.Token
-	session              *session
-	HasIncludeMetaHeader bool
+	def                     context.Context
+	r                       *http.Request
+	w                       http.ResponseWriter
+	hasReadBody             bool
+	body                    []byte
+	token                   *jwt.Token
+	session                 *session
+	HasIncludeMetaHeader    bool
+	HasResolveMetaRefHeader bool
 }
 
 func (iam *IAM) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context) {
 	gae := appengine.NewContext(r)
-	ctx = Context{IAM: iam, Context: gae, def: gae, w: w, r: r, HasIncludeMetaHeader: len(r.Header.Get("X-Include-Meta")) > 0}
+	ctx = Context{IAM: iam, Context: gae, def: gae, w: w, r: r, HasIncludeMetaHeader: len(r.Header.Get("X-Include-Meta")) > 0, HasResolveMetaRefHeader: len(r.Header.Get("X-Resolve-Meta-Ref")) > 0}
 	if t, ok := gctx.Get(r, "token").(*jwt.Token); ok {
 		ctx.token = t
 	}
 	ctx.session, _ = startSession(ctx, ctx.token)
 	return ctx
+}
+
+func (ctx Context) SetNamespace(ns string) (Context, error) {
+	var err error
+	ctx.Context, err = appengine.Namespace(ctx.Default(), ns)
+	return ctx, err
 }
 
 /*func (ctx Context) HasAccess(rules Rules, scopes ...string) bool {
