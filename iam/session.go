@@ -2,6 +2,7 @@ package iam
 
 import (
 	"errors"
+	"github.com/ales6164/apis/collection"
 	"github.com/dgrijalva/jwt-go"
 	"google.golang.org/appengine/datastore"
 	"time"
@@ -82,7 +83,20 @@ func (s *Session) LoadIdentity(ctx Context) (*Session, error) {
 	if s.identity == nil {
 		s.identity = new(Identity)
 		err := datastore.Get(ctx, s.stored.Identity, s.identity)
-		return s, err
+		if err != nil {
+			return s, err
+		}
+
+		// get user
+		var userDocument = collection.UserCollection.Doc(s.stored.Subject, nil)
+		userDocument, err = userDocument.Get(ctx)
+		if err != nil {
+			return s, err
+		}
+
+		s.identity.User = collection.UserCollection.Data(userDocument, false, false).(*collection.User)
+		s.identity.IdentityKey = s.stored.Identity
+		s.identity.isOk = true
 	}
 	return s, nil
 }
