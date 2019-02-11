@@ -108,7 +108,8 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case http.MethodDelete:
 		if ctx, ok := iam.CheckAccess(ctx, document, ctx.Member(), iam.Delete, iam.FullControl); ok {
-			if !document.Key().Incomplete() {
+			//TODO: delete groups and group relationships
+			if document.Key() == nil || document.Key().Incomplete() {
 				ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 			} else {
 				err = document.Delete(ctx)

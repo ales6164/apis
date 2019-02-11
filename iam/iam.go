@@ -75,9 +75,9 @@ func NewIAM(opt *Options) *IAM {
  	return iam.middleware
  }
 
-func (iam *IAM) NewSession(ctx Context, provider Provider, identity *Identity) (*session, error) {
+func (iam *IAM) NewSession(ctx Context, provider Provider, identity *Identity) (*Session, error) {
 	now := time.Now()
-	s := &session{
+	s := &Session{
 		provider: provider,
 		identity: identity,
 		stored: &storedSession{
@@ -93,12 +93,9 @@ func (iam *IAM) NewSession(ctx Context, provider Provider, identity *Identity) (
 	}
 
 	var err error
-	s.Key, err = datastore.Put(ctx.Default(), s.Key, s)
-	if err != nil {
-		return s, err
-	}
+	s.Key, err = datastore.Put(ctx.Default(), s.Key, s.stored)
 
-	s.Claims = &claims{
+	s.Claims = &Claims{
 		s.Key,
 		iam.DefaultRoles,
 		jwt.StandardClaims{
@@ -117,30 +114,30 @@ func (iam *IAM) NewSession(ctx Context, provider Provider, identity *Identity) (
 
 	s.Token = jwt.NewWithClaims(jwt.SigningMethodHS256, *s.Claims)
 
-	return s, nil
-}
-
-func (iam *IAM) RenewSession(ctx Context) (*session, error) {
-	s, err := ctx.session.Extend(iam.TokenExpiresIn)
 	return s, err
 }
 
-func (iam *IAM) SignedToken(ctx Context, s *session) (string, error) {
+func (iam *IAM) RenewSession(ctx Context) (*Session, error) {
+	s, err := ctx.session.Extend(ctx, iam.TokenExpiresIn)
+	return s, err
+}
+
+func (iam *IAM) SignedToken(ctx Context, s *Session) (string, error) {
 	return s.Token.SignedString(ctx.SigningKey)
 }
 
-func (iam *IAM) PrintResponse(session *session) {
-	signedToken, err := iam.SignedToken(session.ctx, session)
+func (iam *IAM) PrintResponse(ctx Context, session *Session) {
+	signedToken, err := iam.SignedToken(ctx, session)
 	if err != nil {
-		session.ctx.PrintError(err.Error(), http.StatusInternalServerError)
+		ctx.PrintError(err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	session.ctx.PrintJSON(map[string]interface{}{
+	ctx.PrintJSON(map[string]interface{}{
 		"user": session.identity.User,
 		"token": map[string]interface{}{
 			"id":        signedToken,
-			"expiredAt": session.stored.ExpiresAt.Unix(),
+			"expiresAt": session.stored.ExpiresAt.Unix(),
 		},
 	}, http.StatusOK)
 }

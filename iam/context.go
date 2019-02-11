@@ -21,7 +21,7 @@ type Context struct {
 	hasReadBody             bool
 	body                    []byte
 	token                   *jwt.Token
-	session                 *session
+	session                 *Session
 	HasIncludeMetaHeader    bool
 	HasResolveMetaRefHeader bool
 }
@@ -32,7 +32,11 @@ func (iam *IAM) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context)
 	if t, ok := gctx.Get(r, "token").(*jwt.Token); ok {
 		ctx.token = t
 	}
-	ctx.session, _ = startSession(ctx, ctx.token)
+	var err error
+	ctx.session, err = startSession(ctx, ctx.token)
+	if err != nil {
+		log.Errorf(ctx, "context start session error: %s", err.Error())
+	}
 	return ctx
 }
 

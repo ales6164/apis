@@ -211,6 +211,8 @@ func (iam *IAM) ConfirmEmail(dctx Context, code string) (*Identity, error) {
 	}
 
 	var identity = new(Identity)
+	var userKey *datastore.Key
+	var userEmail string
 
 	err = datastore.RunInTransaction(dctx, func(ctx context.Context) error {
 		var emailWaitingConfirmation = new(EmailWaitingConfirmation)
@@ -219,7 +221,7 @@ func (iam *IAM) ConfirmEmail(dctx Context, code string) (*Identity, error) {
 			if err == datastore.ErrNoSuchEntity {
 				return ErrInvalidKey
 			}
-			return ErrDatabaseConnection
+			return errors.New(err.Error()+"1")
 		}
 
 		if !time.Now().Before(emailWaitingConfirmation.ValidUntil) {
@@ -230,7 +232,7 @@ func (iam *IAM) ConfirmEmail(dctx Context, code string) (*Identity, error) {
 			return ErrConfirmationKeyExpired
 		}
 
-		var userEmail = emailWaitingConfirmation.Email
+		userEmail = emailWaitingConfirmation.Email
 
 		// get provider
 		var provider = iam.GetProvider(emailWaitingConfirmation.Provider)
@@ -244,7 +246,7 @@ func (iam *IAM) ConfirmEmail(dctx Context, code string) (*Identity, error) {
 			if err == datastore.ErrNoSuchEntity {
 				return ErrIdentityDoesNotExist
 			}
-			return ErrDatabaseConnection
+			return errors.New(err.Error()+"2")
 		}
 
 		if identity.EmailConfirmed {
@@ -252,67 +254,10 @@ func (iam *IAM) ConfirmEmail(dctx Context, code string) (*Identity, error) {
 		}
 
 		// get user and check if everything okay there
-		var userKey = datastore.NewKey(ctx, collection.UserCollection.Name(), userEmail, 0, nil)
-		var userDocument collection.Doc
-		var user = new(collection.User)
-		userDocument = collection.UserCollection.Doc(userKey, nil)
-		userDocument, err = userDocument.Get(ctx)
-		var userDocumentExists = err == nil
-
-		// save user
-		if !userDocumentExists {
-			// create user
-
-			user.Email = userEmail
-			user.Roles = iam.DefaultRoles
-
-			userDocument, err = userDocument.Set(ctx, user)
-			if err != nil {
-				return ErrDatabaseConnection
-			}
-
-			userDocument.SetOwner(userKey)
-
-			err = SetAccess(dctx, userDocument, userDocument.Key(), FullControl)
-			if err != nil {
-				return ErrDatabaseConnection
-			}
-		} else {
-			// load user and save changes
-
-			userDocument, err = userDocument.Get(ctx)
-			if err != nil {
-				return ErrDatabaseConnection
-			}
-
-			user = collection.UserCollection.Data(userDocument, false, false).(*collection.User)
-
-			// add default roles to the existing user
-			var toAppend []string
-			for _, r := range iam.DefaultRoles {
-				var ok bool
-				for _, r2 := range user.Roles {
-					if r == r2 {
-						ok = true
-					}
-				}
-				if !ok {
-					toAppend = append(toAppend, r)
-				}
-			}
-			user.Roles = append(user.Roles, toAppend...)
-
-			// save user
-			userDocument, err = userDocument.Set(ctx, user)
-			if err != nil {
-				return ErrDatabaseConnection
-			}
-
-		}
+		userKey = datastore.NewKey(dctx, collection.UserCollection.Name(), userEmail, 0, nil)
 
 		// connect identity to user and save
 
-		identity.User = user
 		identity.IdentityKey = emailWaitingConfirmation.Identity
 		identity.isOk = true
 		identity.EmailConfirmed = true
@@ -323,14 +268,14 @@ func (iam *IAM) ConfirmEmail(dctx Context, code string) (*Identity, error) {
 		// save identity
 		_, err = datastore.Put(ctx, emailWaitingConfirmation.Identity, identity)
 		if err != nil {
-			return ErrDatabaseConnection
+			return errors.New(err.Error()+"7")
 		}
 
 		// make confirmation expired and save to db
 		emailWaitingConfirmation.Confirmed = true
 		_, err = datastore.Put(ctx, emailWaitingConfirmationKey, emailWaitingConfirmation)
 		if err != nil {
-			return ErrDatabaseConnection
+			return errors.New(err.Error()+"8")
 		}
 
 		return nil
@@ -338,6 +283,62 @@ func (iam *IAM) ConfirmEmail(dctx Context, code string) (*Identity, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var userDocument collection.Doc
+	var user = new(collection.User)
+	userDocument = collection.UserCollection.Doc(userKey, nil)
+	userDocument, err = userDocument.Get(dctx)
+	var userDocumentExists = err == nil
+
+	// save user
+	if !userDocumentExists {
+		// create user
+
+		user.Email = userEmail
+		user.Roles = iam.DefaultRoles
+
+		userDocument, err = userDocument.Set(dctx, user)
+		if err != nil {
+			return nil, errors.New(err.Error()+"3")
+		}
+
+		userDocument.SetOwner(userKey)
+
+		err = SetAccess(dctx, userDocument, userDocument.Key(), FullControl)
+		if err != nil {
+			return nil, errors.New(err.Error()+"4")
+		}
+	} else {
+		// load user and save changes
+
+		user = collection.UserCollection.Data(userDocument, false, false).(*collection.User)
+
+		// add default roles to the existing user
+		var toAppend []string
+		for _, r := range iam.DefaultRoles {
+			var ok bool
+			for _, r2 := range user.Roles {
+				if r == r2 {
+					ok = true
+				}
+			}
+			if !ok {
+				toAppend = append(toAppend, r)
+			}
+		}
+		user.Roles = append(user.Roles, toAppend...)
+
+		// save user
+		userDocument, err = userDocument.Set(dctx, user)
+		if err != nil {
+			return nil, errors.New(err.Error()+"6")
+		}
+
+	}
+
+	// todo: set user here
+	identity.User = user
+
 
 	return identity, nil
 }

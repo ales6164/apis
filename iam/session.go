@@ -10,10 +10,9 @@ import (
 const SessionKind = "_session"
 const NotBeforeCorrection = -10 // seconds
 
-type session struct {
-	ctx             Context
+type Session struct {
 	Key             *datastore.Key
-	Claims          *claims
+	Claims          *Claims
 	Token           *jwt.Token
 	IsValid         bool
 	IsAuthenticated bool
@@ -23,7 +22,7 @@ type session struct {
 	identity *Identity // only on created session
 }
 
-type claims struct {
+type Claims struct {
 	Id     *datastore.Key `json:"id"`
 	Scopes []string       `json:"scopes"`
 	jwt.StandardClaims
@@ -40,15 +39,15 @@ type storedSession struct {
 }
 
 // todo: add anonymous user session store
-func startSession(ctx Context, token *jwt.Token) (*session, error) {
+func startSession(ctx Context, token *jwt.Token) (*Session, error) {
 	var err error
-	var s = &session{
-		ctx:    ctx,
+	var s = &Session{
 		stored: new(storedSession),
+		Token:  token,
 	}
 
 	if token != nil {
-		if claims, ok := token.Claims.(*claims); ok && token.Valid {
+		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
 			err = datastore.Get(ctx.Default(), claims.Id, s.stored)
 			if err != nil {
 				return s, err
@@ -79,8 +78,18 @@ func startSession(ctx Context, token *jwt.Token) (*session, error) {
 }
 
 // extend by seconds from now
-func (s *session) Extend(seconds int64) (*session, error) {
+func (s *Session) LoadIdentity(ctx Context) (*Session, error) {
+	if s.identity == nil {
+		s.identity = new(Identity)
+		err := datastore.Get(ctx, s.stored.Identity, s.identity)
+		return s, err
+	}
+	return s, nil
+}
+
+// extend by seconds from now
+func (s *Session) Extend(ctx Context, seconds int64) (*Session, error) {
 	s.stored.ExpiresAt = time.Now().Add(time.Second * time.Duration(seconds))
-	_, err := datastore.Put(s.ctx.Default(), s.Key, s)
+	_, err := datastore.Put(ctx.Default(), s.Key, s.stored)
 	return s, err
 }

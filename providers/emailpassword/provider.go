@@ -88,7 +88,7 @@ func (p *Provider) Login(ctx iam.Context) {
 		return
 	}
 
-	p.IAM.PrintResponse(session)
+	p.IAM.PrintResponse(ctx, session)
 }
 
 
@@ -133,7 +133,7 @@ func (p *Provider) Register(ctx iam.Context) {
 		return
 	}
 
-	p.IAM.PrintResponse(session)
+	p.IAM.PrintResponse(ctx, session)
 }
 
 func (p *Provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {

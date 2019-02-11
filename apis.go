@@ -52,7 +52,7 @@ func New(options *Options) *Apis {
 		a.hasAuth = true
 
 		// renew token
-		a.router.Handle("/auth/renew", authMiddleware(a, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		a.router.Handle("/auth/renew", a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := a.IAM.NewContext(w, r)
 
 			session, err := a.IAM.RenewSession(ctx)
@@ -61,11 +61,18 @@ func New(options *Options) *Apis {
 				return
 			}
 
-			a.IAM.PrintResponse(session)
+			session, err = session.LoadIdentity(ctx)
+			if err != nil {
+				ctx.PrintError(err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+
+			a.IAM.PrintResponse(ctx, session)
 		}))).Methods(http.MethodOptions, http.MethodPost)
 
 		// confirm email
-		a.router.Handle("/auth/confirm/{code}", authMiddleware(a, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		a.router.Handle("/auth/confirm/{code}", a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := a.IAM.NewContext(w, r)
 
 			_, err := a.IAM.ConfirmEmail(ctx, mux.Vars(r)["code"])
@@ -80,14 +87,14 @@ func New(options *Options) *Apis {
 		}))).Methods(http.MethodGet)
 
 		for _, p := range a.IAM.GetProviders() {
-			a.router.Handle(`/auth/`+p.Name()+`/{path:[a-zA-Z0-9=\-\/]+}`, authMiddleware(a, p))
+			a.router.Handle(`/auth/`+p.Name()+`/{path:[a-zA-Z0-9=\-\_\/]+}`, a.Middleware(p))
 		}
 	}
 
 	return a
 }
 
-func authMiddleware(a *Apis, h http.Handler) http.Handler {
+func (a *Apis) Middleware(h http.Handler) http.Handler {
 	return http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
@@ -144,7 +151,7 @@ type PathPair struct {
 
 func (a *Apis) Handler() *mux.Router {
 	if a.hasAuth {
-		a.router.Handle(`/{path:[a-zA-Z0-9=\-\_\/]+}`, authMiddleware(a, a))
+		a.router.Handle(`/{path:[a-zA-Z0-9=\-\_\/]+}`, a.Middleware(a))
 	} else {
 		a.router.Handle(`/{path:[a-zA-Z0-9=\-\_\/]+}`, defaultMiddleware(a))
 	}

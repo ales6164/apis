@@ -83,7 +83,7 @@ func (p *Provider) Connect(ctx iam.Context) {
 		return
 	}
 
-	p.IAM.PrintResponse(session)
+	p.IAM.PrintResponse(ctx, session)
 }
 
 func (p *Provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {

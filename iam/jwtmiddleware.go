@@ -199,7 +199,7 @@ func (m *JWTMiddleware) CheckJWT(w http.ResponseWriter, r *http.Request) (*jwt.T
 	// Now parse the token
 	parser := new(jwt.Parser)
 	parser.SkipClaimsValidation = true
-	parsedToken, err := parser.ParseWithClaims(token, &claims{}, m.Options.ValidationKeyGetter)
+	parsedToken, err := parser.ParseWithClaims(token, &Claims{}, m.Options.ValidationKeyGetter)
 
 	// Check if there was an error in parsing...
 	if err != nil {
