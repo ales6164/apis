@@ -60,7 +60,6 @@ func startSession(ctx Context, token *jwt.Token) (*Session, error) {
 			s.Claims = claims
 			s.Key = claims.Id
 			s.IsAuthenticated = true
-			s.Token = token
 		} /*else {
 			return s, errors.New("token is invalid")
 		}*/
