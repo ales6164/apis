@@ -7,13 +7,13 @@ import (
 
 type Meta struct {
 	Id              string         `datastore:"-" json:"id,omitempty"`
-	CreatedAt       time.Time      `json:"createdAt,omitempty"`
-	UpdatedAt       time.Time      `json:"updatedAt,omitempty"`
-	CreatedBy       *datastore.Key `json:"createdBy,omitempty"`
-	UpdatedBy       *datastore.Key `json:"updatedBy,omitempty"`
-	Version         int64          `json:"version,omitempty"`
-	Namespace       string         `json:"-"`
-	ParentNamespace string         `json:"-"`
+	CreatedAt       time.Time      `datastore:"createdAt" json:"createdAt,omitempty"`
+	UpdatedAt       time.Time      `datastore:"updatedAt" json:"updatedAt,omitempty"`
+	CreatedBy       *datastore.Key `datastore:"createdBy" json:"createdBy,omitempty"`
+	UpdatedBy       *datastore.Key `datastore:"updatedBy" json:"updatedBy,omitempty"`
+	Version         int64          `datastore:"version" json:"version,omitempty"`
+	Namespace       string         `datastore:"namespace,noindex" json:"-"`
+	ParentNamespace string         `datastore:"parentNamespace,noindex" json:"-"`
 	Value           interface{}    `datastore:"-" json:"value"`
 	DocMeta         `datastore:"-" json:"-"`
 }
