@@ -8,7 +8,7 @@ type User struct {
 
 type PublicUser struct {
 	Name  string   `json:"name"`
-	Email string   `json:"email"`
+	Email string   `json:"-"`
 	Roles []string `json:"-"`
 }
 
