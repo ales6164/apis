@@ -299,6 +299,8 @@ func (d *document) Set(ctx context.Context, data interface{}) (Doc, error) {
 	if d.key == nil || d.key.Incomplete() {
 		return d, errors.New("can't set value for undefined key")
 	}
+
+	var newValue reflect.Value
 	if d.value.Elem().CanSet() {
 		if bytes, ok := data.([]byte); ok {
 			inputValue := reflect.New(d.Type()).Interface()
@@ -306,9 +308,10 @@ func (d *document) Set(ctx context.Context, data interface{}) (Doc, error) {
 			if err != nil {
 				return d, err
 			}
-			d.value.Elem().Set(reflect.ValueOf(inputValue).Elem())
+			newValue = reflect.ValueOf(inputValue).Elem()
+
 		} else {
-			d.value.Elem().Set(reflect.ValueOf(data).Elem())
+			newValue = reflect.ValueOf(data).Elem()
 		}
 	} else {
 		return d, errors.New("field value can't be set")
@@ -320,6 +323,8 @@ func (d *document) Set(ctx context.Context, data interface{}) (Doc, error) {
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
 				// creating new
+
+				d.value.Elem().Set(newValue)
 
 				d.metaWrapper.Meta.CreatedAt = now
 				d.metaWrapper.Meta.CreatedBy = d.owner
@@ -334,6 +339,8 @@ func (d *document) Set(ctx context.Context, data interface{}) (Doc, error) {
 			return err
 		}
 		// overwriting existing
+
+		d.value.Elem().Set(newValue)
 
 		d.metaWrapper.Meta.UpdatedAt = now
 		d.metaWrapper.Meta.UpdatedBy = d.owner
