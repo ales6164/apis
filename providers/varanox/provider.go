@@ -1,21 +1,11 @@
 package varanox
 
 import (
-	"errors"
 	"github.com/ales6164/apis/iam"
 	"github.com/asaskevich/govalidator"
 	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
 	"net/http"
-)
-
-var (
-	ErrEmailUndefined    = errors.New("email undefined")
-	ErrPasswordUndefined = errors.New("password undefined")
-	ErrInvalidCallback   = errors.New("callback is not a valid URL")
-	ErrInvalidEmail      = errors.New("email is not valid")
-	ErrPasswordTooLong   = errors.New("password must be exactly or less than 256 characters long")
-	ErrPasswordTooShort  = errors.New("password must be at least 6 characters long")
 )
 
 type Provider struct {
@@ -51,26 +41,32 @@ func (p *Provider) TrustProvidedEmail() bool {
 func (p *Provider) Connect(ctx iam.Context) {
 	body := ctx.Body()
 
+	name, _ := jsonparser.GetString(body, "name")
 	email, _ := jsonparser.GetString(body, "email")
 	secret, _ := jsonparser.GetString(body, "secret")
 
+	if len(name) == 0 {
+		ctx.PrintError(iam.ErrNameUndefined.Error(), http.StatusBadRequest)
+		return
+	}
+
 	if len(email) == 0 {
-		ctx.PrintError(ErrEmailUndefined.Error(), http.StatusBadRequest)
+		ctx.PrintError(iam.ErrEmailUndefined.Error(), http.StatusBadRequest)
 		return
 	} else if !govalidator.IsEmail(email) || len(email) > 128 || len(email) < 5 {
-		ctx.PrintError(ErrInvalidEmail.Error(), http.StatusBadRequest)
+		ctx.PrintError(iam.ErrInvalidEmail.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if len(secret) > 256 {
-		ctx.PrintError(ErrPasswordTooLong.Error(), http.StatusBadRequest)
+		ctx.PrintError(iam.ErrPasswordTooLong.Error(), http.StatusBadRequest)
 		return
 	} else if len(secret) < 6 {
-		ctx.PrintError(ErrPasswordTooShort.Error(), http.StatusBadRequest)
+		ctx.PrintError(iam.ErrPasswordTooShort.Error(), http.StatusBadRequest)
 		return
 	}
 
-	identity, err := p.IAM.Connect(ctx, p, email, secret)
+	identity, err := p.IAM.Connect(ctx, p, name, email, secret)
 	if err != nil {
 		ctx.PrintError(err.Error(), http.StatusInternalServerError)
 		return

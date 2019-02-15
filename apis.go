@@ -25,7 +25,6 @@ type Options struct {
 }
 
 type Match map[collection.Kind]*Rules
-type Roles []string
 
 type Rules struct {
 	AccessControl bool
@@ -33,7 +32,7 @@ type Rules struct {
 	Match         Match `json:"-"`
 }
 
-type Permissions map[string]Roles
+type Permissions map[iam.Role][]iam.Scope
 
 func New(options *Options) *Apis {
 	if options == nil {
@@ -66,7 +65,6 @@ func New(options *Options) *Apis {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
 			}
-
 
 			a.IAM.PrintResponse(ctx, session)
 		}))).Methods(http.MethodOptions, http.MethodPost)

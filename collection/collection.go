@@ -16,7 +16,6 @@ type Collection struct {
 	t       reflect.Type
 	isGroup bool
 	member  *datastore.Key
-	KeyGen  func(ctx context.Context, str string, parent *datastore.Key, member *datastore.Key) *datastore.Key
 
 	hasIdFieldName        bool
 	hasCreatedAtFieldName bool
@@ -49,13 +48,6 @@ func New(name string, i interface{}) *Collection {
 	c := &Collection{
 		name: name,
 		t:    t,
-		KeyGen: func(ctx context.Context, str string, parent *datastore.Key, _ *datastore.Key) *datastore.Key {
-			key, err := datastore.DecodeKey(str)
-			if err != nil {
-				key = datastore.NewKey(ctx, name, str, 0, parent)
-			}
-			return key
-		},
 	}
 
 	if len(name) == 0 || !govalidator.IsAlphanumeric(name) {
@@ -83,10 +75,6 @@ const (
 	createdby = "createdby"
 	updatedby = "updatedby"
 )
-
-func (c *Collection) Key(ctx context.Context, str string, parent *datastore.Key, member *datastore.Key) *datastore.Key {
-	return c.KeyGen(ctx, str, parent, member)
-}
 
 func (c *Collection) Name() string {
 	return c.name
@@ -261,6 +249,6 @@ func (c *Collection) Data(doc Doc, includeMeta bool, resolveMetaRef bool) interf
 	return reflectValue.Interface()
 }
 
-func (c *Collection) Doc(key *datastore.Key, ancestor Doc) Doc {
-	return NewDoc(c, key, ancestor)
+func (c *Collection) Doc(key *datastore.Key, parent Doc) Doc {
+	return NewDoc(c, key, parent)
 }

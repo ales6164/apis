@@ -12,8 +12,6 @@ type Meta struct {
 	CreatedBy       *datastore.Key `datastore:"createdBy" json:"createdBy,omitempty"`
 	UpdatedBy       *datastore.Key `datastore:"updatedBy" json:"updatedBy,omitempty"`
 	Version         int64          `datastore:"version" json:"version,omitempty"`
-	Namespace       string         `datastore:"namespace,noindex" json:"-"`
-	ParentNamespace string         `datastore:"parentNamespace,noindex" json:"-"`
 	Value           interface{}    `datastore:"-" json:"value"`
 	DocMeta         `datastore:"-" json:"-"`
 }

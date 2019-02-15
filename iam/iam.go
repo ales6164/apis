@@ -1,10 +1,37 @@
 package iam
 
 import (
+	"errors"
 	"github.com/dgrijalva/jwt-go"
 	"google.golang.org/appengine/datastore"
 	"net/http"
 	"time"
+)
+
+var (
+	ErrEmailUndefined    = errors.New("email undefined")
+	ErrPasswordUndefined = errors.New("password undefined")
+	ErrInvalidCallback   = errors.New("callback is not a valid URL")
+	ErrNameUndefined     = errors.New("name undefined")
+	ErrInvalidEmail      = errors.New("email is not valid")
+	ErrPasswordTooLong   = errors.New("password must be exactly or less than 256 characters long")
+	ErrPasswordTooShort  = errors.New("password must be at least 6 characters long")
+)
+
+type Role string
+
+const (
+	AllUsers              Role = "allUsers"              // given to all requests
+	AllAuthenticatedUsers Role = "allAuthenticatedUsers" // giver to all authenticated requests
+)
+
+type Scope string
+
+const (
+	FullControl Scope = "fullcontrol"
+	ReadOnly    Scope = "readonly"
+	ReadWrite   Scope = "readwrite"
+	Delete      Scope = "delete"
 )
 
 type Options struct {
@@ -12,7 +39,8 @@ type Options struct {
 	Extractors          []TokenExtractor
 	CredentialsOptional bool
 	// These scopes are assigned to new users
-	DefaultRoles  []string
+	DefaultRoles  []Role
+	defaultRoles  []string
 	SigningMethod jwt.SigningMethod
 	// How long until it expires in seconds. Default is 7 days.
 	TokenExpiresIn int64
@@ -55,6 +83,10 @@ func NewIAM(opt *Options) *IAM {
 		iam.TokenExpiresIn = week
 	}
 
+	for _, r := range iam.DefaultRoles {
+		iam.defaultRoles = append(iam.defaultRoles, string(r))
+	}
+
 	iam.middleware = middleware(MiddlewareOptions{
 		Extractor: FromFirst(iam.Extractors...),
 		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
@@ -71,9 +103,9 @@ func NewIAM(opt *Options) *IAM {
 	return iam
 }
 
- func (iam *IAM) Middleware() *JWTMiddleware {
- 	return iam.middleware
- }
+func (iam *IAM) Middleware() *JWTMiddleware {
+	return iam.middleware
+}
 
 func (iam *IAM) NewSession(ctx Context, provider Provider, identity *Identity) (*Session, error) {
 	now := time.Now()
@@ -81,13 +113,14 @@ func (iam *IAM) NewSession(ctx Context, provider Provider, identity *Identity) (
 		provider: provider,
 		identity: identity,
 		stored: &storedSession{
-			Identity:  identity.IdentityKey,
-			Subject:   identity.UserKey,
-			Provider:  provider.Name(),
-			CreatedAt: now,
-			ExpiresAt: now.Add(time.Second * time.Duration(iam.TokenExpiresIn)),
-			IsBlocked: false,
-			Scopes:    iam.DefaultRoles,
+			UserFullName: identity.Name,
+			Identity:     identity.IdentityKey,
+			Subject:      identity.UserKey,
+			Provider:     provider.Name(),
+			CreatedAt:    now,
+			ExpiresAt:    now.Add(time.Second * time.Duration(iam.TokenExpiresIn)),
+			IsBlocked:    false,
+			Scopes:       iam.defaultRoles,
 		},
 		Key: datastore.NewIncompleteKey(ctx.Default(), SessionKind, nil),
 	}
@@ -97,7 +130,8 @@ func (iam *IAM) NewSession(ctx Context, provider Provider, identity *Identity) (
 
 	s.Claims = &Claims{
 		s.Key,
-		iam.DefaultRoles,
+		identity.Name,
+		iam.defaultRoles,
 		jwt.StandardClaims{
 			Issuer:    iam.TokenIssuer,
 			NotBefore: now.Add(time.Second * time.Duration(NotBeforeCorrection)).Unix(),

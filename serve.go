@@ -16,8 +16,11 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx := a.IAM.NewContext(w, r)
 
-	var parent *datastore.Key
-	var group collection.Doc
+	var parentKey *datastore.Key
+	var isParentAccessControl bool
+	var namespace string
+
+	//var group collection.Doc
 	var document collection.Doc
 
 	// analyse path in pairs
@@ -30,20 +33,54 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// create key
 				var key *datastore.Key
 				if (i + 1) < len(path) {
-					key = k.Key(ctx, path[i+1], parent, ctx.Member())
-					if key == nil {
-						ctx.PrintError("error decoding key", http.StatusBadRequest)
-						return
+					var id = path[i+1]
+
+					if isParentAccessControl {
+						// if this is true, we have parent key and now we can get group and change namespace
+
+						// namespace change
+						var groupKey = datastore.NewKey(ctx.Default(), "_group", parentKey.Encode(), 0, nil)
+						var group = new(collection.Group)
+						err := datastore.Get(ctx.Default(), groupKey, group)
+						if err != nil {
+							ctx.PrintError(http.StatusText(http.StatusConflict), http.StatusConflict)
+							return
+						}
+						ctx, err = ctx.SetNamespace(group.Namespace)
+						if err != nil {
+							ctx.PrintError(http.StatusText(http.StatusConflict), http.StatusConflict)
+							return
+						}
+						namespace = group.Namespace
 					}
-				}
-				parent = key
 
-				document = k.Doc(key, group)
-				if rules.AccessControl {
-					document.SetAccessControl(rules.AccessControl)
-					group = document
-				}
+					key, err := datastore.DecodeKey(id)
+					if err != nil {
+						key = datastore.NewKey(ctx, k.Name(), id, 0, parentKey)
+					} else {
+						if parentKey != nil {
+							if !parentKey.Equal(key) {
+								ctx.PrintError(http.StatusText(http.StatusConflict), http.StatusConflict)
+								return
+							}
+						}
+						if key.Namespace() != namespace {
+							ctx.PrintError(http.StatusText(http.StatusConflict), http.StatusConflict)
+							return
+						}
+					}
 
+					// key should be okay by this point
+				}
+				parentKey = key
+				isParentAccessControl = rules.AccessControl
+
+				// todo: create key from id and parent and rules.AccessControl (retrieve group namespace)
+				// todo: pass on group namespace inside Doc (get rid of access controller) - or maybe not?
+				// todo: check for access (retrieve _rel) on operations (also save/delete _rel when adding/deleting)
+				// todo: if group creator (doc) as current and is being deleted also delete everything inside group?
+
+				document = k.Doc(key, document)
 				continue
 			}
 		}

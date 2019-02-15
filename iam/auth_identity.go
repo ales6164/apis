@@ -18,6 +18,7 @@ type Identity struct {
 	UserKey        *datastore.Key   `json:"-"`
 	CreatedAt      time.Time        `json:"createdAt"`
 	UpdatedAt      time.Time        `json:"createdAt"`
+	Name           string           `json:"name"`
 	Provider       string           `json:"provider"`
 	EmailConfirmed bool             `json:"emailConfirmed"` // TODO: this should be stored with identity provider -- email has to be confirmed for each provider seperately... If user exists, it has at least one provider with confirmed email
 	Secret         []byte           `datastore:",noindex" json:"-"`
@@ -35,7 +36,7 @@ var (
 )
 
 // Connects identity with user
-func (iam *IAM) Connect(ctx Context, provider Provider, userEmail string, unlockKey string) (*Identity, error) {
+func (iam *IAM) Connect(ctx Context, provider Provider, name string, userEmail string, unlockKey string) (*Identity, error) {
 	var userKey = datastore.NewKey(ctx.Default(), collection.UserCollection.Name(), userEmail, 0, nil)
 	var identityKey = datastore.NewKey(ctx.Default(), IdentityKind, provider.Name()+":"+userEmail, 0, userKey)
 
@@ -52,6 +53,7 @@ func (iam *IAM) Connect(ctx Context, provider Provider, userEmail string, unlock
 				// create identity
 
 				identity.EmailConfirmed = provider.TrustProvidedEmail()
+				identity.Name = name
 				identity.UserKey = userKey
 				identity.CreatedAt = time.Now()
 				identity.Provider = provider.Name()
@@ -73,6 +75,10 @@ func (iam *IAM) Connect(ctx Context, provider Provider, userEmail string, unlock
 			}
 		} else {
 			// identity exists
+
+			if len(identity.Name) == 0 {
+				identity.Name = name
+			}
 
 			// check unlock key
 			err = decrypt(identity.Secret, []byte(unlockKey))
@@ -103,6 +109,7 @@ func (iam *IAM) connect(ctx Context, provider Provider, identityKey *datastore.K
 	if !userDocumentExists {
 		// create user
 
+		user.Name = identity.Name
 		user.Email = identity.UserKey.StringID()
 		user.Roles = iam.DefaultRoles
 
@@ -136,6 +143,10 @@ func (iam *IAM) connect(ctx Context, provider Provider, identityKey *datastore.K
 			}
 		}
 		user.Roles = append(user.Roles, toAppend...)
+
+		if len(user.Name) == 0 {
+			user.Name = identity.Name
+		}
 
 		// save user
 		userDocument, err = userDocument.Set(ctx.Default(), user)

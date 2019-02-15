@@ -95,6 +95,10 @@ func (ctx Context) User() string {
 	return ctx.session.stored.Subject.StringID()
 }
 
+func (ctx Context) UserFullName() string {
+	return ctx.session.stored.Subject.StringID()
+}
+
 func (ctx Context) IsAuthenticated() bool {
 	return ctx.session.IsAuthenticated
 }

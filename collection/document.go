@@ -12,17 +12,16 @@ import (
 )
 
 type document struct {
-	kind                Kind
-	owner               *datastore.Key
-	key                 *datastore.Key
-	value               reflect.Value
-	hasInputData        bool // when updating
-	hasLoadedData       bool
-	rollbackProperties  []datastore.Property
-	accessControllerDoc Doc
-	accessControl       bool
-	parent              Doc
-	metaWrapper         *metaWrapper
+	kind               Kind
+	key                *datastore.Key
+	value              reflect.Value
+	hasInputData       bool // when updating
+	hasLoadedData      bool
+	rollbackProperties []datastore.Property
+
+	parent      Doc
+	isUnlocked  bool
+	metaWrapper *metaWrapper
 	Doc
 }
 
@@ -30,35 +29,32 @@ type metaWrapper struct {
 	Meta Meta `datastore:"_"`
 }
 
-type DocumentCollectionRelationship struct {
-	Roles []string // fullControl, ...
+type DocUserRelationship struct {
+	Permissions []string // fullControl, ...
+}
+
+type Group struct {
+	Document  *datastore.Key `datastore:",noindex"` // da lahko v gae platformi vidim za kaj se gre
+	Namespace string
 }
 
 func NewDoc(kind Kind, key *datastore.Key, parent Doc) *document {
-	if key != nil && key.Kind() != kind.Name() {
-		key = nil
-	}
 	doc := &document{
 		kind:        kind,
 		value:       reflect.New(kind.Type()),
-		key:         key,
 		parent:      parent,
 		metaWrapper: &metaWrapper{Meta{}},
 	}
-
-	if parent != nil {
-		if parent.GetAccessControl() {
-			doc.accessControllerDoc = parent
-		} else if parent.Parent() != nil && parent.Parent().GetAccessControl() {
-			doc.accessControllerDoc = parent.Parent()
-		}
-	}
-
+	doc.SetKey(key)
 	return doc
 }
 
-func (d *document) AccessController() Doc {
-	return d.accessControllerDoc
+func (d *document) Key() *datastore.Key {
+	return d.key
+}
+
+func (d *document) SetKey(key *datastore.Key) {
+	d.key = key
 }
 
 func (d *document) Parent() Doc {
@@ -69,46 +65,8 @@ func (d *document) Meta() Meta {
 	return d.metaWrapper.Meta
 }
 
-func (d *document) SetOwner(key *datastore.Key) {
-	d.owner = key
-}
-
-func (d *document) GetOwner() *datastore.Key {
-	return d.owner
-}
-
-/*
-
-Get - gets entry and value simultaneously
-Add - adds entry after operation
-Set - runs Get and sees what's going on... if value exists but it has no entry it creates one ... if entry exists and the person has access it updates the value and entry simultaneously
-Del - deletes both
-
-Every action should check if operation is permitted
-
-
- */
-
-var (
-	keyType = reflect.TypeOf(&datastore.Key{})
-)
-
 func (d *document) Value() reflect.Value {
 	return d.value
-}
-
-func (d *document) Key() *datastore.Key {
-	return d.key
-}
-
-// SetKey(key *datastore.Key)
-//	Copy() Doc
-
-func (d *document) SetKey(key *datastore.Key) {
-	if key != nil && key.Kind() != d.kind.Name() {
-		key = nil
-	}
-	d.key = key
 }
 
 func (d *document) Type() reflect.Type {
@@ -132,23 +90,17 @@ const (
 	op_copy    = "copy"
 )
 
-func (d *document) GetAccessControl() bool {
-	return d.accessControl
-}
-
-func (d *document) SetAccessControl(enable bool) {
-	d.accessControl = enable
-}
-
 func (d *document) Get(ctx context.Context) (Doc, error) {
+	d.key = datastore.NewKey(ctx, d.key.Kind(), d.key.StringID(), d.key.IntID(), d.key.Parent())
 	return d, datastore.Get(ctx, d.key, d)
 }
 
 // not implemented!
-func (d *document) Patch(ctx context.Context, data []byte) error {
+func (d *document) Patch(ctx context.Context, data []byte, userKey *datastore.Key) error {
 	return errors.New("not implemented")
 
 	// todo: add access control and meta
+	d.key = datastore.NewKey(ctx, d.key.Kind(), d.key.StringID(), d.key.IntID(), d.key.Parent())
 
 	var endErr error
 	var cb = func(err error) {
@@ -285,6 +237,7 @@ func (d *document) Patch(ctx context.Context, data []byte) error {
 }
 
 func (d *document) Delete(ctx context.Context) error {
+	d.key = datastore.NewKey(ctx, d.key.Kind(), d.key.StringID(), d.key.IntID(), d.key.Parent())
 	return datastore.RunInTransaction(ctx, func(tc context.Context) error {
 		err := datastore.Delete(tc, d.key)
 		if err != nil {
@@ -294,11 +247,12 @@ func (d *document) Delete(ctx context.Context) error {
 	}, &datastore.TransactionOptions{XG: true})
 }
 
-func (d *document) Set(ctx context.Context, data interface{}) (Doc, error) {
+func (d *document) Set(ctx context.Context, data interface{}, userKey *datastore.Key) (Doc, error) {
 	var err error
 	if d.key == nil || d.key.Incomplete() {
 		return d, errors.New("can't set value for undefined key")
 	}
+	d.key = datastore.NewKey(ctx, d.key.Kind(), d.key.StringID(), d.key.IntID(), d.key.Parent())
 
 	var newValue reflect.Value
 	if d.value.Elem().CanSet() {
@@ -327,7 +281,7 @@ func (d *document) Set(ctx context.Context, data interface{}) (Doc, error) {
 				d.value.Elem().Set(newValue)
 
 				d.metaWrapper.Meta.CreatedAt = now
-				d.metaWrapper.Meta.CreatedBy = d.owner
+				d.metaWrapper.Meta.CreatedBy = userKey
 				d.metaWrapper.Meta.Version = 0
 
 				d.key, err = datastore.Put(tc, d.key, d)
@@ -343,7 +297,7 @@ func (d *document) Set(ctx context.Context, data interface{}) (Doc, error) {
 		d.value.Elem().Set(newValue)
 
 		d.metaWrapper.Meta.UpdatedAt = now
-		d.metaWrapper.Meta.UpdatedBy = d.owner
+		d.metaWrapper.Meta.UpdatedBy = userKey
 		d.metaWrapper.Meta.Version += 1
 
 		d.key, err = datastore.Put(tc, d.key, d)
@@ -355,7 +309,8 @@ func (d *document) Set(ctx context.Context, data interface{}) (Doc, error) {
 
 // todo: some function for giving access to this document
 // Run from inside a transaction.
-func (d *document) Add(ctx context.Context, data interface{}) (Doc, error) {
+func (d *document) Add(ctx context.Context, data interface{}, userKey *datastore.Key) (Doc, error) {
+
 	// 1. Parse value
 	var err error
 	var value reflect.Value
@@ -379,6 +334,8 @@ func (d *document) Add(ctx context.Context, data interface{}) (Doc, error) {
 	// 2. Set key
 	if d.key == nil {
 		d.key = datastore.NewIncompleteKey(ctx, d.Kind().Name(), nil)
+	} else {
+		d.key = datastore.NewKey(ctx, d.key.Kind(), d.key.StringID(), d.key.IntID(), d.key.Parent())
 	}
 
 	now := time.Now()
@@ -388,7 +345,7 @@ func (d *document) Add(ctx context.Context, data interface{}) (Doc, error) {
 		err = datastore.RunInTransaction(ctx, func(ctx context.Context) error {
 
 			d.metaWrapper.Meta.CreatedAt = now
-			d.metaWrapper.Meta.CreatedBy = d.owner
+			d.metaWrapper.Meta.CreatedBy = userKey
 			d.metaWrapper.Meta.Version = 0
 
 			d.key, err = datastore.Put(ctx, d.key, d)
@@ -405,7 +362,7 @@ func (d *document) Add(ctx context.Context, data interface{}) (Doc, error) {
 					// ok
 
 					d.metaWrapper.Meta.CreatedAt = now
-					d.metaWrapper.Meta.CreatedBy = d.owner
+					d.metaWrapper.Meta.CreatedBy = userKey
 					d.metaWrapper.Meta.Version = 0
 
 					d.key, err = datastore.Put(ctx, d.key, d)

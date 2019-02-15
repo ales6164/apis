@@ -13,7 +13,7 @@ import (
 
 const (
 	// roles
-	subscriber = "subscriber"
+	subscriber iam.Role = "subscriber"
 )
 
 func init() {
@@ -28,7 +28,7 @@ func init() {
 		SigningKey:          signingKey,
 		Extractors:          []iam.TokenExtractor{iam.FromAuthHeader},
 		CredentialsOptional: false,
-		DefaultRoles:        []string{subscriber},
+		DefaultRoles:        []iam.Role{subscriber},
 		SigningMethod:       jwt.SigningMethodHS256,
 		TokenExpiresIn:      60 * 60 * 24 * 7,
 	})
@@ -42,12 +42,12 @@ func init() {
 			Match: apis.Match{
 				projects: &apis.Rules{
 					Permissions: apis.Permissions{
-						iam.AllAuthenticatedUsers: []string{iam.FullControl},
+						iam.AllAuthenticatedUsers: []iam.Scope{iam.FullControl},
 					},
 					Match: apis.Match{
 						objects: &apis.Rules{
 							Permissions: apis.Permissions{
-								iam.AllAuthenticatedUsers: []string{iam.FullControl},
+								iam.AllAuthenticatedUsers: []iam.Scope{iam.FullControl},
 							},
 						},
 					},
@@ -55,17 +55,17 @@ func init() {
 				objects: &apis.Rules{
 					AccessControl: true,
 					Permissions: apis.Permissions{
-						iam.AllUsers: []string{iam.FullControl},
+						iam.AllUsers: []iam.Scope{iam.FullControl},
 					},
 					Match: apis.Match{
 						objects: &apis.Rules{
 							Permissions: apis.Permissions{
-								iam.AllUsers: []string{iam.FullControl},
+								iam.AllUsers: []iam.Scope{iam.FullControl},
 							},
 							Match: apis.Match{
 								objects: &apis.Rules{
 									Permissions: apis.Permissions{
-										iam.AllUsers: []string{iam.FullControl},
+										iam.AllUsers: []iam.Scope{iam.FullControl},
 									},
 								},
 							},

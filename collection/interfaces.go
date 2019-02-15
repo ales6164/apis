@@ -22,26 +22,23 @@ type Doc interface {
 	Type() reflect.Type
 	Parse(body []byte) error
 	Get(ctx context.Context) (Doc, error)
-	Add(ctx context.Context, data interface{}) (Doc, error) // transaction function in 1/2 case
-	Set(ctx context.Context, data interface{}) (Doc, error)
-	Patch(ctx context.Context, data []byte) error // transaction function
+	Add(ctx context.Context, data interface{}, userKey *datastore.Key) (Doc, error) // transaction function in 1/2 case
+	Set(ctx context.Context, data interface{}, userKey *datastore.Key) (Doc, error)
+	Patch(ctx context.Context, data []byte, userKey *datastore.Key) error // transaction function
 	Delete(ctx context.Context) error
 	Kind() Kind
 	Meta() Meta
 	Value() reflect.Value
-	SetOwner(key *datastore.Key)
-	GetOwner() *datastore.Key
+	/*SetOwner(key *datastore.Key)
+	GetOwner() *datastore.Key*/
 	Key() *datastore.Key
 	SetKey(key *datastore.Key)
-	SetAccessControl(b bool)
-	GetAccessControl() bool
-	AccessController() Doc
+
 	Parent() Doc
 }
 
 type Kind interface {
 	Name() string
-	Key(ctx context.Context, str string, parent *datastore.Key, member *datastore.Key) *datastore.Key
 	Data(doc Doc, includeMeta bool, resolveMetaRef bool) interface{}
 	ValueAt(value reflect.Value, path []string) (reflect.Value, error)
 	Fields() map[string]Field
@@ -50,7 +47,7 @@ type Kind interface {
 	Count(ctx context.Context) (int, error)
 	Increment(ctx context.Context) error
 	Decrement(ctx context.Context) error
-	Doc(key *datastore.Key, ancestor Doc) Doc
+	Doc(key *datastore.Key, parent Doc) Doc
 }
 
 type DocMeta interface {

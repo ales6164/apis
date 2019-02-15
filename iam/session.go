@@ -24,19 +24,21 @@ type Session struct {
 }
 
 type Claims struct {
-	Id     *datastore.Key `json:"id"`
-	Scopes []string       `json:"scopes"`
+	Id           *datastore.Key `json:"id"`
+	UserFullName string         `json:"userFullName"`
+	Scopes       []string       `json:"scopes"`
 	jwt.StandardClaims
 }
 
 type storedSession struct {
-	CreatedAt time.Time
-	Identity  *datastore.Key
-	Subject   *datastore.Key // user or user group, API client ...
-	ExpiresAt time.Time
-	Provider  string
-	IsBlocked bool
-	Scopes    []string
+	UserFullName string
+	CreatedAt    time.Time
+	Identity     *datastore.Key
+	Subject      *datastore.Key // user or user group, API client ...
+	ExpiresAt    time.Time
+	Provider     string
+	IsBlocked    bool
+	Scopes       []string
 }
 
 // todo: add anonymous user session store

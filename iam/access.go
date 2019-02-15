@@ -7,30 +7,9 @@ import (
 	"strconv"
 )
 
-// parent is entry key, id is user key
-type DocUserRelationship struct {
-	Roles []string // fullControl, ...
-}
-
-// doc is parent; name is doc kind
-type GroupNamespace struct {
-	Namespace string
-}
-
-type Role string
-
-const (
-	AllUsers              = "allUsers"              // given to all requests
-	AllAuthenticatedUsers = "allAuthenticatedUsers" // giver to all authenticated requests
-	FullControl           = "fullcontrol"
-	ReadOnly              = "readonly"
-	ReadWrite             = "readwrite"
-	Delete                = "delete"
-)
-
 // TODO: add something to load group namespace and namespace after access check?
-// TODO: remove ctx as first param fomr collection.Doc? Move it to doc.Get/Set/Add....
-func CheckAccess(ctx Context, doc collection.Doc, member *datastore.Key, permission ...string) (Context, bool) {
+// TODO: remove ctx as first param from collection.Doc? Move it to doc.Get/Set/Add....
+func CheckAccess(ctx Context, doc collection.Doc, member *datastore.Key, permission ...Scope) (Context, bool) {
 	accessController := doc.AccessController()
 	if accessController != nil && accessController.Key() != nil && !accessController.Key().Incomplete() {
 		var groupRel = new(DocUserRelationship)
@@ -64,9 +43,12 @@ func GetGroupNamespace(ctx Context, doc collection.Doc) (Context, error) {
 }
 
 func SetAccess(ctx Context, doc collection.Doc, member *datastore.Key, permission ...string) error {
+	docKey := doc.Key()
+	docDefaultNsKey := datastore.NewKey(ctx.Default(), docKey.Kind(), docKey.StringID(), docKey.IntID(), docKey.Parent())
+
 	err := datastore.RunInTransaction(ctx.Default(), func(ctx context.Context) error {
 		var group = new(GroupNamespace)
-		var key = datastore.NewKey(ctx, "_group", doc.Key().Encode(), 0, nil)
+		var key = datastore.NewKey(ctx, "_group", docDefaultNsKey.Encode(), 0, nil)
 		err := datastore.Get(ctx, key, group)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
@@ -74,6 +56,7 @@ func SetAccess(ctx Context, doc collection.Doc, member *datastore.Key, permissio
 				if err != nil {
 					return err
 				}
+				group.Document = doc.Key()
 				group.Namespace = "g-" + strconv.Itoa(int(ns))
 				_, err = datastore.Put(ctx, key, group)
 				if err != nil {
@@ -87,7 +70,7 @@ func SetAccess(ctx Context, doc collection.Doc, member *datastore.Key, permissio
 
 		// TODO: get and update/store DocUserRelationship
 		var groupRel = new(DocUserRelationship)
-		var relKey = datastore.NewKey(ctx, "_rel", member.StringID(), 0, doc.Key())
+		var relKey = datastore.NewKey(ctx, "_rel", member.StringID(), 0, docDefaultNsKey)
 		err = datastore.Get(ctx, relKey, groupRel)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
