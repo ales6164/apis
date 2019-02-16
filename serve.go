@@ -17,11 +17,14 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := a.IAM.NewContext(w, r)
 
 	var parentKey *datastore.Key
-	var isParentAccessControl bool
+
+	var ancestorKey *datastore.Key
+	var isAncestorAccessControl bool
 	var namespace string
 
 	//var group collection.Doc
 	var document collection.Doc
+	var accessController collection.Doc
 
 	// analyse path in pairs
 	for i := 0; i < len(path); i += 2 {
@@ -32,31 +35,43 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 				// create key
 				var key *datastore.Key
+				var err error
+
+				// load namespace
+				if isAncestorAccessControl {
+					// if this is true, we have parent key and now we can get group and change namespace
+
+					// namespace change
+					var groupKey = datastore.NewKey(ctx.Default(), "_group", ancestorKey.Encode(), 0, nil)
+					var group = new(collection.Group)
+					err = datastore.Get(ctx.Default(), groupKey, group)
+					if err != nil {
+						ctx.PrintError(http.StatusText(http.StatusConflict), http.StatusConflict)
+						return
+					}
+					ctx, err = ctx.SetNamespace(group.Namespace)
+					if err != nil {
+						ctx.PrintError(http.StatusText(http.StatusConflict), http.StatusConflict)
+						return
+					}
+					namespace = group.Namespace
+
+					if parentKey.Namespace() != namespace {
+						// becase can't have parent with different ns
+						parentKey = nil
+					}
+				}
+
 				if (i + 1) < len(path) {
 					var id = path[i+1]
 
-					if isParentAccessControl {
-						// if this is true, we have parent key and now we can get group and change namespace
-
-						// namespace change
-						var groupKey = datastore.NewKey(ctx.Default(), "_group", parentKey.Encode(), 0, nil)
-						var group = new(collection.Group)
-						err := datastore.Get(ctx.Default(), groupKey, group)
-						if err != nil {
-							ctx.PrintError(http.StatusText(http.StatusConflict), http.StatusConflict)
-							return
-						}
-						ctx, err = ctx.SetNamespace(group.Namespace)
-						if err != nil {
-							ctx.PrintError(http.StatusText(http.StatusConflict), http.StatusConflict)
-							return
-						}
-						namespace = group.Namespace
-					}
-
-					key, err := datastore.DecodeKey(id)
+					key, err = datastore.DecodeKey(id)
 					if err != nil {
-						key = datastore.NewKey(ctx, k.Name(), id, 0, parentKey)
+						key = datastore.NewKey(ctx.Context, k.Name(), id, 0, parentKey)
+						if key.Namespace() != namespace {
+							ctx.PrintError(key.Namespace(), http.StatusConflict)
+							return
+						}
 					} else {
 						if parentKey != nil {
 							if !parentKey.Equal(key) {
@@ -73,7 +88,6 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					// key should be okay by this point
 				}
 				parentKey = key
-				isParentAccessControl = rules.AccessControl
 
 				// todo: create key from id and parent and rules.AccessControl (retrieve group namespace)
 				// todo: pass on group namespace inside Doc (get rid of access controller) - or maybe not?
@@ -81,6 +95,11 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// todo: if group creator (doc) as current and is being deleted also delete everything inside group?
 
 				document = k.Doc(key, document)
+				if rules.AccessControl {
+					accessController = document
+					ancestorKey = key
+					isAncestorAccessControl = rules.AccessControl
+				}
 				continue
 			}
 		}
@@ -88,14 +107,36 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Variable "lastAccessCheckDocument" saves the latest collection document that has defined "EnableAccessControl" under rules
-	// 2. Use that variable in method switch cases to check for the new HasAccess function (kind.Document) instead of general group access check
+	var userScopes = rules.Permissions[iam.AllUsers]
+	if accessController != nil {
+		if accessController.Key() != nil && !accessController.Key().Incomplete() {
+			var rel = new(collection.DocUserRelationship)
+			err := datastore.Get(ctx.Default(), datastore.NewKey(ctx.Default(), "_rel", ctx.Member().Encode(), 0, accessController.Key()), rel)
+			if err != nil {
+				if err != datastore.ErrNoSuchEntity {
+					ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+					return
+				}
+			}
+			userScopes = append(userScopes, rel.Scopes...)
+		}
+	}
+
+	if ctx.IsAuthenticated() {
+		userScopes = append(userScopes, rules.Permissions[iam.AllAuthenticatedUsers]...)
+		for _, r := range ctx.Roles() {
+			userScopes = append(userScopes, rules.Permissions[r]...)
+		}
+	}
+
+	// 1. If doc has access control ancestor or itself is access controller, then retrieve _rel
+	// 2. Store _rel roles AND rules.Permissions inside some object which is then used to check access
 
 	var err error
 
 	switch r.Method {
 	case http.MethodGet:
-		if ctx, ok := iam.CheckAccess(ctx, document, ctx.Member(), iam.ReadOnly, iam.ReadWrite, iam.FullControl); ok {
+		if ok := ContainsScope(userScopes, iam.ReadOnly, iam.ReadWrite, iam.FullControl); ok {
 			if document.Key() != nil && !document.Key().Incomplete() {
 				document, err = document.Get(ctx)
 				if err != nil {
@@ -127,9 +168,8 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
 	case http.MethodPost:
-		if ctx, ok := iam.CheckAccess(ctx, document, ctx.Member(), iam.ReadWrite, iam.FullControl); ok {
-			document.SetOwner(ctx.Member())
-			document, err = document.Add(ctx, ctx.Body())
+		if ok := ContainsScope(userScopes, iam.ReadWrite, iam.FullControl); ok {
+			document, err = document.Add(ctx, ctx.Body(), ctx.Member())
 			if err != nil {
 				ctx.PrintError(err.Error(), http.StatusInternalServerError)
 				return
@@ -144,7 +184,7 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
 	case http.MethodDelete:
-		if ctx, ok := iam.CheckAccess(ctx, document, ctx.Member(), iam.Delete, iam.FullControl); ok {
+		if ok := ContainsScope(userScopes, iam.Delete, iam.FullControl); ok {
 			//TODO: delete groups and group relationships
 			if document.Key() == nil || document.Key().Incomplete() {
 				ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
@@ -160,12 +200,11 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		}
 	case http.MethodPut:
-		if ctx, ok := iam.CheckAccess(ctx, document, ctx.Member(), iam.ReadWrite, iam.FullControl); ok {
-			document.SetOwner(ctx.Member())
+		if ok := ContainsScope(userScopes, iam.ReadWrite, iam.FullControl); ok {
 			if document.Key() == nil || document.Key().Incomplete() {
 				ctx.PrintError(http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
 			} else {
-				document, err = document.Set(ctx, ctx.Body())
+				document, err = document.Set(ctx, ctx.Body(), ctx.Member())
 				if err != nil {
 					ctx.PrintError(err.Error(), http.StatusInternalServerError)
 					return
@@ -176,8 +215,6 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					ctx.PrintError(err.Error(), http.StatusInternalServerError)
 					return
 				}
-
-				//ctx.PrintJSON(ctx.Context, 200)
 
 				ctx.PrintJSON(document.Kind().Data(document, ctx.HasIncludeMetaHeader, ctx.HasResolveMetaRefHeader), http.StatusOK)
 			}

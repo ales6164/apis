@@ -26,7 +26,7 @@ type Session struct {
 type Claims struct {
 	Id           *datastore.Key `json:"id"`
 	UserFullName string         `json:"userFullName"`
-	Scopes       []string       `json:"scopes"`
+	Roles        []string       `json:"roles"`
 	jwt.StandardClaims
 }
 
@@ -38,7 +38,7 @@ type storedSession struct {
 	ExpiresAt    time.Time
 	Provider     string
 	IsBlocked    bool
-	Scopes       []string
+	Roles        []string
 }
 
 // todo: add anonymous user session store
@@ -71,7 +71,7 @@ func startSession(ctx Context, token *jwt.Token) (*Session, error) {
 
 	if !s.IsAuthenticated {
 		// anonymous
-		s.stored.Subject = datastore.NewKey(ctx, "Group", AllUsers, 0, nil)
+		s.stored.Subject = datastore.NewKey(ctx, "Group", string(AllUsers), 0, nil)
 	}
 
 	s.IsValid = true

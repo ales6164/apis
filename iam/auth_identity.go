@@ -113,12 +113,10 @@ func (iam *IAM) connect(ctx Context, provider Provider, identityKey *datastore.K
 		user.Email = identity.UserKey.StringID()
 		user.Roles = iam.DefaultRoles
 
-		userDocument, err = userDocument.Set(ctx.Default(), user)
+		userDocument, err = userDocument.Set(ctx.Default(), user, identity.UserKey)
 		if err != nil {
 			return nil, errors.New("1" + err.Error())
 		}
-
-		userDocument.SetOwner(identity.UserKey)
 
 		err = SetAccess(ctx, userDocument, userDocument.Key(), FullControl)
 		if err != nil {
@@ -149,7 +147,7 @@ func (iam *IAM) connect(ctx Context, provider Provider, identityKey *datastore.K
 		}
 
 		// save user
-		userDocument, err = userDocument.Set(ctx.Default(), user)
+		userDocument, err = userDocument.Set(ctx.Default(), user, identity.UserKey)
 		if err != nil {
 			return nil, errors.New("4" + err.Error())
 		}

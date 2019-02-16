@@ -42,7 +42,7 @@ func (iam *IAM) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context)
 
 func (ctx Context) SetNamespace(ns string) (Context, error) {
 	var err error
-	ctx.Context, err = appengine.Namespace(ctx.Default(), ns)
+	ctx.Context, err = appengine.Namespace(ctx.Context, ns)
 	return ctx, err
 }
 
@@ -85,6 +85,10 @@ func (ctx Context) Body() []byte {
 
 func (ctx Context) Default() context.Context {
 	return ctx.def
+}
+
+func (ctx Context) Roles() []string {
+	return ctx.session.stored.Roles
 }
 
 func (ctx Context) Member() *datastore.Key {

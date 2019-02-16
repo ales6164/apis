@@ -18,20 +18,16 @@ var (
 	ErrPasswordTooShort  = errors.New("password must be at least 6 characters long")
 )
 
-type Role string
-
 const (
-	AllUsers              Role = "allUsers"              // given to all requests
-	AllAuthenticatedUsers Role = "allAuthenticatedUsers" // giver to all authenticated requests
+	AllUsers              string = "allUsers"              // given to all requests
+	AllAuthenticatedUsers string = "allAuthenticatedUsers" // giver to all authenticated requests
 )
 
-type Scope string
-
 const (
-	FullControl Scope = "fullcontrol"
-	ReadOnly    Scope = "readonly"
-	ReadWrite   Scope = "readwrite"
-	Delete      Scope = "delete"
+	FullControl string = "fullcontrol"
+	ReadOnly    string = "readonly"
+	ReadWrite   string = "readwrite"
+	Delete      string = "delete"
 )
 
 type Options struct {
@@ -39,7 +35,7 @@ type Options struct {
 	Extractors          []TokenExtractor
 	CredentialsOptional bool
 	// These scopes are assigned to new users
-	DefaultRoles  []Role
+	DefaultRoles  []string
 	defaultRoles  []string
 	SigningMethod jwt.SigningMethod
 	// How long until it expires in seconds. Default is 7 days.
@@ -120,7 +116,7 @@ func (iam *IAM) NewSession(ctx Context, provider Provider, identity *Identity) (
 			CreatedAt:    now,
 			ExpiresAt:    now.Add(time.Second * time.Duration(iam.TokenExpiresIn)),
 			IsBlocked:    false,
-			Scopes:       iam.defaultRoles,
+			Roles:        iam.defaultRoles,
 		},
 		Key: datastore.NewIncompleteKey(ctx.Default(), SessionKind, nil),
 	}

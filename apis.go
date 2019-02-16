@@ -32,7 +32,8 @@ type Rules struct {
 	Match         Match `json:"-"`
 }
 
-type Permissions map[iam.Role][]iam.Scope
+// map[iam.Role][]iam.Scope
+type Permissions map[string][]string
 
 func New(options *Options) *Apis {
 	if options == nil {

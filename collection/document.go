@@ -30,7 +30,7 @@ type metaWrapper struct {
 }
 
 type DocUserRelationship struct {
-	Permissions []string // fullControl, ...
+	Scopes []string // fullControl, ...
 }
 
 type Group struct {
