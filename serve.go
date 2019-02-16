@@ -107,32 +107,16 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userScopes = rules.Permissions[iam.AllUsers]
-	if accessController != nil {
-		if accessController.Key() != nil && !accessController.Key().Incomplete() {
-			var rel = new(collection.DocUserRelationship)
-			err := datastore.Get(ctx.Default(), datastore.NewKey(ctx.Default(), "_rel", ctx.Member().Encode(), 0, accessController.Key()), rel)
-			if err != nil {
-				if err != datastore.ErrNoSuchEntity {
-					ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
-					return
-				}
-			}
-			userScopes = append(userScopes, rel.Scopes...)
-		}
-	}
-
-	if ctx.IsAuthenticated() {
-		userScopes = append(userScopes, rules.Permissions[iam.AllAuthenticatedUsers]...)
-		for _, r := range ctx.Roles() {
-			userScopes = append(userScopes, rules.Permissions[r]...)
-		}
+	var userScopes []string
+	var err error
+	userScopes, err = iam.GetScopes(ctx, accessController, rules.Permissions)
+	if err != nil {
+		ctx.PrintError(http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
 	}
 
 	// 1. If doc has access control ancestor or itself is access controller, then retrieve _rel
 	// 2. Store _rel roles AND rules.Permissions inside some object which is then used to check access
-
-	var err error
 
 	switch r.Method {
 	case http.MethodGet:
