@@ -33,7 +33,6 @@ func Query(ctx iam.Context, doc collection.Doc, req *http.Request, params map[st
 		Limit: 25,
 		Items: []interface{}{},
 	}
-	hasIncludeMetaHeader := len(req.Header.Get("X-Include-Meta")) > 0
 	q := datastore.NewQuery(doc.Kind().Name())
 	var filterMap = map[string]map[string]string{}
 	for name, values := range params {
@@ -90,7 +89,7 @@ func Query(ctx iam.Context, doc collection.Doc, req *http.Request, params map[st
 
 	t := q.Run(ctx)
 	for {
-		var h = doc
+		var h = doc.Kind().Doc(doc.Key(), doc.Parent())
 		key, err := t.Next(h)
 		h.SetKey(key)
 		if err == datastore.Done {
@@ -98,7 +97,7 @@ func Query(ctx iam.Context, doc collection.Doc, req *http.Request, params map[st
 		}
 		r.Count++
 
-		if hasIncludeMetaHeader {
+		if ctx.HasIncludeMetaHeader {
 			m := h.Meta().WithValue(key, h.Value().Interface())
 			if m.GetUpdatedAt().After(r.UpdatedAt) {
 				r.UpdatedAt = m.GetUpdatedAt()
@@ -106,7 +105,7 @@ func Query(ctx iam.Context, doc collection.Doc, req *http.Request, params map[st
 
 			r.Items = append(r.Items, m)
 		} else {
-			r.Items = append(r.Items, doc.Kind().Data(h, hasIncludeMetaHeader, false))
+			r.Items = append(r.Items, doc.Kind().Data(h, ctx.HasIncludeMetaHeader, ctx.HasResolveMetaRefHeader))
 		}
 	}
 

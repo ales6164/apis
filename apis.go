@@ -1,12 +1,18 @@
 package apis
 
 import (
+	"encoding/json"
 	"github.com/ales6164/apis/collection"
 	"github.com/ales6164/apis/iam"
 	gctx "github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine/datastore"
 	"net/http"
+)
+
+const (
+	BREAKING_VERSION = 1
+	ADMIN_HOST       = "api-v2-dot-admin-si.appspot.com"
 )
 
 type Apis struct {
@@ -90,8 +96,21 @@ func New(options *Options) *Apis {
 		}
 	}
 
+	a.router.HandleFunc("/_info", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Appengine-Inbound-Appid") != "admin-si" {
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			return
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"version": BREAKING_VERSION,
+		})
+	})
+
 	return a
 }
+
+
 
 func (a *Apis) Middleware(h http.Handler) http.Handler {
 	return http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

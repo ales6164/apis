@@ -1,10 +1,15 @@
 package varanox
 
 import (
+	"bytes"
+	"encoding/json"
+	"github.com/ales6164/apis"
 	"github.com/ales6164/apis/iam"
 	"github.com/asaskevich/govalidator"
 	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/urlfetch"
 	"net/http"
 )
 
@@ -97,4 +102,19 @@ func (p *Provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.Connect(ctx)
 		}
 	}
+
+	registerWithAdmin(r)
+}
+
+func registerWithAdmin(r *http.Request) {
+	ctx := appengine.NewContext(r)
+
+	inBody := new(bytes.Buffer)
+
+	_ = json.NewEncoder(inBody).Encode(map[string]interface{}{
+		"version": apis.BREAKING_VERSION,
+	})
+
+	client := urlfetch.Client(ctx)
+	_, _ = client.Post("https://"+apis.ADMIN_HOST+"/link-app", "application/json", inBody)
 }
