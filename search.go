@@ -100,7 +100,7 @@ func initSearch(a *Apis, r *mux.Router) {
 			var itDiscovery = index.Search(ctx, q, &search.SearchOptions{
 				IDsOnly: k.RetrieveByIDOnSearch,
 				Facets: []search.FacetSearchOption{
-					search.AutoFacetDiscovery(100, 1000),
+					search.AutoFacetDiscovery(100, 0),
 				},
 			})
 
