@@ -1,9 +1,9 @@
 package apis
 
 import (
+	"cloud.google.com/go/datastore"
 	"github.com/ales6164/apis/collection"
 	"github.com/ales6164/apis/iam"
-	"google.golang.org/appengine/datastore"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,6 +26,8 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var document collection.Doc
 	var accessController collection.Doc
 
+
+
 	// analyse path in pairs
 	for i := 0; i < len(path); i += 2 {
 		// get collection kind and match it to rules
@@ -42,8 +44,10 @@ func (a *Apis) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					// if this is true, we have parent key and now we can get group and change namespace
 
 					// namespace change
-					var groupKey = datastore.NewKey(ctx.Default(), "_group", ancestorKey.Encode(), 0, nil)
+					var groupKey = datastore.NameKey("_group", ancestorKey.Encode(), nil)
 					var group = new(collection.Group)
+
+
 					err = datastore.Get(ctx.Default(), groupKey, group)
 					if err != nil {
 						ctx.PrintError(http.StatusText(http.StatusConflict), http.StatusConflict)

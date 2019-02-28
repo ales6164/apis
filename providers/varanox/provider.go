@@ -8,9 +8,8 @@ import (
 	"github.com/asaskevich/govalidator"
 	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/urlfetch"
 	"net/http"
+	"time"
 )
 
 type Provider struct {
@@ -107,14 +106,14 @@ func (p *Provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerWithAdmin(r *http.Request) {
-	ctx := appengine.NewContext(r)
-
 	inBody := new(bytes.Buffer)
 
 	_ = json.NewEncoder(inBody).Encode(map[string]interface{}{
 		"version": apis.BREAKING_VERSION,
 	})
 
-	client := urlfetch.Client(ctx)
+	var client = &http.Client{
+		Timeout: time.Second * 10,
+	}
 	_, _ = client.Post("https://"+apis.ADMIN_HOST+"/link-app", "application/json", inBody)
 }

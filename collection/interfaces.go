@@ -1,9 +1,9 @@
 package collection
 
 import (
+	"cloud.google.com/go/datastore"
 	"errors"
 	"golang.org/x/net/context"
-	"google.golang.org/appengine/datastore"
 	"reflect"
 	"time"
 )

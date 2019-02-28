@@ -1,21 +1,17 @@
 package iam
 
 import (
+	"cloud.google.com/go/datastore"
 	"encoding/json"
 	"github.com/dgrijalva/jwt-go"
 	gctx "github.com/gorilla/context"
-	"golang.org/x/net/context"
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/datastore"
-	"google.golang.org/appengine/log"
 	"io/ioutil"
 	"net/http"
 )
 
 type Context struct {
 	*IAM
-	context.Context
-	def                     context.Context
+
 	r                       *http.Request
 	w                       http.ResponseWriter
 	hasReadBody             bool
@@ -27,8 +23,15 @@ type Context struct {
 }
 
 func (iam *IAM) NewContext(w http.ResponseWriter, r *http.Request) (ctx Context) {
-	gae := appengine.NewContext(r)
-	ctx = Context{IAM: iam, Context: gae, def: gae, w: w, r: r, HasIncludeMetaHeader: len(r.Header.Get("X-Include-Meta")) > 0, HasResolveMetaRefHeader: len(r.Header.Get("X-Resolve-Meta-Ref")) > 0}
+
+	client, err := datastore.NewClient(context.Background(), projectID)
+	if err != nil {
+		return nil, err
+	}
+
+
+
+	ctx = Context{IAM: iam,  w: w, r: r, HasIncludeMetaHeader: len(r.Header.Get("X-Include-Meta")) > 0, HasResolveMetaRefHeader: len(r.Header.Get("X-Resolve-Meta-Ref")) > 0}
 	if t, ok := gctx.Get(r, "token").(*jwt.Token); ok {
 		ctx.token = t
 	}
@@ -46,33 +49,6 @@ func (ctx Context) SetNamespace(ns string) (Context, error) {
 	return ctx, err
 }
 
-/*func (ctx Context) HasAccess(rules Rules, scopes ...string) bool {
-	var ruleScopes []string
-	if ctx.session.IsValid {
-		var sessRoles []string
-		sessRoles = append(sessRoles, ctx.session.Roles...)
-		if ctx.session.IsAuthenticated {
-			sessRoles = append(sessRoles, AllAuthenticatedUsers)
-		} else {
-			sessRoles = append(sessRoles, AllUsers)
-		}
-
-		for key, value := range rules.Permissions {
-			if ContainsScope(sessRoles, key) {
-				ruleScopes = append(ruleScopes, value...)
-			}
-		}
-		for _, s := range scopes {
-			for _, s2 := range ruleScopes {
-				if s == s2 {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}*/
-
 // reads body once and stores contents
 func (ctx Context) Body() []byte {
 	if !ctx.hasReadBody {
@@ -81,10 +57,6 @@ func (ctx Context) Body() []byte {
 		ctx.hasReadBody = true
 	}
 	return ctx.body
-}
-
-func (ctx Context) Default() context.Context {
-	return ctx.def
 }
 
 func (ctx Context) Roles() []string {

@@ -1,9 +1,6 @@
 package apis
 
 import (
-	"golang.org/x/net/context"
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/search"
 	"math/rand"
 	"net/http"
 	"regexp"
@@ -40,28 +37,6 @@ func RandStringBytesMaskImprSrc(letterBytes string, n int) string {
 	return string(b)
 }
 
-// clears search index
-func ClearIndex(ctx context.Context, indexName string) error {
-	index, err := search.Open(indexName)
-	if err != nil {
-		return err
-	}
-
-	var ids []string
-	for t := index.List(ctx, &search.ListOptions{IDsOnly: true}); ; {
-		var doc interface{}
-		id, err := t.Next(&doc)
-		if err == search.Done {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		ids = append(ids, id)
-	}
-
-	return index.DeleteMulti(ctx, ids)
-}
 
 func ContainsScope(arr []string, scopes ...string) bool {
 	for _, scp := range scopes {
@@ -96,17 +71,12 @@ func getParams(url string) (paramsMap map[string]string) {
 
 // getHost tries its best to return the request host.
 func getHost(r *http.Request) string {
-	var host = r.URL.Host
-	if r.URL.IsAbs() {
-		host = r.Host
-		// Slice off any port information.
+	var host = r.Host
+	if len(host) == 0 {
+
+	} else {
 		if i := strings.Index(host, ":"); i != -1 {
 			host = host[:i]
-		}
-	}
-	if len(host) == 0 {
-		if appengine.IsDevAppServer() {
-			host = appengine.DefaultVersionHostname(appengine.NewContext(r))
 		}
 	}
 	return host

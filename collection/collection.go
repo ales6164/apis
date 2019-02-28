@@ -1,9 +1,9 @@
 package collection
 
 import (
+	"cloud.google.com/go/datastore"
 	"errors"
 	"github.com/asaskevich/govalidator"
-	"google.golang.org/appengine/datastore"
 	"reflect"
 	"strconv"
 	"strings"
@@ -227,16 +227,17 @@ func (c *Collection) SetMember(member *datastore.Key) {
 }
 
 func (c *Collection) Data(doc Doc, includeMeta bool, resolveMetaRef bool) interface{} {
+
 	reflectValue := doc.Value()
 	key := doc.Key()
 	if c.hasIdFieldName && key != nil {
 		v := reflectValue.Elem()
 		idField := v.FieldByName(c.idFieldName)
 		if idField.IsValid() && idField.CanSet() {
-			if key.IntID() > 0 {
+			if key.ID > 0 {
 				idField.Set(reflect.ValueOf(key.Encode()))
 			} else {
-				idField.Set(reflect.ValueOf(key.StringID()))
+				idField.Set(reflect.ValueOf(key.Name))
 			}
 		}
 	}

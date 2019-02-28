@@ -1,14 +1,16 @@
-package test
+package main
 
 import (
+	"fmt"
 	"github.com/ales6164/apis"
 	"github.com/ales6164/apis/collection"
 	"github.com/ales6164/apis/iam"
 	"github.com/ales6164/apis/providers/emailpassword"
 	"github.com/dgrijalva/jwt-go"
-	_ "google.golang.org/appengine/remote_api"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
 )
 
 const (
@@ -16,7 +18,7 @@ const (
 	subscriber = "subscriber"
 )
 
-func init() {
+func main() {
 	// Signing key for JWT token issuing and authorization process.
 	signingKey, err := ioutil.ReadFile("key.txt")
 	if err != nil {
@@ -83,6 +85,15 @@ func init() {
 
 	// Serve
 	http.Handle("/", api.Handler())
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+		log.Printf("Defaulting to port %s", port)
+	}
+
+	log.Printf("Listening on port %s", port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }
 
 // Collections
