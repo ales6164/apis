@@ -162,7 +162,7 @@ func initSearch(a *Apis, r *mux.Router) {
 		var fsDisc []search.FacetSearchOption
 		if len(resultFilterDiscovery) > 0 {
 			fsDisc = []search.FacetSearchOption{
-				search.AutoFacetDiscovery(0, 0),
+				search.AutoFacetDiscovery(100, 100),
 			}
 		}
 
