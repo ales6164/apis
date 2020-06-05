@@ -1,7 +1,7 @@
 package kind
 
 import (
-	"golang.org/x/net/context"
+	"context"
 	"google.golang.org/appengine/datastore"
 	"gopkg.in/ales6164/apis.v2/errors"
 )

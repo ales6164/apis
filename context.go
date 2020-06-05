@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"golang.org/x/net/context"
+	"context"
 	gcontext "github.com/gorilla/context"
 	"google.golang.org/appengine"
 	"io/ioutil"
@@ -71,7 +71,7 @@ func (a *Apis) NewContext(r *http.Request, R *Route) Context {
 		ClientRequest: clientReq,
 		Route:         R,
 		r:             r,
-		Context:       appengine.NewContext(r),
+		Context:       r.Context(),
 		body:          &body{hasReadBody: false},
 	}
 	clientReq.Time = time.Now()

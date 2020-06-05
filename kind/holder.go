@@ -1,13 +1,13 @@
 package kind
 
 import (
+	"context"
 	"google.golang.org/appengine/datastore"
 	"time"
 	"encoding/json"
 	"github.com/imdario/mergo"
 	"reflect"
 	"google.golang.org/appengine/search"
-	"golang.org/x/net/context"
 	"gopkg.in/ales6164/apis.v2/errors"
 )
 
