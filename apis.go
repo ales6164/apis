@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/ales6164/apis/kind"
-	"github.com/ales6164/apis/middleware"
+	"gopkg.in/ales6164/apis.v4/kind"
+	"gopkg.in/ales6164/apis.v4/middleware"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"io/ioutil"

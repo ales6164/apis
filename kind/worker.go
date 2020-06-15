@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"cloud.google.com/go/datastore"
 	"golang.org/x/net/context"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v4/errors"
 	"reflect"
 )
 

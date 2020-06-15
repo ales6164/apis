@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"github.com/ales6164/apis/kind"
+	"gopkg.in/ales6164/apis.v4/kind"
 )
 
 type Role string

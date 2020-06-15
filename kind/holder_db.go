@@ -2,7 +2,7 @@ package kind
 
 import (
 	"cloud.google.com/go/datastore"
-	"github.com/ales6164/apis/errors"
+	"gopkg.in/ales6164/apis.v4/errors"
 	"golang.org/x/net/context"
 	"google.golang.org/api/iterator"
 )

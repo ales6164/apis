@@ -3,8 +3,8 @@ package apis
 import (
 	"cloud.google.com/go/datastore"
 	"encoding/json"
-	"github.com/ales6164/apis/errors"
-	"github.com/ales6164/apis/kind"
+	"gopkg.in/ales6164/apis.v4/errors"
+	"gopkg.in/ales6164/apis.v4/kind"
 	"github.com/asaskevich/govalidator"
 	"google.golang.org/api/iterator"
 	"net/http"
