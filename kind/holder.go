@@ -1,18 +1,19 @@
 package kind
 
 import (
-	"google.golang.org/appengine/datastore"
-	"time"
-	"errors"
+	"cloud.google.com/go/datastore"
 	"encoding/json"
+	"errors"
 	"strings"
+	"time"
 )
 
 type Holder struct {
-	Kind   *Kind `json:"entity"`
-	user   *datastore.Key
-	key    *datastore.Key
-	hasKey bool
+	Kind      *Kind `json:"entity"`
+	user      *datastore.Key
+	key       *datastore.Key
+	ProjectID string
+	hasKey    bool
 
 	ParsedInput       map[string]interface{}
 	preparedInputData map[*Field][]datastore.Property // user input
@@ -100,30 +101,27 @@ func (h *Holder) Prepare() error {
 						for _, v := range arr {
 							bs, _ := json.Marshal(v)
 							h.preparedInputData[f] = append(h.preparedInputData[f], datastore.Property{
-								Value:    string(bs),
-								NoIndex:  true,
-								Multiple: f.Multiple,
-								Name:     f.Name,
+								Value:   string(bs),
+								NoIndex: true,
+								Name:    f.Name,
 							})
 						}
 					} else if arr, ok := value.([]string); ok {
 						for _, v := range arr {
 							bs, _ := json.Marshal(v)
 							h.preparedInputData[f] = append(h.preparedInputData[f], datastore.Property{
-								Value:    string(bs),
-								NoIndex:  true,
-								Multiple: f.Multiple,
-								Name:     f.Name,
+								Value:   string(bs),
+								NoIndex: true,
+								Name:    f.Name,
 							})
 						}
 					}
 				} else {
 					bs, _ := json.Marshal(value)
 					h.preparedInputData[f] = append(h.preparedInputData[f], datastore.Property{
-						Value:    string(bs),
-						NoIndex:  true,
-						Multiple: f.Multiple,
-						Name:     f.Name,
+						Value:   string(bs),
+						NoIndex: true,
+						Name:    f.Name,
 					})
 				}
 			} else {
@@ -174,7 +172,12 @@ func (h *Holder) appendPropertyValue(dst map[string]interface{}, prop datastore.
 		}
 		dst[names[0]] = h.appendPropertyValue(dst[names[0]].(map[string]interface{}), prop, field)
 	} else {
-		dst[names[0]] = h.appendValue(dst[names[0]], field, prop.Value, prop.Multiple)
+		if field != nil {
+			dst[names[0]] = h.appendValue(dst[names[0]], field, prop.Value, field.Multiple)
+		} else {
+			dst[names[0]] = h.appendValue(dst[names[0]], field, prop.Value, false)
+		}
+
 	}
 	return dst
 }

@@ -2,7 +2,7 @@ package kind
 
 import (
 	"fmt"
-	"google.golang.org/appengine/datastore"
+	"cloud.google.com/go/datastore"
 	"golang.org/x/net/context"
 	"github.com/ales6164/apis/errors"
 	"reflect"
@@ -74,7 +74,6 @@ func (x *Field) Property(value interface{}) ([]datastore.Property, error) {
 	var props []datastore.Property
 	props = append(props, datastore.Property{
 		Name:     x.Name,
-		Multiple: x.Multiple,
 		NoIndex:  x.NoIndex,
 		Value:    value,
 	})

@@ -1,21 +1,22 @@
 package apis
 
 import (
+	"errors"
 	"net/http"
 
-	"github.com/gorilla/mux"
-	"github.com/dgrijalva/jwt-go"
-	"io/ioutil"
-	"github.com/ales6164/apis/middleware"
 	"github.com/ales6164/apis/kind"
+	"github.com/ales6164/apis/middleware"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/mux"
+	"io/ioutil"
 )
 
 type Apis struct {
 	options *Options
 	routes  []*Route
 
-	middleware          *middleware.JWTMiddleware
-	privateKey          []byte
+	middleware *middleware.JWTMiddleware
+	privateKey []byte
 	permissions
 	allowedTranslations map[string]bool
 
@@ -32,6 +33,7 @@ type Options struct {
 	RequireEmailConfirmation bool
 	HasTranslationsFor       []string
 	DefaultLanguage          string
+	ProjectID                string
 	/*UserProfileKind          *kind.Kind*/
 	RequireTrackingID bool // todo:generated from pages - track users - stored as session cookie
 	Permissions
@@ -64,12 +66,20 @@ func New(opt *Options) (*Apis, error) {
 		a.allowedTranslations[l] = true
 	}
 
+	if len(opt.ProjectID) == 0 {
+		return a, errors.New("missing project id")
+	}
+
 	return a, nil
 }
 
 func (a *Apis) Handle(p string, kind *kind.Kind) *Route {
+	if kind != nil {
+		kind.ProjectID = a.options.ProjectID
+	}
 	r := &Route{
-		kind:    kind,
+		kind: kind,
+		ProjectID: a.options.ProjectID,
 		a:       a,
 		path:    p,
 		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
@@ -98,6 +108,7 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 	}
 
 	authRoute := &Route{
+		ProjectID: a.options.ProjectID,
 		a:       a,
 		methods: []string{},
 	}

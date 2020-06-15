@@ -1,8 +1,8 @@
 package kind
 
 import (
+	"cloud.google.com/go/datastore"
 	"golang.org/x/net/context"
-	"google.golang.org/appengine/datastore"
 )
 
 type Kind struct {
@@ -12,8 +12,9 @@ type Kind struct {
 }
 
 type Options struct {
-	Name   string
-	Fields []*Field
+	Name      string
+	ProjectID string
+	Fields    []*Field
 }
 
 type Field struct {
@@ -38,19 +39,21 @@ func New(opt *Options) *Kind {
 	return k
 }
 
-func (k *Kind) NewHolder(user *datastore.Key) *Holder {
+func (k *Kind) NewHolder(projectId string, user *datastore.Key) *Holder {
+	k.ProjectID = projectId
 	return &Holder{
 		Kind:              k,
 		user:              user,
+		ProjectID:         projectId,
 		preparedInputData: map[*Field][]datastore.Property{},
 		loadedStoredData:  map[string][]datastore.Property{},
 	}
 }
 
 func (k *Kind) NewIncompleteKey(c context.Context, parent *datastore.Key) *datastore.Key {
-	return datastore.NewIncompleteKey(c, k.Name, parent)
+	return datastore.IncompleteKey(k.Name, parent)
 }
 
 func (k *Kind) NewKey(c context.Context, nameId string, parent *datastore.Key) *datastore.Key {
-	return datastore.NewKey(c, k.Name, nameId, 0, parent)
+	return datastore.NameKey(k.Name, nameId, parent)
 }

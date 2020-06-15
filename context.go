@@ -1,19 +1,19 @@
 package apis
 
 import (
-	"golang.org/x/net/context"
+	"cloud.google.com/go/datastore"
+	"encoding/json"
+	"github.com/ales6164/apis/errors"
+	"github.com/ales6164/apis/kind"
+	"github.com/dgrijalva/jwt-go"
 	gcontext "github.com/gorilla/context"
+	"github.com/gorilla/mux"
+	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"io/ioutil"
+	"log"
 	"net/http"
-	"github.com/dgrijalva/jwt-go"
 	"time"
-	"encoding/json"
-	"github.com/gorilla/mux"
-	"google.golang.org/appengine/datastore"
-	"github.com/ales6164/apis/kind"
-	"google.golang.org/appengine/log"
-	"github.com/ales6164/apis/errors"
 )
 
 type Context struct {
@@ -21,11 +21,12 @@ type Context struct {
 	r                 *http.Request
 	hasReadAuthHeader bool
 	IsAuthenticated   bool
+	Client            *datastore.Client
 	context.Context
-	CountryCode       string // 2 character string; gb, si, ... -- ISO 3166-1 alpha-2
-	UserEmail         string
-	UserKey           *datastore.Key
-	Role              Role
+	CountryCode string // 2 character string; gb, si, ... -- ISO 3166-1 alpha-2
+	UserEmail   string
+	UserKey     *datastore.Key
+	Role        Role
 	*body
 }
 
@@ -39,12 +40,15 @@ func (R *Route) NewContext(r *http.Request) Context {
 	if len(cc) == 0 {
 		cc = r.Header.Get("X-AppEngine-Country")
 	}
+	ctx := appengine.NewContext(r)
+	c, _ := datastore.NewClient(ctx, R.ProjectID)
 	return Context{
 		R:           R,
 		r:           r,
+		Client:      c,
 		CountryCode: cc,
 		Role:        PublicRole,
-		Context:     appengine.NewContext(r),
+		Context:     ctx,
 		body:        &body{hasReadBody: false},
 	}
 }
@@ -69,11 +73,11 @@ func (ctx Context) Language() string {
 	return ctx.R.a.options.DefaultLanguage
 }
 
-func (ctx Context) SetGroup(group string) (Context, error) {
+/*func (ctx Context) SetGroup(group string) (Context, error) {
 	var err error
 	ctx.Context, err = appengine.Namespace(ctx, group)
 	return ctx, err
-}
+}*/
 
 // AdminRole has all permissions
 func (ctx Context) HasPermission(k *kind.Kind, scope Scope) bool {
@@ -121,7 +125,7 @@ func (ctx Context) Authenticate() (bool, Context) {
 	if ctx.IsAuthenticated {
 		ctx.UserEmail = userEmail
 		ctx.Role = Role(role)
-		ctx.UserKey = datastore.NewKey(ctx, "_user", userEmail, 0, nil)
+		ctx.UserKey = datastore.NameKey("_user", userEmail, nil)
 	} else {
 		ctx.UserEmail = ""
 		ctx.Role = PublicRole
@@ -146,7 +150,7 @@ func NewToken(user *User) *jwt.Token {
 
 /**
 RESPONSE
- */
+*/
 
 type Token struct {
 	Id        string `json:"id"`
@@ -181,7 +185,7 @@ func (ctx *Context) PrintAuth(w http.ResponseWriter, token *Token, user *User) {
 }
 
 func (ctx *Context) PrintError(w http.ResponseWriter, err error) {
-	log.Errorf(ctx, "context error: %v", err)
+	log.Printf("context error: %v", err)
 	if err == errors.ErrUnathorized {
 		w.WriteHeader(http.StatusUnauthorized)
 	} else if err == errors.ErrForbidden {

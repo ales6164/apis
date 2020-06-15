@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"google.golang.org/appengine/datastore"
+	"cloud.google.com/go/datastore"
 	"strings"
 	"golang.org/x/net/context"
 )
@@ -18,9 +18,15 @@ type User struct {
 	//profile *datastore.Key
 }
 
-func GetUser(ctx context.Context, userKey *datastore.Key) (*User, error) {
+func GetUser(projectId string, ctx context.Context, userKey *datastore.Key) (*User, error) {
 	user := new(User)
-	err := datastore.Get(ctx, userKey, user)
+
+	c, err := datastore.NewClient(ctx, projectId)
+	if err != nil {
+		return user, err
+	}
+
+	err = c.Get(ctx, userKey, user)
 	return user, err
 }
 
@@ -94,7 +100,7 @@ func (u *User) Save() ([]datastore.Property, error) {
 		Name:  "role",
 		Value: u.Role,
 	})
-	/*ps = append(ps, datastore.Property{
+	/*ps = append(ps, datastore.Property{R.ProjectID,
 		Name:    "profile",
 		Value:   u.profile,
 		NoIndex: true,
@@ -114,7 +120,6 @@ func (u *User) Save() ([]datastore.Property, error) {
 				Name:     "meta." + k,
 				Value:    v,
 				NoIndex:  true,
-				Multiple: true,
 			})
 		}
 	}

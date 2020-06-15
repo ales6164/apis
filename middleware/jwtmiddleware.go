@@ -8,8 +8,6 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/context"
-	"google.golang.org/appengine"
-	clog "google.golang.org/appengine/log"
 )
 
 // A function called whenever an error is encountered
@@ -125,10 +123,6 @@ func (m *JWTMiddleware) Handler(h http.Handler) http.Handler {
 
 		// If there was an error, do not continue.
 		if err != nil {
-
-			ctx := appengine.NewContext(r)
-			clog.Debugf(ctx, "auth error: %s", err.Error())
-
 			if len(m.Options.RedirectOnError) > 0 {
 				redirect(w, r, m.Options.RedirectOnError)
 			} else {

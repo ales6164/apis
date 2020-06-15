@@ -1,25 +1,26 @@
 package apis
 
 import (
-	"github.com/ales6164/apis/kind"
-	"net/http"
-	"google.golang.org/appengine/datastore"
-	"strconv"
-	"github.com/asaskevich/govalidator"
-	"strings"
+	"cloud.google.com/go/datastore"
 	"encoding/json"
-	"golang.org/x/net/context"
 	"github.com/ales6164/apis/errors"
+	"github.com/ales6164/apis/kind"
+	"github.com/asaskevich/govalidator"
+	"google.golang.org/api/iterator"
+	"net/http"
+	"strconv"
+	"strings"
 )
 
 type Route struct {
 	a    *Apis
 	kind *kind.Kind
 	path string
+	ProjectID string
 
-	listeners map[string]Listener
+	listeners      map[string]Listener
 	searchListener func(ctx Context, query string) ([]interface{}, error)
-	roles map[Role]bool
+	roles          map[Role]bool
 
 	methods []string
 
@@ -138,7 +139,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 				ctx.PrintError(w, err)
 				return
 			}
-			h := R.kind.NewHolder(ctx.UserKey)
+			h := R.kind.NewHolder(R.ProjectID, ctx.UserKey)
 			err = h.Get(ctx, key)
 			if err != nil {
 				ctx.PrintError(w, err)
@@ -155,7 +156,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 			}
 
 			key := R.kind.NewKey(ctx, name, parent)
-			h := R.kind.NewHolder(ctx.UserKey)
+			h := R.kind.NewHolder(R.ProjectID, ctx.UserKey)
 			err := h.Get(ctx, key)
 			if err != nil {
 				ctx.PrintError(w, err)
@@ -218,7 +219,7 @@ func (R *Route) postHandler() http.HandlerFunc {
 			return
 		}
 
-		h := R.kind.NewHolder(ctx.UserKey)
+		h := R.kind.NewHolder(R.ProjectID, ctx.UserKey)
 		err := h.ParseInput(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err)
@@ -266,7 +267,7 @@ func (R *Route) putHandler() http.HandlerFunc {
 			return
 		}
 
-		h := R.kind.NewHolder(ctx.UserKey)
+		h := R.kind.NewHolder(R.ProjectID, ctx.UserKey)
 		err := h.ParseInput(ctx.Body())
 		if err != nil {
 			ctx.PrintError(w, err)
@@ -382,9 +383,15 @@ func (R *Route) getUserHandler() http.HandlerFunc {
 			return
 		}
 
+		c, err := datastore.NewClient(ctx, R.ProjectID)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
 		// get user
 		user := new(User)
-		err = datastore.Get(ctx, keyId, user)
+		err = c.Get(ctx, keyId, user)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
 				ctx.PrintError(w, errors.ErrUserDoesNotExist)
@@ -410,16 +417,21 @@ func (R *Route) getUsersHandler() http.HandlerFunc {
 			return
 		}
 
+		c, err := datastore.NewClient(ctx, R.ProjectID)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
 		var hs []*User
-		var err error
 
 		q := datastore.NewQuery("_user")
 
-		t := q.Run(ctx)
+		t := c.Run(ctx, q)
 		for {
 			var h = new(User)
 			h.Id, err = t.Next(h)
-			if err == datastore.Done {
+			if err == iterator.Done {
 				break
 			}
 			if err != nil {
@@ -450,12 +462,18 @@ func (R *Route) loginHandler() http.HandlerFunc {
 			return
 		}
 
+		c, err := datastore.NewClient(ctx, R.ProjectID)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
 		email = strings.ToLower(email)
 
 		// get user
-		userKey := datastore.NewKey(ctx, "_user", email, 0, nil)
+		userKey := datastore.NameKey("_user", email, nil)
 		user := new(User)
-		err = datastore.Get(ctx, userKey, user)
+		err = c.Get(ctx, userKey, user)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
 				ctx.PrintError(w, errors.ErrUserDoesNotExist)
@@ -535,13 +553,19 @@ func (R *Route) registrationHandler(role Role) http.HandlerFunc {
 			user.Meta["lang"] = ctx.Language()
 		}
 
-		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			userKey := datastore.NewKey(tc, "_user", user.Email, 0, nil)
-			err := datastore.Get(tc, userKey, &datastore.PropertyList{})
+		c, err := datastore.NewClient(ctx, R.ProjectID)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
+		_, err = c.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
+			userKey := datastore.NameKey("_user", user.Email, nil)
+			err := tx.Get(userKey, &datastore.PropertyList{})
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					// register
-					_, err := datastore.Put(tc, userKey, user)
+					_, err := tx.Put(userKey, user)
 					return err
 				}
 				return err
@@ -590,11 +614,17 @@ func (R *Route) confirmEmailHandler() http.HandlerFunc {
 			return
 		}
 
+		c, err := datastore.NewClient(ctx, R.ProjectID)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
 		user := new(User)
 		// update User
-		err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
+		_, err = c.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
 
-			err := datastore.Get(tc, ctx.UserKey, user)
+			err := tx.Get(ctx.UserKey, user)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					return errors.ErrUserDoesNotExist
@@ -604,7 +634,7 @@ func (R *Route) confirmEmailHandler() http.HandlerFunc {
 
 			user.HasConfirmedEmail = true
 
-			_, err = datastore.Put(tc, ctx.UserKey, user)
+			_, err = tx.Put(ctx.UserKey, user)
 			return err
 		}, nil)
 		if err != nil {
@@ -647,11 +677,17 @@ func (R *Route) changePasswordHandler() http.HandlerFunc {
 			return
 		}
 
+		c, err := datastore.NewClient(ctx, R.ProjectID)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
 		user := new(User)
 		// update User
-		err = datastore.RunInTransaction(ctx, func(tc context.Context) error {
+		_, err = c.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
 
-			err = datastore.Get(tc, ctx.UserKey, user)
+			err = tx.Get(ctx.UserKey, user)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
 					return errors.ErrUserDoesNotExist
@@ -671,7 +707,7 @@ func (R *Route) changePasswordHandler() http.HandlerFunc {
 				return err
 			}
 
-			_, err := datastore.Put(tc, ctx.UserKey, user)
+			_, err := tx.Put(ctx.UserKey, user)
 			return err
 		}, nil)
 		if err != nil {
@@ -702,12 +738,18 @@ func (R *Route) updateMeta() http.HandlerFunc {
 			return
 		}
 
+		c, err := datastore.NewClient(ctx, R.ProjectID)
+		if err != nil {
+			ctx.PrintError(w, err)
+			return
+		}
+
 		// do everything in a transaction
 		user := new(User)
 
-		err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
+		_, err = c.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
 			// get user
-			err := datastore.Get(ctx, ctx.UserKey, user)
+			err := tx.Get(ctx.UserKey, user)
 			if err != nil {
 				return err
 			}
@@ -716,9 +758,9 @@ func (R *Route) updateMeta() http.HandlerFunc {
 				user.SetMeta(k, v)
 			}
 
-			_, err = datastore.Put(ctx, ctx.UserKey, user)
+			_, err = tx.Put(ctx.UserKey, user)
 			return err
-		}, &datastore.TransactionOptions{XG: true})
+		})
 		if err != nil {
 			ctx.PrintError(w, err)
 			return

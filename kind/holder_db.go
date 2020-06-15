@@ -1,9 +1,10 @@
 package kind
 
 import (
-	"golang.org/x/net/context"
-	"google.golang.org/appengine/datastore"
+	"cloud.google.com/go/datastore"
 	"github.com/ales6164/apis/errors"
+	"golang.org/x/net/context"
+	"google.golang.org/api/iterator"
 )
 
 type Filter struct {
@@ -13,7 +14,10 @@ type Filter struct {
 
 func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, filters []Filter, ancestor *datastore.Key) ([]*Holder, error) {
 	var hs []*Holder
-	var err error
+	c, err := datastore.NewClient(ctx, k.ProjectID)
+	if err != nil {
+		return hs, err
+	}
 	q := datastore.NewQuery(k.Name)
 	if len(order) > 0 {
 		q = q.Order(order)
@@ -32,11 +36,11 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 	if ancestor != nil {
 		q = q.Ancestor(ancestor)
 	}
-	t := q.Run(ctx)
+	t := c.Run(ctx, q)
 	for {
-		var h = k.NewHolder(nil)
+		var h = k.NewHolder(k.ProjectID, nil)
 		h.key, err = t.Next(h)
-		if err == datastore.Done {
+		if err == iterator.Done {
 			break
 		}
 		if err != nil {
@@ -49,7 +53,11 @@ func (k *Kind) Query(ctx context.Context, order string, limit int, offset int, f
 
 func (h *Holder) Get(ctx context.Context, key *datastore.Key) error {
 	h.key = key
-	return datastore.Get(ctx, key, h)
+	c, err := datastore.NewClient(ctx, h.ProjectID)
+	if err != nil {
+		return err
+	}
+	return c.Get(ctx, key, h)
 }
 
 // key id must be a string otherwise it creates incomplete key
@@ -57,43 +65,62 @@ func (h *Holder) Add(ctx context.Context) error {
 	if !h.hasKey || h.key == nil {
 		h.key = h.Kind.NewIncompleteKey(ctx, h.user)
 	}
+	c, err := datastore.NewClient(ctx, h.ProjectID)
+	if err != nil {
+		return err
+	}
 	if h.key.Incomplete() {
 		var err error
-		h.key, err = datastore.Put(ctx, h.key, h)
+		h.key, err = c.Put(ctx, h.key, h)
 		return err
 	} else {
-		return datastore.RunInTransaction(ctx, func(tc context.Context) error {
-			err := datastore.Get(tc, h.key, h)
+		var pendingKey *datastore.PendingKey
+		commit, err := c.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
+			err := tx.Get(h.key, h)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
-					h.key, err = datastore.Put(tc, h.key, h)
+					pendingKey, err = tx.Put(h.key, h)
 					return err
 				}
 				return err
 			}
 			return errors.ErrEntityExists
 		}, nil)
+		if err != nil {
+			return err
+		}
+		h.key = commit.Key(pendingKey)
+		return err
 	}
 }
 
 func (h *Holder) Update(ctx context.Context, key *datastore.Key) error {
 	h.key = key
-	err := datastore.RunInTransaction(ctx, func(tc context.Context) error {
-		err := datastore.Get(tc, h.key, h)
+	c, err := datastore.NewClient(ctx, h.ProjectID)
+	if err != nil {
+		return err
+	}
+	var pendingKey *datastore.PendingKey
+	commit, err := c.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
+		err := tx.Get(h.key, h)
 		if err != nil {
 			return err
 		}
-		h.key, err = datastore.Put(ctx, h.key, h)
+		pendingKey, err = tx.Put(h.key, h)
 		return err
-	}, &datastore.TransactionOptions{XG: true})
+	})
+	if err != nil {
+		return err
+	}
+	h.key = commit.Key(pendingKey)
 	return err
 }
 
 func (h *Holder) Delete(ctx context.Context, key *datastore.Key) error {
 	h.key = key
-	err := datastore.Delete(ctx, h.key)
+	c, err := datastore.NewClient(ctx, h.ProjectID)
 	if err != nil {
 		return err
 	}
-	return nil
+	return c.Delete(ctx, h.key)
 }
