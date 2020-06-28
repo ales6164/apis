@@ -218,7 +218,10 @@ func (h *Holder) Output() map[string]interface{} {
 	}
 
 	if h.key != nil {
-		output["id"] = h.key.Encode()
+		if id, err := h.key.GobEncode(); err == nil {
+			output["id"] = string(id)
+		}
+
 	}
 
 	return output
