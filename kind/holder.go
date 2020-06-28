@@ -4,7 +4,6 @@ import (
 	"cloud.google.com/go/datastore"
 	"encoding/json"
 	"errors"
-	ds "google.golang.org/appengine/datastore"
 	"strings"
 	"time"
 )
