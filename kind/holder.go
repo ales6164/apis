@@ -169,6 +169,8 @@ func (h *Holder) appendValue(dst interface{}, field *Field, value interface{}, m
 				}
 				dst = append(dst.([]interface{}), value)
 			}
+		} else {
+			dst = value
 		}
 	} else if multiple {
 		if dst == nil {
