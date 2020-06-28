@@ -158,6 +158,17 @@ func (h *Holder) appendValue(dst interface{}, field *Field, value interface{}, m
 				dst = value
 			}
 
+		} else if bodies, ok := value.([]string); ok {
+			for _, body := range bodies {
+				var fdst map[string]interface{}
+				if err := json.Unmarshal([]byte(body), &fdst); err == nil {
+					value = fdst
+				}
+				if dst == nil {
+					dst = []interface{}{}
+				}
+				dst = append(dst.([]interface{}), value)
+			}
 		}
 	} else if multiple {
 		if dst == nil {
