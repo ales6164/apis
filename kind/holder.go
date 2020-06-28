@@ -4,6 +4,7 @@ import (
 	"cloud.google.com/go/datastore"
 	"encoding/json"
 	"errors"
+	ds "google.golang.org/appengine/datastore"
 	"strings"
 	"time"
 )
@@ -218,10 +219,7 @@ func (h *Holder) Output() map[string]interface{} {
 	}
 
 	if h.key != nil {
-		if id, err := h.key.GobEncode(); err == nil {
-			output["id"] = string(id)
-		}
-
+		output["id"] = h.key.Encode()
 	}
 
 	return output
