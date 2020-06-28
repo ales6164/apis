@@ -1,8 +1,8 @@
 package kind
 
 import (
-	"fmt"
 	"cloud.google.com/go/datastore"
+	"fmt"
 	"golang.org/x/net/context"
 	"gopkg.in/ales6164/apis.v4/errors"
 	"reflect"
@@ -73,9 +73,9 @@ func (x *Field) Parse(value interface{}) ([]datastore.Property, error) {
 func (x *Field) Property(value interface{}) ([]datastore.Property, error) {
 	var props []datastore.Property
 	props = append(props, datastore.Property{
-		Name:     x.Name,
-		NoIndex:  x.NoIndex,
-		Value:    value,
+		Name:    x.Name,
+		NoIndex: x.NoIndex,
+		Value:   value,
 	})
 	return props, nil
 }

@@ -4,6 +4,7 @@ import (
 	"cloud.google.com/go/datastore"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 	"time"
 )
@@ -175,6 +176,7 @@ func (h *Holder) appendPropertyValue(dst map[string]interface{}, prop datastore.
 		if field != nil {
 			dst[names[0]] = h.appendValue(dst[names[0]], field, prop.Value, field.Multiple)
 		} else {
+			log.Printf("appending property %s value of undefined field with value %s", prop.Name, prop.Value)
 			dst[names[0]] = h.appendValue(dst[names[0]], field, prop.Value, false)
 		}
 
