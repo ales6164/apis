@@ -4,6 +4,7 @@ import (
 	"cloud.google.com/go/datastore"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -170,7 +171,21 @@ func (h *Holder) appendValue(dst interface{}, field *Field, value interface{}, m
 				dst = append(dst.([]interface{}), value)
 			}
 		} else {
-			dst = value
+			s, _ := strconv.Unquote(value.(string))
+
+			if field.Multiple {
+				var fdst []map[string]interface{}
+				if err := json.Unmarshal([]byte(s), &fdst); err == nil {
+					value = fdst
+				}
+				dst = value
+			} else {
+				var fdst map[string]interface{}
+				if err := json.Unmarshal([]byte(s), &fdst); err == nil {
+					value = fdst
+				}
+				dst = value
+			}
 		}
 	} else if multiple {
 		if dst == nil {
