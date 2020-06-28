@@ -4,7 +4,6 @@ import (
 	"cloud.google.com/go/datastore"
 	"encoding/json"
 	"errors"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -159,33 +158,22 @@ func (h *Holder) appendValue(dst interface{}, field *Field, value interface{}, m
 				dst = value
 			}
 
-		} else if bodies, ok := value.([]string); ok {
-			for _, body := range bodies {
-				var fdst map[string]interface{}
-				if err := json.Unmarshal([]byte(body), &fdst); err == nil {
-					value = fdst
+		} else if bodies, ok := value.([]interface{}); ok {
+			for _, inbody := range bodies {
+
+				if body, ok := inbody.(string); ok {
+					var fdst map[string]interface{}
+					if err := json.Unmarshal([]byte(body), &fdst); err == nil {
+						value = fdst
+					}
+					if dst == nil {
+						dst = []interface{}{}
+					}
+					dst = append(dst.([]interface{}), value)
 				}
-				if dst == nil {
-					dst = []interface{}{}
-				}
-				dst = append(dst.([]interface{}), value)
 			}
 		} else {
-			s, _ := strconv.Unquote(value.(string))
-
-			if field.Multiple {
-				var fdst []map[string]interface{}
-				if err := json.Unmarshal([]byte(s), &fdst); err == nil {
-					value = fdst
-				}
-				dst = value
-			} else {
-				var fdst map[string]interface{}
-				if err := json.Unmarshal([]byte(s), &fdst); err == nil {
-					value = fdst
-				}
-				dst = value
-			}
+			dst = value
 		}
 	} else if multiple {
 		if dst == nil {
