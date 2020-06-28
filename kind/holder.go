@@ -4,7 +4,6 @@ import (
 	"cloud.google.com/go/datastore"
 	"encoding/json"
 	"errors"
-	"log"
 	"strings"
 	"time"
 )
@@ -144,14 +143,23 @@ func (h *Holder) appendValue(dst interface{}, field *Field, value interface{}, m
 
 	if field != nil && field.Kind != nil {
 		if body, ok := value.(string); ok {
-			var fdst map[string]interface{}
-			if err := json.Unmarshal([]byte(body), &fdst); err == nil {
-				value = fdst
-			}
-		}
-	}
 
-	if multiple {
+			if field.Multiple {
+				var fdst []map[string]interface{}
+				if err := json.Unmarshal([]byte(body), &fdst); err == nil {
+					value = fdst
+				}
+				dst = value
+			} else {
+				var fdst map[string]interface{}
+				if err := json.Unmarshal([]byte(body), &fdst); err == nil {
+					value = fdst
+				}
+				dst = value
+			}
+
+		}
+	} else if multiple {
 		if dst == nil {
 			dst = []interface{}{}
 		}
@@ -176,7 +184,8 @@ func (h *Holder) appendPropertyValue(dst map[string]interface{}, prop datastore.
 		if field != nil {
 			dst[names[0]] = h.appendValue(dst[names[0]], field, prop.Value, field.Multiple)
 		} else {
-			log.Printf("appending property %s value of undefined field with value %s", prop.Name, prop.Value)
+			//log.Printf("appending property %s value of undefined field with value %s", prop.Name, prop.Value)
+			// probably meta fields
 			dst[names[0]] = h.appendValue(dst[names[0]], field, prop.Value, false)
 		}
 
