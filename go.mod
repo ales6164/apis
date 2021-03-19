@@ -1,4 +1,4 @@
-module github.com/ales6164/apis.v5
+module github.com/ales6164/apis
 
 go 1.14
 
