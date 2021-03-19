@@ -3,8 +3,6 @@ package apis
 import (
 	"cloud.google.com/go/datastore"
 	"encoding/json"
-	"gopkg.in/ales6164/apis.v4/errors"
-	"gopkg.in/ales6164/apis.v4/kind"
 	"github.com/dgrijalva/jwt-go"
 	gcontext "github.com/gorilla/context"
 	"github.com/gorilla/mux"
@@ -80,7 +78,7 @@ func (ctx Context) Language() string {
 }*/
 
 // AdminRole has all permissions
-func (ctx Context) HasPermission(k *kind.Kind, scope Scope) bool {
+func (ctx Context) HasPermission(k *Kind, scope Scope) bool {
 	if ctx.Role == AdminRole {
 		return true
 	}
@@ -186,11 +184,11 @@ func (ctx *Context) PrintAuth(w http.ResponseWriter, token *Token, user *User) {
 
 func (ctx *Context) PrintError(w http.ResponseWriter, err error) {
 	log.Printf("context error: %v", err)
-	if err == errors.ErrUnathorized {
+	if err == ErrUnathorized {
 		w.WriteHeader(http.StatusUnauthorized)
-	} else if err == errors.ErrForbidden {
+	} else if err == ErrForbidden {
 		w.WriteHeader(http.StatusForbidden)
-	} else if _, ok := err.(*errors.Error); ok {
+	} else if _, ok := err.(*Error); ok {
 		w.WriteHeader(http.StatusBadRequest)
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)

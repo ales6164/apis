@@ -2,8 +2,8 @@ package apis
 
 import (
 	"cloud.google.com/go/datastore"
-	"strings"
 	"golang.org/x/net/context"
+	"strings"
 )
 
 type User struct {
@@ -65,9 +65,9 @@ func (u *User) Load(ps []datastore.Property) error {
 				u.Role = k
 			}
 			/*case "profile":
-				if k, ok := prop.Value.(*datastore.Key); ok {
-					u.profile = k
-				}*/
+			if k, ok := prop.Value.(*datastore.Key); ok {
+				u.profile = k
+			}*/
 		case "confirmedEmail":
 			if k, ok := prop.Value.(bool); ok {
 				u.HasConfirmedEmail = k
@@ -117,9 +117,9 @@ func (u *User) Save() ([]datastore.Property, error) {
 	if u.Meta != nil {
 		for k, v := range u.Meta {
 			ps = append(ps, datastore.Property{
-				Name:     "meta." + k,
-				Value:    v,
-				NoIndex:  true,
+				Name:    "meta." + k,
+				Value:   v,
+				NoIndex: true,
 			})
 		}
 	}

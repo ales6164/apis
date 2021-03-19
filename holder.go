@@ -1,4 +1,4 @@
-package kind
+package apis
 
 import (
 	"cloud.google.com/go/datastore"

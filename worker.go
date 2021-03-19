@@ -1,10 +1,9 @@
-package kind
+package apis
 
 import (
 	"cloud.google.com/go/datastore"
 	"fmt"
 	"golang.org/x/net/context"
-	"gopkg.in/ales6164/apis.v4/errors"
 	"reflect"
 )
 
@@ -84,7 +83,7 @@ func (x *Field) Check(value interface{}) (interface{}, error) {
 	var err error
 	if value == nil {
 		if x.IsRequired {
-			return value, errors.ErrFieldRequired.With(fmt.Sprintf("field '%s' value is required", x.Name))
+			return value, ErrFieldRequired.With(fmt.Sprintf("field '%s' value is required", x.Name))
 		}
 	} else {
 		err = x.Validate(value)

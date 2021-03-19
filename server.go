@@ -23,4 +23,3 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	s.h.ServeHTTP(w, req)
 }
-

@@ -1,10 +1,9 @@
-package kind
+package apis
 
 import (
 	"cloud.google.com/go/datastore"
 	"golang.org/x/net/context"
 	"google.golang.org/api/iterator"
-	"gopkg.in/ales6164/apis.v4/errors"
 )
 
 type Filter struct {
@@ -84,7 +83,7 @@ func (h *Holder) Add(ctx context.Context) error {
 				}
 				return err
 			}
-			return errors.ErrEntityExists
+			return ErrEntityExists
 		})
 		if err != nil {
 			return err

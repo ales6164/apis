@@ -1,10 +1,10 @@
 package apis
 
 import (
+	"cloud.google.com/go/datastore"
 	"golang.org/x/crypto/bcrypt"
 	"math/rand"
 	"time"
-	"cloud.google.com/go/datastore"
 )
 
 const COST = 12

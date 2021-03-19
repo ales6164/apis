@@ -12,5 +12,4 @@ require (
 	golang.org/x/net v0.0.0-20210316092652-d523dce5a7f4
 	google.golang.org/api v0.42.0
 	google.golang.org/appengine v1.6.7
-	gopkg.in/ales6164/apis.v4 v4.0.0-20200628152058-5bd850f474cd
 )

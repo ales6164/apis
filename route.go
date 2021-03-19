@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"github.com/asaskevich/govalidator"
 	"google.golang.org/api/iterator"
-	"gopkg.in/ales6164/apis.v4/errors"
-	"gopkg.in/ales6164/apis.v4/kind"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,7 +12,7 @@ import (
 
 type Route struct {
 	a         *Apis
-	kind      *kind.Kind
+	kind      *Kind
 	path      string
 	ProjectID string
 
@@ -30,7 +28,7 @@ type Route struct {
 	delete http.HandlerFunc
 }
 
-type Listener func(ctx Context, h *kind.Holder) error
+type Listener func(ctx Context, h *Holder) error
 
 const (
 	BeforeRead   = "beforeGet"
@@ -52,7 +50,7 @@ func (R *Route) On(event string, listener Listener) *Route {
 	R.listeners[event] = listener
 	return R
 }
-func (R *Route) trigger(e string, ctx Context, h *kind.Holder) error {
+func (R *Route) trigger(e string, ctx Context, h *Holder) error {
 	if R.listeners != nil {
 		if ls, ok := R.listeners[e]; ok {
 			return ls(ctx, h)
@@ -108,7 +106,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 		_, ctx := R.NewContext(r).Authenticate()
 
 		if ok := ctx.HasPermission(R.kind, READ); !ok {
-			ctx.PrintError(w, errors.ErrForbidden)
+			ctx.PrintError(w, ErrForbidden)
 			return
 		}
 
@@ -168,7 +166,7 @@ func (R *Route) getHandler() http.HandlerFunc {
 			limitInt, _ := strconv.Atoi(limit)
 			offsetInt, _ := strconv.Atoi(offset)
 
-			var hs []*kind.Holder
+			var hs []*Holder
 			var err error
 			if ancestor == "false" && ctx.Role == AdminRole {
 				hs, err = R.kind.Query(ctx, sort, limitInt, offsetInt, nil, nil)
@@ -213,7 +211,7 @@ func (R *Route) postHandler() http.HandlerFunc {
 		_, ctx := R.NewContext(r).Authenticate()
 
 		if ok := ctx.HasPermission(R.kind, CREATE); !ok {
-			ctx.PrintError(w, errors.ErrForbidden)
+			ctx.PrintError(w, ErrForbidden)
 			return
 		}
 
@@ -261,7 +259,7 @@ func (R *Route) putHandler() http.HandlerFunc {
 		_, ctx := R.NewContext(r).Authenticate()
 
 		if ok := ctx.HasPermission(R.kind, UPDATE); !ok {
-			ctx.PrintError(w, errors.ErrForbidden)
+			ctx.PrintError(w, ErrForbidden)
 			return
 		}
 
@@ -275,12 +273,12 @@ func (R *Route) putHandler() http.HandlerFunc {
 		var id string
 		inId := h.ParsedInput["id"]
 		if inId == nil {
-			ctx.PrintError(w, errors.New("id not defined"))
+			ctx.PrintError(w, NewError("id not defined"))
 			return
 		}
 		var ok bool
 		if id, ok = inId.(string); !ok {
-			ctx.PrintError(w, errors.New("id must be of type string"))
+			ctx.PrintError(w, NewError("id must be of type string"))
 			return
 		}
 
@@ -325,12 +323,12 @@ func (R *Route) deleteHandler() http.HandlerFunc {
 }
 
 var (
-	ErrEmailUndefined    = errors.New("email undefined")
-	ErrPasswordUndefined = errors.New("password undefined")
-	ErrInvalidCallback   = errors.New("callback is not a valid URL")
-	ErrInvalidEmail      = errors.New("email is not valid")
-	ErrPasswordTooLong   = errors.New("password must be exactly or less than 128 characters long")
-	ErrPasswordTooShort  = errors.New("password must be at least 6 characters long")
+	ErrEmailUndefined    = NewError("email undefined")
+	ErrPasswordUndefined = NewError("password undefined")
+	ErrInvalidCallback   = NewError("callback is not a valid URL")
+	ErrInvalidEmail      = NewError("email is not valid")
+	ErrPasswordTooLong   = NewError("password must be exactly or less than 128 characters long")
+	ErrPasswordTooShort  = NewError("password must be at least 6 characters long")
 )
 
 func checkEmail(v string) error {
@@ -366,11 +364,11 @@ func (R *Route) getUserHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := R.NewContext(r).Authenticate()
 		if !ok {
-			ctx.PrintError(w, errors.ErrUnathorized)
+			ctx.PrintError(w, ErrUnathorized)
 			return
 		}
 		if ctx.Role != AdminRole {
-			ctx.PrintError(w, errors.ErrUnathorized)
+			ctx.PrintError(w, ErrUnathorized)
 			return
 		}
 
@@ -392,7 +390,7 @@ func (R *Route) getUserHandler() http.HandlerFunc {
 		err = c.Get(ctx, keyId, user)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
-				ctx.PrintError(w, errors.ErrUserDoesNotExist)
+				ctx.PrintError(w, ErrUserDoesNotExist)
 				return
 			}
 			ctx.PrintError(w, err)
@@ -407,11 +405,11 @@ func (R *Route) getUsersHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := R.NewContext(r).Authenticate()
 		if !ok {
-			ctx.PrintError(w, errors.ErrUnathorized)
+			ctx.PrintError(w, ErrUnathorized)
 			return
 		}
 		if ctx.Role != AdminRole {
-			ctx.PrintError(w, errors.ErrUnathorized)
+			ctx.PrintError(w, ErrUnathorized)
 			return
 		}
 
@@ -474,7 +472,7 @@ func (R *Route) loginHandler() http.HandlerFunc {
 		err = c.Get(ctx, userKey, user)
 		if err != nil {
 			if err == datastore.ErrNoSuchEntity {
-				ctx.PrintError(w, errors.ErrUserDoesNotExist)
+				ctx.PrintError(w, ErrUserDoesNotExist)
 				return
 			}
 			ctx.PrintError(w, err)
@@ -484,7 +482,7 @@ func (R *Route) loginHandler() http.HandlerFunc {
 		// decrypt hash
 		err = decrypt(user.hash, []byte(password))
 		if err != nil {
-			ctx.PrintError(w, errors.ErrUserPasswordIncorrect)
+			ctx.PrintError(w, ErrUserPasswordIncorrect)
 			// todo: log and report
 			return
 		}
@@ -568,7 +566,7 @@ func (R *Route) registrationHandler(role Role) http.HandlerFunc {
 				}
 				return err
 			}
-			return errors.ErrUserAlreadyExists
+			return ErrUserAlreadyExists
 		})
 		if err != nil {
 			ctx.PrintError(w, err)
@@ -602,7 +600,7 @@ func (R *Route) confirmEmailHandler() http.HandlerFunc {
 		ok, ctx := R.NewContext(r).Authenticate()
 
 		if !ok {
-			ctx.PrintError(w, errors.ErrUnathorized)
+			ctx.PrintError(w, ErrUnathorized)
 			return
 		}
 
@@ -625,7 +623,7 @@ func (R *Route) confirmEmailHandler() http.HandlerFunc {
 			err := tx.Get(ctx.UserKey, user)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
-					return errors.ErrUserDoesNotExist
+					return ErrUserDoesNotExist
 				}
 				return err
 			}
@@ -663,7 +661,7 @@ func (R *Route) changePasswordHandler() http.HandlerFunc {
 		ok, ctx := R.NewContext(r).Authenticate()
 
 		if !ok {
-			ctx.PrintError(w, errors.ErrUnathorized)
+			ctx.PrintError(w, ErrUnathorized)
 			return
 		}
 
@@ -688,7 +686,7 @@ func (R *Route) changePasswordHandler() http.HandlerFunc {
 			err = tx.Get(ctx.UserKey, user)
 			if err != nil {
 				if err == datastore.ErrNoSuchEntity {
-					return errors.ErrUserDoesNotExist
+					return ErrUserDoesNotExist
 				}
 				return err
 			}
@@ -696,7 +694,7 @@ func (R *Route) changePasswordHandler() http.HandlerFunc {
 			// decrypt hash
 			err = decrypt(user.hash, []byte(password))
 			if err != nil {
-				return errors.ErrUserPasswordIncorrect
+				return ErrUserPasswordIncorrect
 			}
 
 			// create new password hash
@@ -722,7 +720,7 @@ func (R *Route) updateMeta() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, ctx := R.NewContext(r).Authenticate()
 		if !ok {
-			ctx.PrintError(w, errors.ErrUnathorized)
+			ctx.PrintError(w, ErrUnathorized)
 			return
 		}
 
@@ -732,7 +730,7 @@ func (R *Route) updateMeta() http.HandlerFunc {
 		if len(meta) > 0 {
 			json.Unmarshal(meta, &m)
 		} else {
-			ctx.PrintError(w, errors.New("body is empty"))
+			ctx.PrintError(w, NewError("body is empty"))
 			return
 		}
 

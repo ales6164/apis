@@ -4,8 +4,6 @@ import (
 	"errors"
 	"net/http"
 
-	"gopkg.in/ales6164/apis.v4/kind"
-	"gopkg.in/ales6164/apis.v4/middleware"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"io/ioutil"
@@ -15,7 +13,7 @@ type Apis struct {
 	options *Options
 	routes  []*Route
 
-	middleware *middleware.JWTMiddleware
+	middleware *JWTMiddleware
 	privateKey []byte
 	permissions
 	allowedTranslations map[string]bool
@@ -34,7 +32,7 @@ type Options struct {
 	HasTranslationsFor       []string
 	DefaultLanguage          string
 	ProjectID                string
-	/*UserProfileKind          *kind.Kind*/
+	/*UserProfileKind          *Kind*/
 	RequireTrackingID bool // todo:generated from pages - track users - stored as session cookie
 	Permissions
 }
@@ -59,7 +57,7 @@ func New(opt *Options) (*Apis, error) {
 	}
 
 	// set auth middleware
-	a.middleware = middleware.AuthMiddleware(a.privateKey)
+	a.middleware = AuthMiddleware(a.privateKey)
 
 	// languages
 	for _, l := range opt.HasTranslationsFor {
@@ -73,16 +71,16 @@ func New(opt *Options) (*Apis, error) {
 	return a, nil
 }
 
-func (a *Apis) Handle(p string, kind *kind.Kind) *Route {
+func (a *Apis) Handle(p string, kind *Kind) *Route {
 	if kind != nil {
 		kind.ProjectID = a.options.ProjectID
 	}
 	r := &Route{
-		kind: kind,
+		kind:      kind,
 		ProjectID: a.options.ProjectID,
-		a:       a,
-		path:    p,
-		methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+		a:         a,
+		path:      p,
+		methods:   []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 	}
 
 	a.routes = append(a.routes, r)
@@ -109,8 +107,8 @@ func (a *Apis) Handler(pathPrefix string) http.Handler {
 
 	authRoute := &Route{
 		ProjectID: a.options.ProjectID,
-		a:       a,
-		methods: []string{},
+		a:         a,
+		methods:   []string{},
 	}
 	r.Handle("/auth/login", authRoute.loginHandler()).Methods(http.MethodPost)
 	if a.options.AllowUserRegistration {

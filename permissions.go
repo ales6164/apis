@@ -1,9 +1,5 @@
 package apis
 
-import (
-	"gopkg.in/ales6164/apis.v4/kind"
-)
-
 type Role string
 
 const (
@@ -12,19 +8,19 @@ const (
 )
 
 // userGroup: kind: scope
-type Permissions map[Role]map[Scope][]*kind.Kind
+type Permissions map[Role]map[Scope][]*Kind
 
 func (p Permissions) parse() (permissions, error) {
 	var perms = permissions{}
 	for userGroupName, entityScopeMap := range p {
 		if _, ok := perms[userGroupName]; !ok {
-			perms[userGroupName] = map[Scope]map[*kind.Kind]bool{}
+			perms[userGroupName] = map[Scope]map[*Kind]bool{}
 		}
 
 		for theScope, theKinds := range entityScopeMap {
 
 			if _, ok := perms[userGroupName][theScope]; !ok {
-				perms[userGroupName][theScope] = map[*kind.Kind]bool{}
+				perms[userGroupName][theScope] = map[*Kind]bool{}
 			}
 
 			for _, theKind := range theKinds {
@@ -36,7 +32,7 @@ func (p Permissions) parse() (permissions, error) {
 	return perms, nil
 }
 
-type permissions map[Role]map[Scope]map[*kind.Kind]bool
+type permissions map[Role]map[Scope]map[*Kind]bool
 
 type Scope string
 

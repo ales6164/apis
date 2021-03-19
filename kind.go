@@ -1,4 +1,4 @@
-package kind
+package apis
 
 import (
 	"cloud.google.com/go/datastore"
@@ -6,12 +6,12 @@ import (
 )
 
 type Kind struct {
-	*Options
+	*KindOptions
 	fields map[string]*Field
 	inited bool
 }
 
-type Options struct {
+type KindOptions struct {
 	Name      string
 	ProjectID string
 	Fields    []*Field
@@ -26,9 +26,9 @@ type Field struct {
 	Kind *Kind
 }
 
-func New(opt *Options) *Kind {
+func NewKind(opt *KindOptions) *Kind {
 	k := &Kind{
-		Options: opt,
+		KindOptions: opt,
 	}
 	for _, f := range k.Fields {
 		if k.fields == nil {

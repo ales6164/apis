@@ -1,4 +1,4 @@
-package middleware
+package apis
 
 import (
 	"fmt"
@@ -63,7 +63,7 @@ func OnError(w http.ResponseWriter, r *http.Request, err string) {
 }
 
 // New constructs a new Secure instance with supplied options.
-func New(options ...MiddlewareOptions) *JWTMiddleware {
+func NewMiddleware(options ...MiddlewareOptions) *JWTMiddleware {
 
 	var opts MiddlewareOptions
 	if len(options) == 0 {
