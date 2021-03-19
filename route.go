@@ -37,13 +37,11 @@ const (
 	BeforeCreate = "beforeCreate"
 	BeforeUpdate = "beforeUpdate"
 	BeforeDelete = "beforeDelete"
-
-	AfterRead   = "afterRead"
-	AfterCreate = "afterCreate"
-	AfterUpdate = "afterUpdate"
-	AfterDelete = "afterDelete"
-
-	Search = "search"
+	AfterRead    = "afterRead"
+	AfterCreate  = "afterCreate"
+	AfterUpdate  = "afterUpdate"
+	AfterDelete  = "afterDelete"
+	Search       = "search"
 )
 
 // adds event listener
@@ -571,7 +569,7 @@ func (R *Route) registrationHandler(role Role) http.HandlerFunc {
 				return err
 			}
 			return errors.ErrUserAlreadyExists
-		}, nil)
+		})
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -636,7 +634,7 @@ func (R *Route) confirmEmailHandler() http.HandlerFunc {
 
 			_, err = tx.Put(ctx.UserKey, user)
 			return err
-		}, nil)
+		})
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
@@ -709,7 +707,7 @@ func (R *Route) changePasswordHandler() http.HandlerFunc {
 
 			_, err := tx.Put(ctx.UserKey, user)
 			return err
-		}, nil)
+		})
 		if err != nil {
 			ctx.PrintError(w, err)
 			return
